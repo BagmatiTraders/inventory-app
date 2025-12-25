@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { Card, CardHeader, CardTitle, CardContent, Label, Input, Button } from '@/components/ui-shim'
-import { changePassword } from '../actions/profile-actions'
+import { verifyAndChangePassword } from '../actions/profile-actions'
 
 export function SecuritySettings() {
     const [loading, setLoading] = useState(false)
@@ -21,7 +21,7 @@ export function SecuritySettings() {
 
         setLoading(true)
         try {
-            await changePassword(passwords.new)
+            await verifyAndChangePassword(passwords.current, passwords.new)
             alert('Password changed successfully')
             setPasswords({ current: '', new: '', confirm: '' })
         } catch (error: any) {

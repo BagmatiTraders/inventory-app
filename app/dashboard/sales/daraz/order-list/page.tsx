@@ -1,6 +1,6 @@
 ﻿'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { getAllDarazOrders, deleteDarazOrder, updateDarazOrderStatus, getDarazOrderById, getAllFiscalYears, getActiveFiscalYear } from '@/features/sales/actions/daraz-actions'
 import { getUserRole, getUserDeletionStats, createDeletionRequest, softDeleteOrder } from '@/features/sales/actions/daraz-deletion-actions'
@@ -12,7 +12,9 @@ import { DeletionReasonModal } from '@/features/sales/components/DeletionReasonM
 import { AdminDeleteConfirm } from '@/features/sales/components/AdminDeleteConfirm'
 import { toast } from 'sonner'
 
-export default function DarazOrderListPage() {
+export const dynamic = 'force-dynamic'
+
+function DarazOrderListContent() {
     const router = useRouter()
     const [selectedOrders, setSelectedOrders] = useState<string[]>([])
     const [searchInput, setSearchInput] = useState('')
@@ -639,6 +641,14 @@ export default function DarazOrderListPage() {
                 isDeleting={isSubmittingDeletion}
             />
         </div>
+    )
+}
+
+export default function DarazOrderListPage() {
+    return (
+        <Suspense fallback={<div className="p-4 text-center">Loading orders...</div>}>
+            <DarazOrderListContent />
+        </Suspense>
     )
 }
 

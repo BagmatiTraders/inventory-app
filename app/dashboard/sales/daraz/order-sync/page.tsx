@@ -8,7 +8,11 @@ import Link from 'next/link'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 
-export default function OrderSyncPage() {
+import { Suspense } from 'react'
+
+export const dynamic = 'force-dynamic'
+
+function OrderSyncPageContent() {
     const { data: stores, isLoading } = useOnlineStores()
     const searchParams = useSearchParams()
     const router = useRouter()
@@ -433,6 +437,14 @@ export default function OrderSyncPage() {
             </div>
         </div>
 
+    )
+}
+
+export default function OrderSyncPage() {
+    return (
+        <Suspense fallback={<div className="p-4 text-center">Loading...</div>}>
+            <OrderSyncPageContent />
+        </Suspense>
     )
 }
 

@@ -96,9 +96,9 @@ export async function getProductPurchaseStats(productId: string): Promise<Produc
 
     return {
         latestPrice: latest?.unit_amount || 0,
-        latestSupplier: latest?.supplier?.supplier_name || 'N/A',
+        latestSupplier: (Array.isArray(latest?.supplier) ? latest?.supplier[0]?.supplier_name : (latest?.supplier as any)?.supplier_name) || 'N/A',
         lowPrice: lowest?.unit_amount || 0,
-        lowSupplier: lowest?.supplier?.supplier_name || 'N/A',
+        lowSupplier: (Array.isArray(lowest?.supplier) ? lowest?.supplier[0]?.supplier_name : (lowest?.supplier as any)?.supplier_name) || 'N/A',
         last3Orders: last3 || []
     }
 }

@@ -1,16 +1,26 @@
+'use server'
+
+import { createClient } from '@/lib/supabase/server'
+import { revalidatePath } from 'next/cache'
+
 // 9. Permanently delete order from backup (admin only)
 export async function permanentlyDeleteOrder(deletedOrderId: string) {
     try {
         const supabase = await createClient()
-        const adminId = await getCurrentUserId()
+        const { data: { user } } = await supabase.auth.getUser()
 
-        if (!adminId) {
+        if (!user) {
             return { success: false, error: 'Not authenticated' }
         }
 
         // Check if admin
-        const role = await getUserRole(adminId)
-        if (role !== 'admin') {
+        const { data: profile } = await supabase
+            .from('user_profiles')
+            .select('role')
+            .eq('id', user.id)
+            .single()
+
+        if (profile?.role !== 'admin') {
             return { success: false, error: 'Only admins can permanently delete orders' }
         }
 
