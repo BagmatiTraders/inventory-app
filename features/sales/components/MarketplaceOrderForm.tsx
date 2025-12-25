@@ -1,0 +1,463 @@
+'use client'
+
+import { useState, useEffect } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { X, Plus } from 'lucide-react'
+import { getDeliveryLocations } from '@/features/settings/actions/delivery-actions'
+import { getProducts } from '@/features/inventory/actions/product-actions'
+import { createMarketplaceOrder } from '@/features/sales/actions/marketplace-actions'
+import Select from 'react-select'
+import AsyncSelect from 'react-select/async'
+
+interface MarketplaceOrderFormProps {
+    onSuccess: () => void
+    onCancel: () => void
+}
+
+interface OrderItem {
+    product_id?: string
+    product_name: string
+    quantity: number
+    amount: number
+}
+
+export function MarketplaceOrderForm({ onSuccess, onCancel }: MarketplaceOrderFormProps) {
+    // Form state
+    const [orderDate, setOrderDate] = useState(new Date().toISOString().split('T')[0])
+    const [customerName, setCustomerName] = useState('')
+    const [phoneNumber, setPhoneNumber] = useState('')
+    const [address, setAddress] = useState('')
+    const [deliveryBranchId, setDeliveryBranchId] = useState<string>('')
+    const [branchCharge, setBranchCharge] = useState(0)
+    const [deliveryCharge, setDeliveryCharge] = useState(0)
+    const [orderStatus, setOrderStatus] = useState('Pending')
+    const [remarks, setRemarks] = useState('')
+
+    // Order items
+    const [orderItems, setOrderItems] = useState<OrderItem[]>([
+        { product_name: '', quantity: 1, amount: 0 }
+    ])
+
+    const [isSubmitting, setIsSubmitting] = useState(false)
+
+    // Fetch delivery locations (branches)
+    const { data: locations = [] } = useQuery({
+        queryKey: ['delivery-locations'],
+        queryFn: getDeliveryLocations
+    })
+
+    // Fetch products (replaced by AsyncSelect loadOptions)
+    // const { data: productsData } = useQuery({
+    //     queryKey: ['products-all'],
+    //     queryFn: () => getProducts({ limit: 10000, productType: 'all' })
+    // })
+
+    const loadProductOptions = async (inputValue: string) => {
+        const { products } = await getProducts({
+            search: inputValue,
+            limit: 50,
+            productType: 'all'
+        })
+
+        return products.map(product => ({
+            value: product.id,
+            label: `${product.product_name} (ID: ${product.product_id})`,
+            name: product.product_name
+        }))
+    }
+
+    const branchOptions = locations.map(loc => ({
+        value: loc.id,
+        label: loc.branch_name,
+        deliveryCharge: loc.delivery_charge
+    }))
+
+    // const productOptions = productsData?.products?.map(product => ({
+    //     value: product.id,
+    //     label: `${product.product_name} (ID: ${product.product_id})`,
+    //     name: product.product_name
+    // })) || []
+
+    // Auto-fill branch charge when branch selected
+    useEffect(() => {
+        const selectedBranch = branchOptions.find(b => b.value === deliveryBranchId)
+        if (selectedBranch) {
+            setBranchCharge(selectedBranch.deliveryCharge || 0)
+        } else {
+            setBranchCharge(0)
+        }
+    }, [deliveryBranchId, branchOptions])
+
+    // Calculate total amount
+    const calculateTotal = () => {
+        const itemsTotal = orderItems.reduce((sum, item) => {
+            return sum + (item.quantity * item.amount)
+        }, 0)
+        return itemsTotal + deliveryCharge
+    }
+
+    const totalAmount = calculateTotal()
+
+    // Add new product row
+    const handleAddItem = () => {
+        setOrderItems([...orderItems, { product_name: '', quantity: 1, amount: 0 }])
+    }
+
+    // Remove product row
+    const handleRemoveItem = (index: number) => {
+        if (orderItems.length > 1) {
+            setOrderItems(orderItems.filter((_, i) => i !== index))
+        }
+    }
+
+    // Update item
+    const handleItemChange = (index: number, field: keyof OrderItem, value: any) => {
+        setOrderItems(prev => {
+            const newItems = [...prev]
+            newItems[index] = { ...newItems[index], [field]: value }
+            return newItems
+        })
+    }
+
+    // Handle product selection
+    // Handle product selection
+    const handleProductSelect = (index: number, option: any) => {
+        setOrderItems(prev => {
+            const newItems = [...prev]
+            if (option) {
+                newItems[index] = {
+                    ...newItems[index],
+                    product_id: option.value,
+                    product_name: option.name
+                }
+            } else {
+                newItems[index] = {
+                    ...newItems[index],
+                    product_id: undefined,
+                    product_name: ''
+                }
+            }
+            return newItems
+        })
+    }
+
+    // Handle branch selection
+    const handleBranchSelect = (option: any) => {
+        setDeliveryBranchId(option?.value || '')
+    }
+
+    // Validate phone number (10 digits)
+    const validatePhoneNumber = (phone: string) => {
+        return /^\d{10}$/.test(phone)
+    }
+
+    // Handle submit
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault()
+
+        // Validation
+        if (!customerName.trim()) {
+            alert('Customer name is required')
+            return
+        }
+
+        if (!validatePhoneNumber(phoneNumber)) {
+            alert('Phone number must be exactly 10 digits')
+            return
+        }
+
+        // Validate items
+        const validItems = orderItems.filter(item => item.product_name.trim() && item.quantity > 0)
+        if (validItems.length === 0) {
+            alert('Please add at least one product')
+            return
+        }
+
+        setIsSubmitting(true)
+
+        try {
+            await createMarketplaceOrder({
+                order_date: orderDate,
+                customer_name: customerName,
+                phone_number: phoneNumber,
+                address: address || undefined,
+                delivery_branch_id: deliveryBranchId || undefined,
+                branch_charge: branchCharge,
+                delivery_charge: deliveryCharge,
+                order_status: orderStatus,
+                remarks: remarks || undefined,
+                items: validItems
+            })
+
+            alert('Order created successfully!')
+            onSuccess()
+        } catch (error: any) {
+            alert(`Error: ${error.message}`)
+        } finally {
+            setIsSubmitting(false)
+        }
+    }
+
+    return (
+        <form onSubmit={handleSubmit} className="space-y-4">
+            {/* Row 1: Date, Customer Name, Phone Number */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div>
+                    <label className="block text-xs font-medium mb-1">
+                        Date <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                        type="date"
+                        value={orderDate}
+                        onChange={(e) => setOrderDate(e.target.value)}
+                        className="w-full px-2.5 py-1.5 text-sm border dark:border-zinc-700 rounded-md focus:ring-2 focus:ring-blue-500 dark:bg-zinc-900"
+                        required
+                    />
+                </div>
+
+                <div>
+                    <label className="block text-xs font-medium mb-1">
+                        Customer Name <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                        type="text"
+                        value={customerName}
+                        onChange={(e) => setCustomerName(e.target.value)}
+                        className="w-full px-2.5 py-1.5 text-sm border dark:border-zinc-700 rounded-md focus:ring-2 focus:ring-blue-500 dark:bg-zinc-900"
+                        placeholder="Enter customer name"
+                        required
+                    />
+                </div>
+
+                <div>
+                    <label className="block text-xs font-medium mb-1">
+                        Phone Number <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                        type="text"
+                        value={phoneNumber}
+                        onChange={(e) => {
+                            const value = e.target.value.replace(/\D/g, '').slice(0, 10)
+                            setPhoneNumber(value)
+                        }}
+                        className="w-full px-2.5 py-1.5 text-sm border dark:border-zinc-700 rounded-md focus:ring-2 focus:ring-blue-500 dark:bg-zinc-900"
+                        placeholder="10 digit number"
+                        maxLength={10}
+                        required
+                    />
+                </div>
+            </div>
+
+            {/* Row 2: Sales ID (auto), Address, Delivery Branch, Branch Charge */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                <div>
+                    <label className="block text-xs font-medium mb-1">
+                        Sales ID
+                    </label>
+                    <input
+                        type="text"
+                        value="Auto-generated"
+                        disabled
+                        className="w-full px-2.5 py-1.5 text-sm bg-gray-100 dark:bg-zinc-800 border dark:border-zinc-700 rounded-md text-gray-500 cursor-not-allowed"
+                    />
+                </div>
+
+                <div>
+                    <label className="block text-xs font-medium mb-1">
+                        Address
+                    </label>
+                    <input
+                        type="text"
+                        value={address}
+                        onChange={(e) => setAddress(e.target.value)}
+                        className="w-full px-2.5 py-1.5 text-sm border dark:border-zinc-700 rounded-md focus:ring-2 focus:ring-blue-500 dark:bg-zinc-900"
+                        placeholder="Customer address"
+                    />
+                </div>
+
+                <div>
+                    <label className="block text-xs font-medium mb-1">
+                        Delivery Branch
+                    </label>
+                    <Select
+                        options={branchOptions}
+                        value={branchOptions.find(b => b.value === deliveryBranchId)}
+                        onChange={handleBranchSelect}
+                        className="text-sm"
+                        classNamePrefix="select"
+                        placeholder="Select branch..."
+                        isClearable
+                    />
+                </div>
+
+                <div>
+                    <label className="block text-xs font-medium mb-1">
+                        Branch Charge
+                    </label>
+                    <input
+                        type="number"
+                        value={branchCharge}
+                        disabled
+                        className="w-full px-2.5 py-1.5 text-sm bg-gray-100 dark:bg-zinc-800 border dark:border-zinc-700 rounded-md text-gray-500 cursor-not-allowed"
+                    />
+                </div>
+            </div>
+
+            {/* Product Items */}
+            <div className="border dark:border-zinc-700 rounded-lg p-3 bg-blue-50 dark:bg-blue-900/10">
+                <h3 className="text-sm font-medium mb-3">Order Items</h3>
+
+                {orderItems.map((item, index) => (
+                    <div key={index} className="flex items-end gap-2 mb-3">
+                        <div className="flex-1">
+                            <label className="block text-xs font-medium mb-1">
+                                Product Name <span className="text-red-500">*</span>
+                            </label>
+                            <AsyncSelect
+                                cacheOptions
+                                defaultOptions
+                                loadOptions={loadProductOptions}
+                                value={item.product_id ? {
+                                    value: item.product_id,
+                                    label: item.product_name, // This might be incomplete display if we only have name, but sufficient for now
+                                    name: item.product_name
+                                } : null}
+                                onChange={(option) => handleProductSelect(index, option)}
+                                className="text-sm"
+                                classNamePrefix="select"
+                                placeholder="Search product..."
+                                isClearable
+                            />
+                        </div>
+
+                        <div className="w-24">
+                            <label className="block text-xs font-medium mb-1">
+                                Qty <span className="text-red-500">*</span>
+                            </label>
+                            <input
+                                type="number"
+                                min="1"
+                                value={item.quantity}
+                                onChange={(e) => handleItemChange(index, 'quantity', parseInt(e.target.value) || 1)}
+                                className="w-full px-2.5 py-1.5 text-sm border dark:border-zinc-700 rounded-md focus:ring-2 focus:ring-blue-500 dark:bg-zinc-900 bg-white"
+                            />
+                        </div>
+
+                        <div className="w-32">
+                            <label className="block text-xs font-medium mb-1">
+                                Amount <span className="text-red-500">*</span>
+                            </label>
+                            <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={item.amount}
+                                onChange={(e) => handleItemChange(index, 'amount', parseFloat(e.target.value) || 0)}
+                                className="w-full px-2.5 py-1.5 text-sm border dark:border-zinc-700 rounded-md focus:ring-2 focus:ring-blue-500 dark:bg-zinc-900 bg-white"
+                            />
+                        </div>
+
+                        <button
+                            type="button"
+                            onClick={() => handleRemoveItem(index)}
+                            disabled={orderItems.length === 1}
+                            className="px-2 py-1.5 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            <X size={16} />
+                        </button>
+                    </div>
+                ))}
+
+                <button
+                    type="button"
+                    onClick={handleAddItem}
+                    className="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded flex items-center gap-1"
+                >
+                    <Plus size={14} />
+                    Add Product
+                </button>
+            </div>
+
+            {/* Row 4: Delivery Charge, Total Amount */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                    <label className="block text-xs font-medium mb-1">
+                        Delivery Charge
+                    </label>
+                    <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={deliveryCharge}
+                        onChange={(e) => setDeliveryCharge(parseFloat(e.target.value) || 0)}
+                        className="w-full px-2.5 py-1.5 text-sm border dark:border-zinc-700 rounded-md focus:ring-2 focus:ring-blue-500 dark:bg-zinc-900"
+                    />
+                </div>
+
+                <div>
+                    <label className="block text-xs font-medium mb-1">
+                        Total Amount
+                    </label>
+                    <input
+                        type="text"
+                        value={`Rs ${totalAmount.toFixed(2)}`}
+                        disabled
+                        className="w-full px-2.5 py-1.5 text-sm font-bold bg-gray-100 dark:bg-zinc-800 border dark:border-zinc-700 rounded-md text-gray-900 dark:text-gray-100"
+                    />
+                </div>
+            </div>
+
+            {/* Row 5: Order Status, Remarks */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                    <label className="block text-xs font-medium mb-1">
+                        Order Status
+                    </label>
+                    <select
+                        value={orderStatus}
+                        onChange={(e) => setOrderStatus(e.target.value)}
+                        className="w-full px-2.5 py-1.5 text-sm border dark:border-zinc-700 rounded-md focus:ring-2 focus:ring-blue-500 dark:bg-zinc-900"
+                    >
+                        <option value="Pending">Pending</option>
+                        <option value="Shipped">Shipped</option>
+                        <option value="Delivered">Delivered</option>
+                        <option value="Fail Delivered">Fail Delivered</option>
+                        <option value="Cancel">Cancel</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label className="block text-xs font-medium mb-1">
+                        Remarks
+                    </label>
+                    <textarea
+                        value={remarks}
+                        onChange={(e) => setRemarks(e.target.value)}
+                        className="w-full px-2.5 py-1.5 text-sm border dark:border-zinc-700 rounded-md focus:ring-2 focus:ring-blue-500 dark:bg-zinc-900"
+                        rows={1}
+                        placeholder="Optional notes..."
+                    />
+                </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex items-center justify-end gap-3 pt-3 border-t dark:border-zinc-700">
+                <button
+                    type="button"
+                    onClick={onCancel}
+                    disabled={isSubmitting}
+                    className="px-4 py-1.5 text-sm border dark:border-zinc-700 rounded-md hover:bg-gray-50 dark:hover:bg-zinc-800 disabled:opacity-50"
+                >
+                    Close
+                </button>
+                <button
+                    type="submit"
+                    disabled={isSubmitting}
+                    className="px-4 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                    {isSubmitting ? 'Adding...' : 'Add Order'}
+                </button>
+            </div>
+        </form>
+    )
+}

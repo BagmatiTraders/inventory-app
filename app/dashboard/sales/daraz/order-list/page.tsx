@@ -1,0 +1,644 @@
+﻿'use client'
+
+import { useState, useEffect } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { getAllDarazOrders, deleteDarazOrder, updateDarazOrderStatus, getDarazOrderById, getAllFiscalYears, getActiveFiscalYear } from '@/features/sales/actions/daraz-actions'
+import { getUserRole, getUserDeletionStats, createDeletionRequest, softDeleteOrder } from '@/features/sales/actions/daraz-deletion-actions'
+import { Search, Printer, ArrowLeft, X, Trash2, Clock } from 'lucide-react'
+import Link from 'next/link'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { Card } from '@/components/ui-shim'
+import { DeletionReasonModal } from '@/features/sales/components/DeletionReasonModal'
+import { AdminDeleteConfirm } from '@/features/sales/components/AdminDeleteConfirm'
+import { toast } from 'sonner'
+
+export default function DarazOrderListPage() {
+    const router = useRouter()
+    const [selectedOrders, setSelectedOrders] = useState<string[]>([])
+    const [searchInput, setSearchInput] = useState('')
+    const [search, setSearch] = useState('')
+    const [statusFilter, setStatusFilter] = useState('all')
+    const [bulkStatus, setBulkStatus] = useState('')
+    const [page, setPage] = useState(1)
+    const [startDate, setStartDate] = useState('')
+    const [endDate, setEndDate] = useState('')
+    const [selectedFiscalYear, setSelectedFiscalYear] = useState<string>('')
+    const [timestampField, setTimestampField] = useState<string>('order_date') // New: filter by timestamp field
+    const [userRole, setUserRole] = useState<'admin' | 'user' | null>(null)
+    const [deletionModal, setDeletionModal] = useState<{ isOpen: boolean, order: any | null }>({ isOpen: false, order: null })
+    const [adminDeleteModal, setAdminDeleteModal] = useState<{ isOpen: boolean, order: any | null }>({ isOpen: false, order: null })
+    const [isSubmittingDeletion, setIsSubmittingDeletion] = useState(false)
+
+    const queryClient = useQueryClient()
+    const searchParams = useSearchParams()
+
+    // Fetch fiscal years
+    const { data: fiscalYears } = useQuery({
+        queryKey: ['fiscal-years'],
+        queryFn: getAllFiscalYears,
+    })
+
+    // Set fiscal year from URL params
+    useEffect(() => {
+        const fyFromUrl = searchParams.get('fiscalYear')
+        if (fyFromUrl) {
+            setSelectedFiscalYear(fyFromUrl)
+        }
+    }, [searchParams])
+
+    // Fetch user role on mount
+    useEffect(() => {
+        getUserRole().then(role => setUserRole(role))
+    }, [])
+
+    // Delete handlers
+    const handleDeleteClick = async (order: any) => {
+        if (userRole === 'admin') {
+            setAdminDeleteModal({ isOpen: true, order })
+        } else {
+            const stats = await getUserDeletionStats()
+            if (!stats.canDelete) {
+                const nextTime = stats.nextDeletionAvailable
+                    ? new Date(stats.nextDeletionAvailable).toLocaleString()
+                    : 'later'
+                toast.error(`Feature blocked! You can delete again after ${nextTime}`)
+                return
+            }
+            setDeletionModal({ isOpen: true, order })
+        }
+    }
+
+    const handleUserDeletionSubmit = async (reason: string) => {
+        if (!deletionModal.order) return
+
+        setIsSubmittingDeletion(true)
+        try {
+            const result = await createDeletionRequest(
+                deletionModal.order.id,
+                deletionModal.order.order_number,
+                reason
+            )
+
+            if (result.success) {
+                toast.success('Deletion request submitted for admin approval')
+                queryClient.invalidateQueries({ queryKey: ['all-daraz-orders'] })
+                setDeletionModal({ isOpen: false, order: null })
+            } else {
+                toast.error(result.error || 'Failed to submit request')
+            }
+        } catch (error: any) {
+            toast.error(error.message)
+        } finally {
+            setIsSubmittingDeletion(false)
+        }
+    }
+
+    const handleAdminDeleteConfirm = async () => {
+        if (!adminDeleteModal.order) return
+
+        setIsSubmittingDeletion(true)
+        try {
+            const result = await softDeleteOrder(adminDeleteModal.order.id)
+
+            if (result.success) {
+                toast.success('Order deleted and moved to Restore Backup')
+                queryClient.invalidateQueries({ queryKey: ['all-daraz-orders'] })
+                setAdminDeleteModal({ isOpen: false, order: null })
+            } else {
+                toast.error(result.error || 'Failed to delete order')
+            }
+        } catch (error: any) {
+            toast.error(error.message)
+        } finally {
+            setIsSubmittingDeletion(false)
+        }
+    }
+
+    const handleDelete = (orderId: string, orderNumber: string) => {
+        const order = orders.find(o => o.id === orderId)
+        if (order) handleDeleteClick(order)
+    }
+
+    // Fetch ALL orders
+    const { data, isLoading, isFetching } = useQuery({
+        queryKey: ['all-daraz-orders', page, search, statusFilter, startDate, endDate, selectedFiscalYear, timestampField],
+        queryFn: () => getAllDarazOrders({
+            page,
+            limit: 50,
+            search,
+            status: statusFilter,
+            fromDate: startDate,
+            toDate: endDate,
+            fiscalYearId: selectedFiscalYear || undefined,
+            timestampField: timestampField || 'order_date'
+        })
+    })
+
+    const orders = data?.orders || []
+    const pagination = data?.pagination
+
+    // Calculate customer frequency
+    const customerCounts = orders.reduce((acc: { [key: string]: number }, order) => {
+        acc[order.customer_name] = (acc[order.customer_name] || 0) + 1
+        return acc
+    }, {})
+
+    // Calculate customer frequency specifically for TODAY
+    const customerCountsToday = orders.reduce((acc: { [key: string]: number }, order) => {
+        const today = new Date().toISOString().split('T')[0]
+        const orderDate = new Date(order.order_date).toLocaleDateString('en-CA') // YYYY-MM-DD
+
+        if (orderDate === today) {
+            acc[order.customer_name] = (acc[order.customer_name] || 0) + 1
+        }
+        return acc
+    }, {})
+
+    // Helper to determine customer highlight class
+    const getCustomerClass = (name: string, dateStr: string) => {
+        const today = new Date().toISOString().split('T')[0]
+        const orderDate = new Date(dateStr).toLocaleDateString('en-CA')
+
+        // Priority 1: Duplicate ON TODAY (Green)
+        if (orderDate === today && (customerCountsToday[name] || 0) > 1) {
+            return 'text-green-600 dark:text-green-400 font-bold'
+        }
+
+        // Priority 2: Duplicate Global/History (Blue)
+        if (customerCounts[name] > 1) {
+            return 'text-blue-600 dark:text-blue-400 font-bold'
+        }
+
+        return 'text-gray-700 dark:text-gray-300'
+    }
+
+    // Group orders by date
+    const groupedOrders = orders.reduce<{ [key: string]: typeof orders }>((acc, order) => {
+        const date = new Date(order.order_date).toLocaleDateString('en-GB')
+        if (!acc[date]) acc[date] = []
+        acc[date].push(order)
+        return acc
+    }, {})
+
+    const handleSearch = () => {
+        setSearch(searchInput)
+        setPage(1)
+    }
+
+    const handleClearSearch = () => {
+        setSearchInput('')
+        setSearch('')
+        setPage(1)
+    }
+
+    const handleClearDateFilter = () => {
+        setStartDate('')
+        setEndDate('')
+        setPage(1)
+    }
+
+    const handleSelectAll = (checked: boolean) => {
+        if (checked) {
+            setSelectedOrders(orders.map(o => o.id))
+        } else {
+            setSelectedOrders([])
+        }
+    }
+
+    const handleSelectOrder = (orderId: string, checked: boolean) => {
+        if (checked) {
+            setSelectedOrders([...selectedOrders, orderId])
+        } else {
+            setSelectedOrders(selectedOrders.filter(id => id !== orderId))
+        }
+    }
+
+    const handleBulkStatusUpdate = async () => {
+        if (selectedOrders.length === 0 || !bulkStatus) {
+            toast.error('Please select orders and a status')
+            return
+        }
+
+        try {
+            await updateDarazOrderStatus(selectedOrders, bulkStatus)
+            toast.success(`Updated ${selectedOrders.length} orders`)
+            setSelectedOrders([])
+            setBulkStatus('')
+            queryClient.invalidateQueries({ queryKey: ['all-daraz-orders'] })
+        } catch (error: any) {
+            toast.error(error.message || 'Failed to update status')
+        }
+    }
+
+    // Render pagination (Compact)
+    const renderPagination = () => {
+        if (!pagination || pagination.totalPages <= 1) return null
+
+        const pages = []
+        const { page: currentPage, totalPages } = pagination
+
+        if (totalPages <= 7) {
+            for (let i = 1; i <= totalPages; i++) {
+                pages.push(i)
+            }
+        } else {
+            if (currentPage <= 3) {
+                pages.push(1, 2, 3, 4, 5, '...', totalPages)
+            } else if (currentPage >= totalPages - 2) {
+                pages.push(1, '...', totalPages - 4, totalPages - 3, totalPages - 2, totalPages - 1, totalPages)
+            } else {
+                pages.push(1, '...', currentPage - 1, currentPage, currentPage + 1, '...', totalPages)
+            }
+        }
+
+        return (
+            <div className="flex items-center justify-between px-4 py-3 border-t dark:border-zinc-700">
+                <div className="text-[17px] text-gray-600 dark:text-gray-400">
+                    Showing {((currentPage - 1) * pagination.limit) + 1} to {Math.min(currentPage * pagination.limit, pagination.total)} of {pagination.total} orders
+                </div>
+                <div className="flex items-center gap-1">
+                    {pages.map((p, idx) => (
+                        p === '...' ? (
+                            <span key={idx} className="px-2 text-gray-400">...</span>
+                        ) : (
+                            <button
+                                key={idx}
+                                onClick={() => setPage(p as number)}
+                                className={`px-3 py-1 text-[17px] rounded ${p === currentPage
+                                    ? 'bg-blue-600 text-white'
+                                    : 'hover:bg-gray-100 dark:hover:bg-zinc-800'
+                                    }`}
+                            >
+                                {p}
+                            </button>
+                        )
+                    ))}
+                </div>
+            </div>
+        )
+    }
+
+    return (
+        <div className="flex flex-col h-full bg-gray-50 dark:bg-zinc-900">
+            {/* Compact Header */}
+            <div className="sticky top-0 z-10 bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 px-3 py-1.5 flex items-center justify-between shadow-sm">
+                <div>
+                    <h1 className="text-[17px] font-bold">Daraz Order List</h1>
+                    <p className="text-[13px] text-gray-500 dark:text-gray-400">All History</p>
+                </div>
+                <Link
+                    href="/dashboard/sales/daraz/sales-entry"
+                    className="flex items-center gap-1 px-2 py-1 text-[13px] bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700 rounded transition-colors"
+                >
+                    <ArrowLeft size={12} />
+                    Back to Sales Entry
+                </Link>
+            </div>
+
+            {/* Compact Action Bar */}
+            <div className="sticky top-[44px] z-10 bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 px-3 py-1.5 shadow-sm">
+                <div className="flex flex-wrap items-center gap-1.5">
+                    {/* Fiscal Year Selector - Only show when coming from Sales Report */}
+                    {searchParams.get('fiscalYear') && (
+                        <select
+                            value={selectedFiscalYear}
+                            onChange={(e) => {
+                                setSelectedFiscalYear(e.target.value)
+                                setPage(1)
+                            }}
+                            className="px-2 py-1 text-[11px] border dark:border-zinc-700 rounded focus:ring-1 focus:ring-blue-500 dark:bg-zinc-800 dark:text-gray-50"
+                            disabled={!fiscalYears || fiscalYears.length === 0}
+                        >
+                            <option value="">All Time</option>
+                            {!fiscalYears || fiscalYears.length === 0 ? (
+                                <option disabled>Loading...</option>
+                            ) : (
+                                fiscalYears.map(fy => {
+                                    const startDate = new Date(fy.start_date).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+                                    const endDate = new Date(fy.end_date).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+                                    return (
+                                        <option key={fy.id} value={fy.id}>
+                                            {fy.name} ({startDate} - {endDate})
+                                        </option>
+                                    )
+                                })
+                            )}
+                        </select>
+                    )}
+
+                    {/* Timestamp Field Selector */}
+                    <select
+                        value={timestampField}
+                        onChange={(e) => { setTimestampField(e.target.value); setPage(1); }}
+                        className="px-2 py-1.5 text-sm border dark:border-zinc-700 rounded focus:ring-1 focus:ring-blue-500 dark:bg-zinc-800 dark:text-gray-50"
+                        title="Select which date field to filter by"
+                    >
+                        <option value="order_date">Order Date</option>
+                        <option value="shipped_at">Shipped At</option>
+                        <option value="delivered_at">Delivered At</option>
+                        <option value="failed_delivered_at">Failed Delivered At</option>
+                        <option value="customer_returned_at">Customer Return At</option>
+                    </select>
+
+                    {/* Date Range Inputs */}
+                    <input
+                        type="date"
+                        value={startDate}
+                        onChange={(e) => { setStartDate(e.target.value); setPage(1); }}
+                        onClick={(e) => e.currentTarget.showPicker()}
+                        className="w-28 px-2 py-1.5 text-sm border dark:border-zinc-700 rounded focus:ring-1 focus:ring-blue-500 dark:bg-zinc-800 dark:text-gray-50 cursor-pointer"
+                        placeholder="Start"
+                    />
+                    <span className="text-sm text-gray-500">to</span>
+                    <input
+                        type="date"
+                        value={endDate}
+                        onChange={(e) => { setEndDate(e.target.value); setPage(1); }}
+                        onClick={(e) => e.currentTarget.showPicker()}
+                        className="w-28 px-2 py-1.5 text-sm border dark:border-zinc-700 rounded focus:ring-1 focus:ring-blue-500 dark:bg-zinc-800 dark:text-gray-50 cursor-pointer"
+                        placeholder="End"
+                    />
+                    {(startDate || endDate) && (
+                        <button
+                            onClick={handleClearDateFilter}
+                            className="p-0.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                            title="Clear Dates"
+                        >
+                            <X size={11} />
+                        </button>
+                    )}
+
+                    {/* Status Filter */}
+                    <select
+                        value={statusFilter}
+                        onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
+                        className="px-2 py-1.5 text-sm border dark:border-zinc-700 rounded focus:ring-1 focus:ring-blue-500 dark:bg-zinc-800 dark:text-gray-50"
+                    >
+                        <option value="all">All Status</option>
+                        <option value="Pending">Pending</option>
+                        <option value="Shipped">Shipped</option>
+                        <option value="Delivered">Delivered</option>
+                        <option value="Failed Delivered">Failed Delivered</option>
+                        <option value="Customer Return">Customer Return</option>
+                        <option value="Cancel">Cancel</option>
+                    </select>
+
+                    {/* Search Box */}
+                    <div className="relative flex-1 min-w-[180px] max-w-sm">
+                        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
+                        <input
+                            type="text"
+                            placeholder="Search order#, tracking#..."
+                            value={searchInput}
+                            onChange={(e) => setSearchInput(e.target.value)}
+                            onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+                            className="w-full pl-7 pr-7 py-1.5 text-sm border dark:border-zinc-700 rounded focus:ring-1 focus:ring-blue-500 dark:bg-zinc-800 dark:text-gray-50"
+                        />
+                        {searchInput && (
+                            <button
+                                onClick={handleClearSearch}
+                                className="absolute right-1 top-1/2 -translate-y-1/2 p-0.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                                title="Clear search"
+                            >
+                                <X size={10} />
+                            </button>
+                        )}
+                    </div>
+
+                    {/* Search Button */}
+                    <button
+                        onClick={handleSearch}
+                        className="px-4 py-1.5 text-sm font-medium bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors whitespace-nowrap shadow-sm"
+                    >
+                        Search
+                    </button>
+
+                    {/* Clear All Filters Button - Now next to Search */}
+                    <button
+                        onClick={() => {
+                            setTimestampField('order_date')
+                            setStartDate('')
+                            setEndDate('')
+                            setStatusFilter('all')
+                            setSearchInput('')
+                            setSearch('')
+                            setPage(1)
+                        }}
+                        className="flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-white bg-red-500 hover:bg-red-600 rounded transition-colors whitespace-nowrap shadow-sm"
+                        title="Clear all filters"
+                    >
+                        <X size={14} strokeWidth={2.5} />
+                        Clear All
+                    </button>
+                </div>
+
+                {/* Compact Bulk Actions */}
+                {selectedOrders.length > 0 && (
+                    <div className="mt-1.5 pt-1.5 border-t dark:border-zinc-700 flex flex-wrap items-center gap-1.5">
+                        <span className="text-[13px] font-medium text-gray-700 dark:text-gray-300">{selectedOrders.length} selected</span>
+                        <button className="flex items-center gap-1 px-2 py-0.5 text-[13px] border dark:border-zinc-700 hover:bg-gray-50 dark:hover:bg-zinc-800 rounded dark:text-gray-50">
+                            <Printer size={11} />
+                            Print
+                        </button>
+                        <select
+                            value={bulkStatus}
+                            onChange={(e) => setBulkStatus(e.target.value)}
+                            className="px-2 py-0.5 text-[13px] border dark:border-zinc-700 rounded focus:ring-1 focus:ring-blue-500 dark:bg-zinc-800 dark:text-gray-50"
+                        >
+                            <option value="">Change Status...</option>
+                            <option value="Pending">Pending</option>
+                            <option value="Shipped">Shipped</option>
+                            <option value="Delivered">Delivered</option>
+                            <option value="Failed Delivered">Failed Delivered</option>
+                            <option value="Customer Return">Customer Return</option>
+                            <option value="Cancel">Cancel</option>
+                        </select>
+                        <button
+                            onClick={handleBulkStatusUpdate}
+                            disabled={!bulkStatus}
+                            className="px-2 py-0.5 text-[13px] bg-blue-600 hover:bg-blue-700 text-white rounded disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            Update
+                        </button>
+                    </div>
+                )}
+            </div>
+
+            {/* Orders Table */}
+            <div className="flex-1 overflow-y-auto p-2">
+                <Card className="dark:bg-zinc-900 dark:border-zinc-700">
+                    <div className="overflow-x-auto">
+                        <table className="w-full table-fixed border-collapse">
+                            <thead className="bg-gray-50 dark:bg-zinc-800 sticky top-0 shadow-sm z-10">
+                                <tr>
+                                    <th className="px-1.5 py-1 text-left w-8">
+                                        <input
+                                            type="checkbox"
+                                            checked={selectedOrders.length === orders.length && orders.length > 0}
+                                            onChange={(e) => handleSelectAll(e.target.checked)}
+                                            className="rounded text-blue-600 focus:ring-blue-500 dark:bg-zinc-700 dark:border-zinc-600 w-3.5 h-3.5"
+                                        />
+                                    </th>
+                                    <th className="px-1.5 py-1 text-left text-xs font-bold uppercase text-gray-900 dark:text-gray-100 w-10">SN</th>
+                                    <th className="px-1.5 py-1 text-left text-xs font-bold uppercase text-gray-900 dark:text-gray-100 w-22">Date</th>
+                                    <th className="px-1.5 py-1 text-left text-xs font-bold uppercase text-gray-900 dark:text-gray-100 w-28">Invoice</th>
+                                    <th className="px-1.5 py-1 text-left text-xs font-bold uppercase text-gray-900 dark:text-gray-100 w-32">Order#</th>
+                                    <th className="px-1.5 py-1 text-left text-xs font-bold uppercase text-gray-900 dark:text-gray-100 w-45">Customer</th>
+                                    <th className="px-1.5 py-1 text-left text-xs font-bold uppercase text-gray-900 dark:text-gray-100 w-64">Product</th>
+                                    <th className="px-1.5 py-1 text-right text-xs font-bold uppercase text-gray-900 dark:text-gray-100 w-16">Qty</th>
+                                    <th className="px-1.5 py-1 text-right text-xs font-bold uppercase text-gray-900 dark:text-gray-100 w-24">Amount</th>
+                                    <th className="px-1.5 py-1 text-left text-xs font-bold uppercase text-gray-900 dark:text-gray-100 w-24">Status</th>
+                                    <th className="px-1.5 py-1 text-center text-xs font-bold uppercase text-gray-900 dark:text-gray-100 w-29">Actions</th>
+                                </tr>
+                            </thead>
+                            {isLoading || isFetching ? (
+                                <tbody className="divide-y divide-gray-200 dark:divide-zinc-700">
+                                    <tr>
+                                        <td colSpan={11} className="text-center py-8 text-sm text-gray-500 dark:text-gray-400">Loading...</td>
+                                    </tr>
+                                </tbody>
+                            ) : orders.length === 0 ? (
+                                <tbody className="divide-y divide-gray-200 dark:divide-zinc-700">
+                                    <tr>
+                                        <td colSpan={11} className="hidden"></td>
+                                    </tr>
+                                </tbody>
+                            ) : (
+                                Object.entries(groupedOrders).map(([date, groupOrders]) => (
+                                    <tbody key={date} className="divide-y divide-gray-200 dark:divide-zinc-700 border-b-4 border-gray-100 dark:border-zinc-900 last:border-0 bg-white dark:bg-zinc-900">
+                                        {/* Date Header Row */}
+                                        <tr className="bg-gray-50 dark:bg-zinc-800/50">
+                                            <td colSpan={11} className="px-2 py-1 border-y dark:border-zinc-700">
+                                                <div className="flex items-center justify-between font-bold text-[13px] text-gray-700 dark:text-gray-300">
+                                                    <span>{date}</span>
+                                                    <span className="text-xs font-normal text-gray-500">
+                                                        ({groupOrders.length} Orders)
+                                                    </span>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                        {/* Order Rows */}
+                                        {groupOrders.map((order, idx) => (
+                                            <tr
+                                                key={order.id}
+                                                className="hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors"
+                                            >
+                                                <td className="px-1.5 py-0.5">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={selectedOrders.includes(order.id)}
+                                                        onChange={(e) => handleSelectOrder(order.id, e.target.checked)}
+                                                        className="rounded text-blue-600 focus:ring-blue-500 dark:bg-zinc-700 dark:border-zinc-600 w-3.5 h-3.5"
+                                                    />
+                                                </td>
+                                                <td className="px-1.5 py-0.5 text-sm text-gray-700 dark:text-gray-300">
+                                                    {((page - 1) * 50) + idx + 1}
+                                                </td>
+                                                <td className="px-1.5 py-0.5 text-sm text-transparent select-none">
+                                                    -
+                                                </td>
+                                                <td className="px-1.5 py-0.5">
+                                                    <button
+                                                        onClick={() => router.push(`/dashboard/sales/daraz/order/${order.id}`)}
+                                                        onMouseEnter={() => queryClient.prefetchQuery({
+                                                            queryKey: ['daraz-order', order.id],
+                                                            queryFn: () => getDarazOrderById(order.id)
+                                                        })}
+                                                        className="text-[13px] font-mono text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 hover:underline cursor-pointer"
+                                                    >
+                                                        {order.invoice_number}
+                                                    </button>
+                                                </td>
+                                                <td className="px-1.5 py-0.5 text-sm text-gray-700 dark:text-gray-300">
+                                                    {order.order_number}
+                                                </td>
+                                                <td className={`px-1.5 py-0.5 text-sm truncate ${getCustomerClass(order.customer_name, order.order_date)}`} title={order.customer_name}>
+                                                    {order.customer_name}
+                                                </td>
+                                                <td className={`px-1.5 py-0.5 text-sm truncate ${order.first_product_name === 'Product Not Found' ? 'text-red-600 dark:text-red-400 font-bold' : 'text-gray-700 dark:text-gray-300'}`} title={order.first_product_name}>
+                                                    {order.first_product_name}
+                                                    {order.item_count > 1 && <span className="text-gray-500 dark:text-gray-400 text-xs"> +{order.item_count - 1} Product{order.item_count - 1 > 1 ? 's' : ''}</span>}
+                                                </td>
+                                                <td className="px-1.5 py-0.5 text-sm text-right text-gray-700 dark:text-gray-300">{order.total_quantity}</td>
+                                                <td className="px-1.5 py-0.5 text-sm text-right font-medium text-gray-700 dark:text-gray-300">Rs. {order.grand_total?.toLocaleString()}</td>
+                                                <td className="px-1.5 py-0.5">
+                                                    <span className={`px-1 py-0.5 text-xs font-medium rounded ${order.order_status === 'Pending' ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200' :
+                                                        order.order_status === 'Shipped' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200' :
+                                                            order.order_status === 'Delivered' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' :
+                                                                'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200'
+                                                        }`}>
+                                                        {order.order_status}
+                                                    </span>
+                                                </td>
+                                                <td className="px-1.5 py-0.5">
+                                                    <div className="flex items-center justify-between gap-0.5">
+                                                        <button
+                                                            className={`p-0.5 hover:bg-gray-100 dark:hover:bg-zinc-700 rounded ${order.is_printed ? 'text-green-600 dark:text-green-400' : 'text-gray-600 dark:text-gray-400'}`}
+                                                            title={order.is_printed ? "Printed" : "Print"}
+                                                        >
+                                                            <Printer size={12} />
+                                                        </button>
+                                                        <button
+                                                            onClick={() => router.push(`/dashboard/sales/daraz/order/${order.id}`)}
+                                                            onMouseEnter={() => queryClient.prefetchQuery({
+                                                                queryKey: ['daraz-order', order.id],
+                                                                queryFn: () => getDarazOrderById(order.id)
+                                                            })}
+                                                            className="px-1 py-0.5 text-xs text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded"
+                                                        >
+                                                            View
+                                                        </button>
+                                                        <button
+                                                            onClick={() => handleDelete(order.id, order.order_number)}
+                                                            className="px-1 py-0.5 text-xs text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded"
+                                                            disabled={order.pending_deletion}
+                                                        >
+                                                            {order.pending_deletion ? (
+                                                                <span className="flex items-center gap-0.5 text-yellow-600">
+                                                                    <Clock size={9} />
+                                                                    Pending
+                                                                </span>
+                                                            ) : (
+                                                                'Del'
+                                                            )}
+                                                        </button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                ))
+                            )}
+                        </table>
+
+                        {orders.length === 0 && !isLoading && !isFetching && (
+                            <div className="text-center py-12 text-gray-500 dark:text-gray-400">
+                                No orders found.
+                            </div>
+                        )}
+                    </div>
+
+                    {renderPagination()}
+                </Card>
+            </div>
+
+            {/* Deletion Modals */}
+            <DeletionReasonModal
+                isOpen={deletionModal.isOpen}
+                orderNumber={deletionModal.order?.order_number || ''}
+                onClose={() => setDeletionModal({ isOpen: false, order: null })}
+                onSubmit={handleUserDeletionSubmit}
+                isSubmitting={isSubmittingDeletion}
+            />
+
+            <AdminDeleteConfirm
+                isOpen={adminDeleteModal.isOpen}
+                orderNumber={adminDeleteModal.order?.order_number || ''}
+                onClose={() => setAdminDeleteModal({ isOpen: false, order: null })}
+                onConfirm={handleAdminDeleteConfirm}
+                isDeleting={isSubmittingDeletion}
+            />
+        </div>
+    )
+}
+
