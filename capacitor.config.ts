@@ -5,7 +5,7 @@ const config: CapacitorConfig = {
   appName: 'Bagmati Traders',
   webDir: 'out',
   server: {
-    url: 'https://bagmati-inventory.vercel.app',
+    url: 'https://inventory-app-beta-coral.vercel.app',
     cleartext: true
   }
 };

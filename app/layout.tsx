@@ -4,6 +4,7 @@ import "./globals.css";
 import { ReactQueryProvider } from "@/lib/providers/ReactQueryProvider";
 import { ThemeProvider } from "@/lib/theme/ThemeProvider";
 import { ToastProvider } from "@/components/providers/ToastProvider";
+import CapacitorAppListener from "@/components/CapacitorAppListener";
 
 const geistSans = Geist({
     variable: "--font-geist-sans",
@@ -34,6 +35,7 @@ export default function RootLayout({
                 <ThemeProvider>
                     <ReactQueryProvider>
                         <ToastProvider>
+                            <CapacitorAppListener />
                             {children}
                         </ToastProvider>
                     </ReactQueryProvider>
