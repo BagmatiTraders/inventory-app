@@ -11,7 +11,9 @@ import { useSearchParams, useRouter } from 'next/navigation'
 import { getActiveFiscalYear, getAllFiscalYears } from '@/features/sales/actions/daraz-actions'
 import { useEffect } from 'react'
 
-export default function MarketplaceOrderListPage() {
+import { Suspense } from 'react'
+
+function MarketplaceOrderListContent() {
     const router = useRouter()
     const searchParams = useSearchParams()
     const urlFiscalYearId = searchParams.get('fiscalYearId')
@@ -338,5 +340,17 @@ export default function MarketplaceOrderListPage() {
                 </Card>
             </div>
         </div>
+    )
+}
+
+export default function MarketplaceOrderListPage() {
+    return (
+        <Suspense fallback={
+            <div className="flex items-center justify-center h-full text-gray-500">
+                Loading marketplace orders...
+            </div>
+        }>
+            <MarketplaceOrderListContent />
+        </Suspense>
     )
 }
