@@ -5,13 +5,14 @@ import { useQuery } from '@tanstack/react-query'
 import { X, Plus } from 'lucide-react'
 import { getDeliveryLocations } from '@/features/settings/actions/delivery-actions'
 import { getProducts } from '@/features/inventory/actions/product-actions'
-import { createMarketplaceOrder } from '@/features/sales/actions/marketplace-actions'
+import { createMarketplaceOrder, updateMarketplaceOrder, MarketplaceOrder } from '@/features/sales/actions/marketplace-actions'
 import Select from 'react-select'
 import AsyncSelect from 'react-select/async'
 
 interface MarketplaceOrderFormProps {
     onSuccess: () => void
     onCancel: () => void
+    initialData?: MarketplaceOrder & { items: any[] } // Extend type to include items
 }
 
 interface OrderItem {
@@ -21,7 +22,9 @@ interface OrderItem {
     amount: number
 }
 
-export function MarketplaceOrderForm({ onSuccess, onCancel }: MarketplaceOrderFormProps) {
+export function MarketplaceOrderForm({ onSuccess, onCancel, initialData }: MarketplaceOrderFormProps) {
+    const isEditing = !!initialData
+
     // Form state
     const [orderDate, setOrderDate] = useState(new Date().toISOString().split('T')[0])
     const [customerName, setCustomerName] = useState('')
@@ -40,17 +43,35 @@ export function MarketplaceOrderForm({ onSuccess, onCancel }: MarketplaceOrderFo
 
     const [isSubmitting, setIsSubmitting] = useState(false)
 
+    // Load initial data if editing
+    useEffect(() => {
+        if (initialData) {
+            setOrderDate(initialData.order_date.split('T')[0])
+            setCustomerName(initialData.customer_name)
+            setPhoneNumber(initialData.phone_number)
+            setAddress(initialData.address || '')
+            setDeliveryBranchId(initialData.delivery_branch_id || '')
+            setBranchCharge(initialData.branch_charge)
+            setDeliveryCharge(initialData.delivery_charge)
+            setOrderStatus(initialData.order_status)
+            setRemarks(initialData.remarks || '')
+
+            if (initialData.items && initialData.items.length > 0) {
+                setOrderItems(initialData.items.map(item => ({
+                    product_id: item.product_id,
+                    product_name: item.product_name,
+                    quantity: item.quantity,
+                    amount: item.amount
+                })))
+            }
+        }
+    }, [initialData])
+
     // Fetch delivery locations (branches)
     const { data: locations = [] } = useQuery({
         queryKey: ['delivery-locations'],
         queryFn: getDeliveryLocations
     })
-
-    // Fetch products (replaced by AsyncSelect loadOptions)
-    // const { data: productsData } = useQuery({
-    //     queryKey: ['products-all'],
-    //     queryFn: () => getProducts({ limit: 10000, productType: 'all' })
-    // })
 
     const loadProductOptions = async (inputValue: string) => {
         const { products } = await getProducts({
@@ -72,21 +93,21 @@ export function MarketplaceOrderForm({ onSuccess, onCancel }: MarketplaceOrderFo
         deliveryCharge: loc.delivery_charge
     }))
 
-    // const productOptions = productsData?.products?.map(product => ({
-    //     value: product.id,
-    //     label: `${product.product_name} (ID: ${product.product_id})`,
-    //     name: product.product_name
-    // })) || []
-
     // Auto-fill branch charge when branch selected
     useEffect(() => {
         const selectedBranch = branchOptions.find(b => b.value === deliveryBranchId)
         if (selectedBranch) {
-            setBranchCharge(selectedBranch.deliveryCharge || 0)
+            // Only update if not editing or if user manually changed branch
+            // Simple check: if initialData exists and we haven't touched branch, don't override
+            // But for simplicity, we let it update if branch changes. 
+            // To prevent override on load: check if branchId changed from initial
+            if (!initialData || deliveryBranchId !== initialData.delivery_branch_id) {
+                setBranchCharge(selectedBranch.deliveryCharge || 0)
+            }
         } else {
-            setBranchCharge(0)
+            if (!initialData) setBranchCharge(0)
         }
-    }, [deliveryBranchId, branchOptions])
+    }, [deliveryBranchId, branchOptions, initialData])
 
     // Calculate total amount
     const calculateTotal = () => {
@@ -119,7 +140,6 @@ export function MarketplaceOrderForm({ onSuccess, onCancel }: MarketplaceOrderFo
         })
     }
 
-    // Handle product selection
     // Handle product selection
     const handleProductSelect = (index: number, option: any) => {
         setOrderItems(prev => {
@@ -176,7 +196,7 @@ export function MarketplaceOrderForm({ onSuccess, onCancel }: MarketplaceOrderFo
         setIsSubmitting(true)
 
         try {
-            await createMarketplaceOrder({
+            const orderData = {
                 order_date: orderDate,
                 customer_name: customerName,
                 phone_number: phoneNumber,
@@ -187,9 +207,16 @@ export function MarketplaceOrderForm({ onSuccess, onCancel }: MarketplaceOrderFo
                 order_status: orderStatus,
                 remarks: remarks || undefined,
                 items: validItems
-            })
+            }
 
-            alert('Order created successfully!')
+            if (isEditing && initialData) {
+                await updateMarketplaceOrder(initialData.id, orderData)
+                alert('Order updated successfully!')
+            } else {
+                await createMarketplaceOrder(orderData)
+                alert('Order created successfully!')
+            }
+
             onSuccess()
         } catch (error: any) {
             alert(`Error: ${error.message}`)
@@ -256,7 +283,7 @@ export function MarketplaceOrderForm({ onSuccess, onCancel }: MarketplaceOrderFo
                     </label>
                     <input
                         type="text"
-                        value="Auto-generated"
+                        value={initialData?.sales_id || "Auto-generated"}
                         disabled
                         className="w-full px-2.5 py-1.5 text-sm bg-gray-100 dark:bg-zinc-800 border dark:border-zinc-700 rounded-md text-gray-500 cursor-not-allowed"
                     />
@@ -317,9 +344,9 @@ export function MarketplaceOrderForm({ onSuccess, onCancel }: MarketplaceOrderFo
                                 cacheOptions
                                 defaultOptions
                                 loadOptions={loadProductOptions}
-                                value={item.product_id ? {
-                                    value: item.product_id,
-                                    label: item.product_name, // This might be incomplete display if we only have name, but sufficient for now
+                                value={item.product_name ? {
+                                    value: item.product_id || '',
+                                    label: item.product_name,
                                     name: item.product_name
                                 } : null}
                                 onChange={(option) => handleProductSelect(index, option)}
@@ -455,7 +482,7 @@ export function MarketplaceOrderForm({ onSuccess, onCancel }: MarketplaceOrderFo
                     disabled={isSubmitting}
                     className="px-4 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                    {isSubmitting ? 'Adding...' : 'Add Order'}
+                    {isSubmitting ? 'Saving...' : (isEditing ? 'Update Order' : 'Add Order')}
                 </button>
             </div>
         </form>
