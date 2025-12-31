@@ -20,10 +20,17 @@ const CapacitorAppListener = () => {
         const setupListener = async () => {
             backButtonListener = await App.addListener('backButton', async () => {
                 const currentPath = pathnameRef.current;
+
+                // Normalize path (remove trailing slash if present)
+                const normalizedPath = currentPath?.endsWith('/') && currentPath.length > 1
+                    ? currentPath.slice(0, -1)
+                    : currentPath;
+
                 // Define routes where the app should exit
                 const exitRoutes = ['/', '/login', '/dashboard'];
 
-                if (currentPath && exitRoutes.includes(currentPath)) {
+                if (normalizedPath && exitRoutes.includes(normalizedPath)) {
+
                     await App.exitApp();
                 } else {
                     // Navigate back
