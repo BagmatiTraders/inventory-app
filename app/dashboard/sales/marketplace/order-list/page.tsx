@@ -27,6 +27,12 @@ function MarketplaceOrderListContent() {
     const [searchInput, setSearchInput] = useState('')
     const [statusFilter, setStatusFilter] = useState('all')
 
+    // State for actions
+    const [viewingOrder, setViewingOrder] = useState<any>(null)
+    const [editingOrder, setEditingOrder] = useState<any>(null)
+    const [isEditModalOpen, setIsEditModalOpen] = useState(false)
+
+    // ... existing query hooks ...
     // Fetch active and all fiscal years
     const { data: fiscalYears, isLoading: loadingFYs } = useQuery({ // Capture loading state
         queryKey: ['fiscal-years'],
@@ -55,7 +61,7 @@ function MarketplaceOrderListContent() {
     const isFyReady = !!selectedFiscalYear;
 
     // Fetch orders with fiscal year filter
-    const { data, isLoading, error } = useQuery({
+    const { data, isLoading, error, refetch } = useQuery({ // Destructure refetch
         queryKey: ['marketplace-orders-all', page, search, statusFilter, selectedFiscalYear], // Use selectedFiscalYear state
         queryFn: () => getMarketplaceOrders({
             page,
@@ -76,6 +82,18 @@ function MarketplaceOrderListContent() {
         setSearchInput('')
         setSearch('')
         setPage(1)
+    }
+
+    const handleDelete = async (id: string) => {
+        if (confirm('Are you sure you want to delete this order?')) {
+            try {
+                const { deleteMarketplaceOrder } = await import('@/features/sales/actions/marketplace-actions')
+                await deleteMarketplaceOrder(id)
+                refetch()
+            } catch (error: any) {
+                alert(`Error deleting order: ${error.message}`)
+            }
+        }
     }
 
     const handleExport = async () => {
@@ -262,7 +280,7 @@ function MarketplaceOrderListContent() {
                                         </td>
                                     </tr>
                                 ) : (
-                                    data.orders.map((order, index) => (
+                                    data.orders.map((order: any, index: number) => (
                                         <tr key={order.id} className="hover:bg-gray-50 dark:hover:bg-zinc-800/50 hover:shadow-lg hover:z-10 relative transition-all duration-200">
                                             <td className="px-2 py-1.5 text-[13px] text-gray-500">
                                                 {(page - 1) * 50 + index + 1}
@@ -271,7 +289,12 @@ function MarketplaceOrderListContent() {
                                                 {new Date(order.order_date).toLocaleDateString()}
                                             </td>
                                             <td className="px-2 py-1.5 text-[13px] font-mono font-medium">
-                                                {order.sales_id}
+                                                <button
+                                                    onClick={() => setViewingOrder(order)}
+                                                    className="font-mono font-medium text-blue-600 hover:underline"
+                                                >
+                                                    {order.sales_id}
+                                                </button>
                                             </td>
                                             <td className="px-2 py-1.5 text-[13px]">
                                                 {order.customer_name}
@@ -300,10 +323,21 @@ function MarketplaceOrderListContent() {
                                             </td>
                                             <td className="px-2 py-1.5">
                                                 <div className="flex items-center justify-end gap-1">
-                                                    <button className="px-2 py-0.5 text-[13px] text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded">
-                                                        View
+                                                    <button
+                                                        onClick={() => {
+                                                            setEditingOrder(order)
+                                                            setIsEditModalOpen(true)
+                                                        }}
+                                                        className="px-2 py-0.5 text-[13px] text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded"
+                                                    >
+                                                        Edit
                                                     </button>
-                                                    <button className="px-2 py-0.5 text-[13px] text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded">
+                                                    <button
+                                                        onClick={() => {
+                                                            handleDelete(order.id).then(() => refetch())
+                                                        }}
+                                                        className="px-2 py-0.5 text-[13px] text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded"
+                                                    >
                                                         Delete
                                                     </button>
                                                 </div>
@@ -341,6 +375,41 @@ function MarketplaceOrderListContent() {
                     )}
                 </Card>
             </div>
+
+            {/* Edit Modal */}
+            {isEditModalOpen && editingOrder && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white dark:bg-zinc-900 rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-auto">
+                        <div className="sticky top-0 bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 px-4 py-3 flex items-center justify-between">
+                            <h2 className="text-lg font-bold">Edit Order</h2>
+                            <button
+                                onClick={() => setIsEditModalOpen(false)}
+                                className="p-1 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded"
+                            >
+                                <X size={20} />
+                            </button>
+                        </div>
+                        <div className="p-4">
+                            <MarketplaceOrderForm
+                                initialData={editingOrder}
+                                onSuccess={() => {
+                                    setIsEditModalOpen(false)
+                                    refetch()
+                                }}
+                                onCancel={() => setIsEditModalOpen(false)}
+                            />
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Detail Modal */}
+            {viewingOrder && (
+                <MarketplaceOrderDetailModal
+                    order={viewingOrder}
+                    onClose={() => setViewingOrder(null)}
+                />
+            )}
         </div>
     )
 }
