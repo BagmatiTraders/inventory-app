@@ -59,6 +59,7 @@ export default function MarketplaceSalesEntryPage() {
             try {
                 const { deleteMarketplaceOrder } = await import('@/features/sales/actions/marketplace-actions')
                 await deleteMarketplaceOrder(id)
+                alert('Delete successful')
                 refetch()
             } catch (error: any) {
                 alert(`Error deleting order: ${error.message}`)
@@ -94,7 +95,7 @@ export default function MarketplaceSalesEntryPage() {
             document.body.removeChild(link)
             window.URL.revokeObjectURL(url)
 
-            alert('Orders exported successfully!')
+            alert('Export successful')
         } catch (error: any) {
             alert(`Export error: ${error.message}`)
         }

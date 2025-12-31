@@ -427,6 +427,7 @@ export async function exportMarketplaceOrders(filters: GetMarketplaceOrdersFilte
         'Date': order.order_date,
         'Customer Name': order.customer_name,
         'Phone': order.phone_number,
+        'Product Name': order.items?.map((item: any) => item.product_name).join(', ') || '',
         'Address': order.address || '',
         'Branch': order.branch?.branch_name || '',
         'Branch Charge': order.branch_charge,
