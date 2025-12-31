@@ -1,10 +1,12 @@
 ﻿'use client'
 
 import Link from 'next/link'
-import { Package, FileText, History, AlertTriangle, BarChart2 } from 'lucide-react'
+import { Package, FileText, History, AlertTriangle, BarChart2, Menu } from 'lucide-react'
 import { Card } from '@/components/ui-shim'
+import { useDashboard } from '../layout'
 
 export default function InventoryPage() {
+    const { setIsMobileMenuOpen } = useDashboard()
     const inventoryModules = [
         {
             name: 'Product List',
@@ -41,11 +43,20 @@ export default function InventoryPage() {
     return (
         <div className="flex flex-col h-full bg-gray-50 dark:bg-zinc-900 space-y-4">
             {/* Top Bar with Shadow */}
-            <div className="bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 px-4 py-3 shadow-md sticky top-0 z-10">
-                <h1 className="text-xl font-bold">Inventory Management</h1>
+            <div className="bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 px-4 py-3 shadow-md fixed md:sticky top-0 left-0 right-0 z-50 flex items-center justify-between md:justify-start gap-4">
+                {/* Mobile Menu Button */}
+                <button
+                    onClick={() => setIsMobileMenuOpen(true)}
+                    className="md:hidden p-2 -ml-2 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-md relative z-20"
+                >
+                    <Menu size={24} />
+                </button>
+
+                <h1 className="text-xl font-bold w-full text-center md:text-left md:w-auto -ml-10 md:ml-0">Inventory Management</h1>
+                <div className="w-8 md:hidden"></div> {/* Balance spacer */}
             </div>
 
-            <div className="px-4 space-y-4">
+            <div className="px-4 space-y-2 md:space-y-2 pt-3 md:pt-0">
                 {/* Inventory Modules Grid */}
                 <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3">
                     {inventoryModules.map((module) => {

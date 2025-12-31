@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { getSuppliers, deleteSupplier } from '@/features/suppliers/actions/supplier-actions'
-import { ArrowLeft, Plus, Search, X, Trash2 } from 'lucide-react'
+import { ArrowLeft, Plus, Search, X, Trash2, Edit2 } from 'lucide-react'
 import Link from 'next/link'
 import { Card } from '@/components/ui-shim'
 import { AddSupplierModal } from '@/features/suppliers/components/AddSupplierModal'
@@ -13,6 +13,7 @@ export default function SuppliersListPage() {
     const [search, setSearch] = useState('')
     const [searchInput, setSearchInput] = useState('')
     const [isModalOpen, setIsModalOpen] = useState(false)
+    const [editingSupplier, setEditingSupplier] = useState<any>(null)
     const queryClient = useQueryClient()
 
     // Fetch suppliers with pagination and search
@@ -159,6 +160,13 @@ export default function SuppliersListPage() {
                                             <td className="px-2 py-1.5">
                                                 <div className="flex items-center justify-end gap-1">
                                                     <button
+                                                        onClick={() => setEditingSupplier(supplier)}
+                                                        className="px-2 py-0.5 text-[13px] text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded flex items-center gap-1"
+                                                    >
+                                                        <Edit2 size={12} />
+                                                        Edit
+                                                    </button>
+                                                    <button
                                                         onClick={() => handleDelete(supplier.id, supplier.supplier_name)}
                                                         className="px-2 py-0.5 text-[13px] text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded flex items-center gap-1"
                                                     >
@@ -231,6 +239,16 @@ export default function SuppliersListPage() {
                 isOpen={isModalOpen}
                 onClose={() => setIsModalOpen(false)}
             />
+
+            {/* Edit Supplier Modal */}
+            {editingSupplier && (
+                <AddSupplierModal
+                    isOpen={true}
+                    onClose={() => setEditingSupplier(null)}
+                    editMode={true}
+                    supplierData={editingSupplier}
+                />
+            )}
         </div>
     )
 }

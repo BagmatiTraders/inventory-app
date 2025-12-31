@@ -90,19 +90,19 @@ export function ProfileDetails({ user }: ProfileDetailsProps) {
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
                                 <Label className="text-muted-foreground">Full Name</Label>
-                                <p className="font-medium text-lg">{user.full_name || 'N/A'}</p>
+                                <p className="font-medium text-sm md:text-lg">{user.full_name || 'N/A'}</p>
                             </div>
                             <div>
                                 <Label className="text-muted-foreground">Email</Label>
-                                <p className="font-medium text-lg">{user.email}</p>
+                                <p className="font-medium text-sm md:text-lg">{user.email}</p>
                             </div>
                             <div>
                                 <Label className="text-muted-foreground">Phone Number</Label>
-                                <p className="font-medium text-lg">{user.phone_number || 'N/A'}</p>
+                                <p className="font-medium text-sm md:text-lg">{user.phone_number || 'N/A'}</p>
                             </div>
                             <div>
                                 <Label className="text-muted-foreground">Address</Label>
-                                <p className="font-medium text-lg">{user.address || 'N/A'}</p>
+                                <p className="font-medium text-sm md:text-lg">{user.address || 'N/A'}</p>
                             </div>
                         </div>
 

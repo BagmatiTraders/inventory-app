@@ -23,6 +23,8 @@ export interface Purchase {
         supplier_name: string
     }
     payment_type: 'Cash' | 'Due' | 'Online' | 'Others'
+    purchase_type?: string
+    purchase_name?: string
     remarks?: string
     created_at: string
     created_by?: string
@@ -36,6 +38,8 @@ export interface CreatePurchaseData {
     total_amount: number
     supplier_id: string
     payment_type: string
+    purchase_type?: string
+    purchase_name?: string
     remarks?: string
 }
 
@@ -53,14 +57,45 @@ export async function getPurchases(params: {
     startDate?: string
     endDate?: string
     fiscalYearId?: string  // Filter by specific fiscal year
+    supplierId?: string    // Filter by supplier
     showAll?: boolean      // Bypass fiscal year filtering
 }) {
-    const { page = 1, limit = 50, search, startDate, endDate, fiscalYearId, showAll = false } = params
+    const { page = 1, limit = 50, search, startDate, endDate, fiscalYearId, supplierId, showAll = false } = params
     const supabase = await createClient()
 
     const from = (page - 1) * limit
     const to = from + limit - 1
 
+    // If search term is provided, use RPC function for better performance
+    if (search && search.trim()) {
+        const { data, error } = await supabase.rpc('search_purchases', {
+            search_term: search.trim(),
+            supplier_filter: supplierId || null,
+            start_date_filter: startDate || null,
+            end_date_filter: endDate || null,
+            fiscal_year_filter: fiscalYearId || null,
+            show_all_flag: showAll,
+            page_number: page,
+            page_limit: limit
+        })
+
+        if (error) throw error
+
+        const totalCount = data && data.length > 0 ? data[0].total_count : 0
+
+        return {
+            purchases: (data || []).map((item: any) => ({
+                ...item,
+                product: { product_name: item.product_name },
+                supplier: { supplier_name: item.supplier_name }
+            })),
+            totalCount: Number(totalCount),
+            totalPages: Math.ceil(Number(totalCount) / limit),
+            currentPage: page
+        }
+    }
+
+    // Otherwise use standard query
     let query = supabase
         .from('purchases')
         .select(`
@@ -109,11 +144,15 @@ export async function getPurchases(params: {
         query = query.lte('purchase_date', endDate)
     }
 
-    // Search filter (product name via join is tricky in Supabase, usually filtering on loaded data or ID)
-    // Here we can search on remarks or try to filter by joined tables if supported, 
-    // but typical PostgREST logical filter on relation fields: product.product_name.ilike...
+    // Supplier filter
+    if (supplierId && supplierId.trim()) {
+        query = query.eq('supplier_id', supplierId.trim())
+    }
+
+    // Search filter - currently searches only in remarks
+    // Note: To search in product.product_name or supplier.supplier_name, 
+    // we would need to create a PostgreSQL function (RPC) or filter client-side
     if (search && search.trim()) {
-        // Simple search on remarks for now, advanced search might require RPC or different approach if searching deep relations
         query = query.ilike('remarks', `%${search.trim()}%`)
     }
 
@@ -164,6 +203,8 @@ export async function createPurchase(data: CreatePurchaseData) {
             total_amount: data.total_amount,
             supplier_id: data.supplier_id,
             payment_type: data.payment_type,
+            purchase_type: data.purchase_type,
+            purchase_name: data.purchase_name,
             remarks: data.remarks,
             created_by: user.id,
             updated_by: user.id
@@ -175,6 +216,41 @@ export async function createPurchase(data: CreatePurchaseData) {
 
     // Auto-complete any pending plans for this product
     await completePlanForProduct(data.product_id)
+
+    revalidatePath('/dashboard/purchase/purchase-entry')
+    revalidatePath('/dashboard/purchase/daily-purchase-list')
+
+    return purchase
+}
+
+/**
+ * Update existing purchase
+ */
+export async function updatePurchase(id: string, data: CreatePurchaseData) {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) throw new Error('Not authenticated')
+
+    const { data: purchase, error } = await supabase
+        .from('purchases')
+        .update({
+            purchase_date: data.purchase_date || new Date().toISOString().split('T')[0],
+            product_id: data.product_id,
+            quantity: data.quantity,
+            unit_amount: data.unit_amount,
+            total_amount: data.total_amount,
+            supplier_id: data.supplier_id,
+            payment_type: data.payment_type,
+            purchase_type: data.purchase_type,
+            purchase_name: data.purchase_name,
+            remarks: data.remarks,
+            updated_by: user.id
+        })
+        .eq('id', id)
+        .select()
+        .single()
+
+    if (error) throw error
 
     revalidatePath('/dashboard/purchase/purchase-entry')
     revalidatePath('/dashboard/purchase/daily-purchase-list')

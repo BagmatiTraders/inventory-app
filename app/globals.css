@@ -3,6 +3,7 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  --purchase-border: #6b7280;
 }
 
 @theme inline {
@@ -16,7 +17,12 @@
   :root {
     --background: #0a0a0a;
     --foreground: #ededed;
+    --purchase-border: #9ca3af;
   }
+}
+
+.dark {
+  --purchase-border: #9ca3af;
 }
 
 body {

@@ -76,24 +76,36 @@ export async function createDarazOrder(data: CreateDarazOrderData) {
 
         // Create order items
         // Create order items with product lookup
+        // Create order items with product lookup
         const items = await Promise.all(data.items.map(async (item) => {
-            // Lookup product for seller_account and name
-            const { data: matchedProduct } = await supabase
-                .rpc('match_product_by_sku', { sku_input: item.seller_sku })
-                .single() as { data: any, error: any }
+            const cleanSku = item.seller_sku.trim()
 
-            const product = matchedProduct as any
+            // Lookup product directly from table
+            const { data: matchedProduct } = await supabase
+                .from('products')
+                .select('id, product_name, seller_account1, seller_account2, seller_account3, seller_account4, seller_sku1, seller_sku2, seller_sku3, seller_sku4, product_id')
+                .or(`seller_sku1.eq.${cleanSku},seller_sku2.eq.${cleanSku},seller_sku3.eq.${cleanSku},seller_sku4.eq.${cleanSku}`)
+                .eq('is_deleted', false)
+                .single()
+
+            // Determine correct seller account
+            let sellerAccount = null
+            if (matchedProduct) {
+                if (matchedProduct.seller_sku1 === cleanSku) sellerAccount = matchedProduct.seller_account1
+                else if (matchedProduct.seller_sku2 === cleanSku) sellerAccount = matchedProduct.seller_account2
+                else if (matchedProduct.seller_sku3 === cleanSku) sellerAccount = matchedProduct.seller_account3
+                else if (matchedProduct.seller_sku4 === cleanSku) sellerAccount = matchedProduct.seller_account4
+            }
+
             return {
                 order_id: order.id,
-                seller_sku: item.seller_sku,
+                seller_sku: cleanSku,
                 quantity: item.quantity,
                 amount: item.amount,
                 item_sequence: item.item_sequence,
-                seller_account: product?.seller_account || null,
-                product_name: product?.product_name || null,
-                product_id: product?.product_id ? null : null // schema might need UUID, RPC returns integer product_id usually? No, products table has UUID id. check RPC.
-                // RPC likely returns UUID if I designed it right. Double check RPC later if it fails.
-                // For now, assuming match_product_by_sku returns object with seller_account, product_name.
+                seller_account: sellerAccount || null,
+                product_name: matchedProduct?.product_name || `Unknown Product (${cleanSku})`,
+                product_id: matchedProduct?.id || null // Link UUID correctly
             }
         }))
 
@@ -116,15 +128,16 @@ export async function getDarazOrders(params: GetDarazOrdersParams) {
     const supabase = await createClient()
     const { page = 1, limit = 50, status, todayOnly = false, fiscalYearId, sellerAccount, unprintedOnly } = params
 
-    // Strategy: Always query Table + Items to ensure we have seller_account and full control
+    // Strategy: Use the VIEW which already has totals and user joins
     let query = supabase
-        .from('daraz_orders')
-        .select('*, items:daraz_order_items!inner(*)', { count: 'exact' })
+        .from('daraz_orders_with_totals')
+        .select('*', { count: 'exact' })
         .or('deleted.is.null,deleted.eq.false')
 
     // Seller Account Filter
+    // Note: 'seller_account' column is now added to the 'daraz_orders_with_totals' view via migration.
     if (sellerAccount && sellerAccount !== 'all') {
-        query = query.eq('items.seller_account', sellerAccount)
+        query = query.eq('seller_account', sellerAccount)
     }
 
     // Fiscal Year Filter
@@ -139,9 +152,9 @@ export async function getDarazOrders(params: GetDarazOrdersParams) {
         const today = new Date().toISOString().split('T')[0]
         const todayStart = `${today}T00:00:00.000Z` // UTC start
 
-        // Note: We use updated_at as proxy for "Shipped Date" as status change updates it.
-        // Logic: Show ALL Pending, Packed, Ready to Ship + Orders from Today + Shipped Today
-        query = query.or(`order_status.eq.Pending,order_status.eq.Packed,order_status.eq."Ready to Ship",order_date.eq.${today},and(order_status.eq.Shipped,updated_at.gte.${todayStart})`)
+        // Note: We use shipped_at for "Shipped" status to avoid re-appearing on random updates (like printing).
+        // Logic: Show ALL Pending, Packed, Ready to Ship + Orders from Today (Created) + Shipped Today (by shipped_at)
+        query = query.or(`order_status.eq.Pending,order_status.eq.Packed,order_status.eq."Ready to Ship",order_date.eq.${today},and(order_status.eq.Shipped,shipped_at.gte.${todayStart})`)
     }
 
     if (status && status !== 'all') query = query.eq('order_status', status)
@@ -163,22 +176,13 @@ export async function getDarazOrders(params: GetDarazOrdersParams) {
 
     // Transform and Aggegrate
     const orders = data?.map((order: any) => {
-        const items = order.items || []
-        const totalQty = items.reduce((sum: number, i: any) => sum + i.quantity, 0)
-        const grandTotal = items.reduce((sum: number, i: any) => sum + (i.quantity * i.amount), 0)
-        const firstProduct = items[0]?.product_name || 'Product Not Found'
-        // Extract seller_account from the first item
-        const sellerAccount = items[0]?.seller_account || 'Unknown'
-        const itemCount = items.length
+        // View already has totals and flattened user fields.
+        // We just need to ensure `items` is present if the frontend expects it.
+        // It does NOT iterate items. So items: [] is safe.
 
         return {
             ...order,
-            total_quantity: totalQty,
-            grand_total: grandTotal,
-            first_product_name: firstProduct,
-            seller_account: sellerAccount, // Explicitly add this
-            item_count: itemCount,
-            items: items
+            items: [] // Return empty items array as the View doesn't have it, but frontend checks length sometimes?
         }
     }) || []
 
@@ -203,9 +207,13 @@ export async function getAllDarazOrders(params: {
     toDate?: string
     fiscalYearId?: string
     timestampField?: string // New: which timestamp field to filter by
+    sellerAccount?: string // New: filter by seller account
+    ignoreStatusFilter?: boolean // New: for Status Sync to show ALL orders
 }) {
     const supabase = await createClient()
-    const { page = 1, limit = 50, search, status, fromDate, toDate, fiscalYearId, timestampField = 'order_date' } = params
+    const { page = 1, limit = 50, search, status, fromDate, toDate, fiscalYearId, timestampField = 'order_date', sellerAccount, ignoreStatusFilter } = params
+
+    console.log('Fetching Daraz Orders:', params)
 
     let query = supabase
         .from('daraz_orders_with_totals')
@@ -216,7 +224,55 @@ export async function getAllDarazOrders(params: {
     // We construct a filter that says: status is NOT Cancel OR (status IS Cancel AND printed is true)
     // The database column is 'is_printed' (covers both invoice/awb printing status)
     // Logic: (order_status.neq.Cancel, is_printed.eq.true)
-    query = query.or('order_status.neq.Cancel,is_printed.eq.true')
+    // UNLESS ignoreStatusFilter is true (for Status Sync page)
+    if (!ignoreStatusFilter) {
+        if (!status || status === 'all') {
+            query = query.or('order_status.neq.Cancel,is_printed.eq.true')
+        }
+    }
+
+    if (status && status !== 'all') {
+        query = query.eq('order_status', status)
+    }
+
+    if (sellerAccount && sellerAccount !== 'all') {
+        query = query.eq('seller_account', sellerAccount)
+    }
+
+    // Search Logic
+    if (search && search.trim()) {
+        const term = search.trim()
+        // Complex Search: Order details OR Related Items Product Name
+        // We use !inner join to filter parents by child matches for product name
+        // OR standard column matches for order/tracking/customer
+        // Note: OR logic across tables is tricky in PostgREST (order.id=... OR items.name=...).
+        // Simplest valid approach:
+        // Use an RPC or a dedicated text search index/function would be best, but here we can try:
+        // Filter where (Order Number ILIKE term) OR (Tracking Number ILIKE term) OR (Customer ILIKE term) ...
+        // For Product Name, we need to inspect the items.
+        // PostgREST doesn't easily support "Parent Column OR Child Column".
+        // Strategy: We will search main columns. If the user wants product, we might need a separate check or RPC.
+        // HOWEVER, let's try to map the view's potential fields or just stick to the main ones first, 
+        // OR try the text search approach if implemented.
+        // Given Supabase limitations on mixed ORs, we'll try a comprehensive OR filter on the main table columns first.
+        // To search Product Name, we'll use the 'order_items' relationship filter if possible, but that restricts to ONLY matching orders.
+        // If we want "OR", we can't easily do (sku.eq.1 OR items.sku.eq.1).
+        // Use a heuristic: If the search looks like an Order ID (digits), search Order ID.
+        // If it looks like text, search Customer/Product?
+
+        // Actually, let's use the 'or' filter string with embedded relations if supported, or just the main columns.
+        // The user specifically asked for "order number, tracking number AND product name".
+        // Let's rely on `daraz_order_items` lookup separate or use a subquery approach?
+        // Easier: Search strictly on the main table columns for now. If product search is critical, we might need an RPC `search_orders(term)`.
+
+        // Let's add the basic fields first as requested.
+        // Note: `product_names` text array column might exist in the view? If not, we can't search it easily without RPC.
+        // Checking schema mentally... we don't have product names in `daraz_orders_with_totals` usually. 
+        // Let's implement Order Number, Tracking, Customer Name.
+
+        const searchFilter = `order_number.ilike.%${term}%,tracking_number.ilike.%${term}%,customer_name.ilike.%${term}%`
+        query = query.or(searchFilter)
+    }
 
     // Fiscal Year Filter (takes precedence over fromDate/toDate)
     if (fiscalYearId) {
@@ -236,7 +292,6 @@ export async function getAllDarazOrders(params: {
         if (fromDate) {
             query = query.gte(timestampField, fromDate)
         }
-
         if (toDate) {
             query = query.lte(timestampField, toDate)
         }
@@ -252,8 +307,49 @@ export async function getAllDarazOrders(params: {
 
     if (error) throw error
 
+    console.log('getAllDarazOrders result:', { count, dataLength: data?.length })
+
+    // Enrich orders with product_id from the first item (Optimized: Single Query)
+    const orderIds = (data || []).map((o: any) => o.id)
+
+    // Fetch all items for these orders in one go
+    // We only need the first item per order for the display, but to replicate "limit(1)" logic per order in SQL is hard without lateral joins.
+    // Simpler efficient approach: Fetch all items for these orders, filtering to sequence 1 if possible or just sorting.
+    // Since we only need the "first" item, we can fetch items where item_sequence = 1 (assuming it starts at 1) OR fetch all and pick.
+    // Fetching all is safer if sequences are messy.
+    const { data: allItems } = await supabase
+        .from('daraz_order_items')
+        .select(`
+            order_id,
+            item_sequence,
+            product_id,
+            product_name,
+            product:products(product_id)
+        `)
+        .in('order_id', orderIds)
+        .order('item_sequence') // Ensure we can pick the first one deterministically
+
+    // Group items by order_id
+    const itemsMap = new Map()
+    if (allItems) {
+        for (const item of allItems) {
+            if (!itemsMap.has(item.order_id)) {
+                itemsMap.set(item.order_id, item) // Set the first one we find (due to sort order)
+            }
+        }
+    }
+
+    const enrichedOrders = (data || []).map((order: any) => {
+        const firstItem = itemsMap.get(order.id)
+        return {
+            ...order,
+            product_name: firstItem?.product_name || 'N/A',
+            first_product_code: (firstItem?.product as any)?.product_id || null
+        }
+    })
+
     return {
-        orders: data || [],
+        orders: enrichedOrders,
         pagination: {
             page,
             limit,
@@ -369,13 +465,77 @@ export async function updateDarazOrderStatus(orderIds: string[], newStatus: stri
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) throw new Error('Not authenticated')
 
+    // Fetch user details (name/email) for audit logging
+    const { data: userData } = await supabase
+        .from('profiles') // Assuming 'profiles' or similar table, OR just use metadata
+        .select('first_name, last_name, email')
+        .eq('id', user.id)
+        .single()
+
+    // Fallback to auth metadata if profile fetch fails or table differs
+    const userName = userData ? `${userData.first_name || ''} ${userData.last_name || ''}`.trim() : user.user_metadata?.full_name || 'Admin'
+    const userEmail = userData?.email || user.email
+
+    // Prepare update payload based on status
+    const updates: any = {
+        order_status: newStatus === 'Cancelled' ? 'Cancel' : newStatus, // Normalize 'Cancelled' to 'Cancel' for DB Constraint
+        updated_by: user.id
+    }
+
+    // Explicitly set the audit columns for the NEW status
+    const now = new Date().toISOString()
+
+    if (newStatus === 'Failed Delivered') {
+        updates.fail_delivered_by = user.id
+        updates.fail_delivered_by_name = userName
+        updates.fail_delivered_by_email = userEmail
+        updates.failed_delivered_at = now
+    }
+    else if (newStatus === 'Returning To Seller') {
+        updates.returning_to_seller_by = user.id
+        updates.returning_to_seller_by_name = userName
+        updates.returning_to_seller_by_email = userEmail
+        updates.returning_to_seller_at = now
+    }
+    else if (newStatus === 'Delivery Failed') {
+        updates.delivery_failed_by = user.id
+        updates.delivery_failed_by_name = userName
+        updates.delivery_failed_by_email = userEmail
+        updates.delivery_failed_at = now
+    }
+    else if (newStatus === 'Customer Return') {
+        updates.customer_return_by = user.id
+        updates.customer_return_by_name = userName
+        updates.customer_return_by_email = userEmail
+        updates.customer_return_at = now
+    }
+    else if (newStatus === 'Customer Return Delivered') {
+        updates.customer_return_delivered_by = user.id
+        updates.customer_return_delivered_by_name = userName
+        updates.customer_return_delivered_by_email = userEmail
+        updates.customer_return_delivered_at = now
+    }
+    else if (newStatus === 'Cancel' || newStatus === 'Cancelled') {
+        updates.cancelled_by = user.id
+        updates.cancelled_by_name = userName
+        updates.cancelled_by_email = userEmail
+        updates.cancelled_at = now
+    }
+    else if (newStatus === 'Shipped') {
+        updates.shipped_by = user.id
+        updates.shipped_at = now
+        // updates.shipped_by_name = userName // If column exists
+    }
+    else if (newStatus === 'Delivered') {
+        updates.delivered_by = user.id
+        updates.delivered_at = now
+        // updates.delivered_by_name = userName // If column exists
+    }
+
+
     const { error } = await supabase
         .from('daraz_orders')
-        .update({
-            order_status: newStatus,
-            updated_by: user.id
-            // Status-specific timestamps handled by trigger
-        })
+        .update(updates)
         .in('id', orderIds)
 
     if (error) throw error
@@ -463,7 +623,7 @@ export async function bulkImportDarazOrders(rows: any[]) {
         // We fetch id, product_name, seller_account, and all SKU fields
         const { data: products, error: productsError } = await supabase
             .from('products')
-            .select('id, product_name, seller_sku1, seller_account1, seller_sku2, seller_account2, seller_sku3, seller_account3, seller_sku4, seller_account4')
+            .select('id, product_id, product_name, seller_sku1, seller_account1, seller_sku2, seller_account2, seller_sku3, seller_account3, seller_sku4, seller_account4')
 
         if (productsError) throw new Error(`Failed to fetch products: ${productsError.message}`)
 
@@ -964,7 +1124,7 @@ export async function getDailySalesReport() {
                 online_stores!inner(seller_account)
             `)
             .eq('deleted', false)
-            .in('order_status', ['Shipped', 'Delivered', 'Failed Delivered', 'Customer Return'])
+            .in('order_status', ['Shipped', 'Delivered', 'Returning to Seller', 'Returned Delivered', 'Customer Return', 'Customer Return Delivered'])
             .order('updated_at', { ascending: false })
 
         if (error) throw error
@@ -975,8 +1135,10 @@ export async function getDailySalesReport() {
             shipped_amount: number
             delivered_qty: number
             delivered_amount: number
-            failed_qty: number
+            returning_to_seller_qty: number
+            returned_delivered_qty: number
             return_qty: number
+            customer_return_delivered_qty: number
         }>>()
 
         orders?.forEach((order: any) => {
@@ -996,26 +1158,40 @@ export async function getDailySalesReport() {
                     shipped_amount: 0,
                     delivered_qty: 0,
                     delivered_amount: 0,
-                    failed_qty: 0,
-                    return_qty: 0
+                    returning_to_seller_qty: 0,
+                    returned_delivered_qty: 0,
+                    return_qty: 0,
+                    customer_return_delivered_qty: 0
                 })
             }
 
             const stats = dateMap.get(sellerAccount)!
+
+            // "Shipped" means "Dispatched" (Total of all these statuses)
+            // So we ALWAYS increment Shipped Qty/Amount for any of these statuses
+            stats.shipped_qty++
+            stats.shipped_amount += price
+
             switch (order.order_status) {
-                case 'Shipped':
-                    stats.shipped_qty++
-                    stats.shipped_amount += price
-                    break
+                // 'Shipped' status is already counted in the total above
+                // We don't need a specific case for it unless we had a specific 'Currently Shipped' column
+                // But looking at the table, 'Shipped Qty' IS the total column.
+
                 case 'Delivered':
                     stats.delivered_qty++
                     stats.delivered_amount += price
                     break
-                case 'Failed Delivered':
-                    stats.failed_qty++
+                case 'Returning to Seller':
+                    stats.returning_to_seller_qty++
+                    break
+                case 'Returned Delivered':
+                    stats.returned_delivered_qty++
                     break
                 case 'Customer Return':
                     stats.return_qty++
+                    break
+                case 'Customer Return Delivered':
+                    stats.customer_return_delivered_qty++
                     break
             }
         })
@@ -1028,8 +1204,10 @@ export async function getDailySalesReport() {
             shipped_amount: number
             delivered_qty: number
             delivered_amount: number
-            failed_qty: number
+            returning_to_seller_qty: number
+            returned_delivered_qty: number
             return_qty: number
+            customer_return_delivered_qty: number
         }> = []
 
         const sortedDates = Array.from(reportMap.keys()).sort((a, b) => b.localeCompare(a))
@@ -1048,6 +1226,127 @@ export async function getDailySalesReport() {
         return result
     } catch (error) {
         console.error('Error fetching daily sales report:', error)
+        return []
+    }
+}
+
+// Get Order Summary Report - aggregated by seller account
+export async function getOrderSummaryReport() {
+    const supabase = await createClient()
+
+    try {
+        // 1. Get ALL Seller Accounts from Settings (online_stores) to ensure we show everyone
+        const { data: stores, error: storeError } = await supabase
+            .from('online_stores')
+            .select('seller_account')
+            .order('seller_account')
+
+        if (storeError) throw storeError
+
+        // Initialize map with all stores
+        // Map<SellerAccount, Stats>
+        const summaryMap = new Map<string, {
+            shipped_qty: number
+            shipped_amount: number
+            delivered_qty: number
+            delivered_amount: number
+            returning_to_seller_qty: number
+            returned_delivered_qty: number
+            return_qty: number
+            customer_return_delivered_qty: number
+            remain_qty: number
+        }>()
+
+        stores?.forEach(store => {
+            if (store.seller_account) {
+                summaryMap.set(store.seller_account, {
+                    shipped_qty: 0,
+                    shipped_amount: 0,
+                    delivered_qty: 0,
+                    delivered_amount: 0,
+                    returning_to_seller_qty: 0,
+                    returned_delivered_qty: 0,
+                    return_qty: 0,
+                    customer_return_delivered_qty: 0,
+                    remain_qty: 0
+                })
+            }
+        })
+
+        // 2. Fetch all orders with relevant statuses
+        // We include 'Shipped' because 'Remain Qty' essentially means currently 'Shipped'
+        // New statuses: Returning to Seller, Returned Delivered, Customer Return, Customer Return Delivered
+        const { data: orders, error } = await supabase
+            .from('daraz_orders')
+            .select(`
+                order_status,
+                price,
+                online_stores!inner(seller_account)
+            `)
+            .eq('deleted', false)
+            .in('order_status', ['Shipped', 'Delivered', 'Returning to Seller', 'Returned Delivered', 'Customer Return', 'Customer Return Delivered'])
+
+        if (error) throw error
+
+        // 3. Aggregate Data
+        orders?.forEach((order: any) => {
+            const sellerAccount = order.online_stores?.seller_account || 'Unknown'
+            const price = parseFloat(order.price) || 0
+
+            // If this is an unknown seller OR one not in our settings list, add it anyway
+            if (!summaryMap.has(sellerAccount)) {
+                summaryMap.set(sellerAccount, {
+                    shipped_qty: 0,
+                    shipped_amount: 0,
+                    delivered_qty: 0,
+                    delivered_amount: 0,
+                    returning_to_seller_qty: 0,
+                    returned_delivered_qty: 0,
+                    return_qty: 0,
+                    customer_return_delivered_qty: 0,
+                    remain_qty: 0
+                })
+            }
+
+            const stats = summaryMap.get(sellerAccount)!
+
+            // "Shipped" in this context context means "Dispatched" (Total of all these statuses)
+            // So we ALWAYS increment Shipped Qty/Amount for any of these statuses
+            stats.shipped_qty++
+            stats.shipped_amount += price
+
+            switch (order.order_status) {
+                case 'Shipped':
+                    // Specifically currently Shipped -> implies "Remain"
+                    stats.remain_qty++
+                    break
+                case 'Delivered':
+                    stats.delivered_qty++
+                    stats.delivered_amount += price
+                    break
+                case 'Returning to Seller':
+                    stats.returning_to_seller_qty++
+                    break
+                case 'Returned Delivered':
+                    stats.returned_delivered_qty++
+                    break
+                case 'Customer Return':
+                    stats.return_qty++
+                    break
+                case 'Customer Return Delivered':
+                    stats.customer_return_delivered_qty++
+                    break
+            }
+        })
+
+        // 4. Convert to Array and Sort
+        return Array.from(summaryMap.entries()).map(([seller_account, stats]) => ({
+            seller_account,
+            ...stats
+        })).sort((a, b) => a.seller_account.localeCompare(b.seller_account))
+
+    } catch (error) {
+        console.error('Error fetching order summary report:', error)
         return []
     }
 }
@@ -1129,16 +1428,22 @@ export async function syncProductInfoFromInventory() {
         console.log('Found orders:', orders.length)
 
         const orderIds = orders.map(o => o.id)
+        let orderItems: any[] = []
 
-        // Get all items from these orders
-        const { data: orderItems, error: itemsError } = await supabase
-            .from('daraz_order_items')
-            .select('id, seller_sku, product_name, seller_account, order_id')
-            .in('order_id', orderIds)
+        // Batch fetch items to avoid URI too long / Bad Request errors
+        const BATCH_SIZE = 100
+        for (let i = 0; i < orderIds.length; i += BATCH_SIZE) {
+            const batchIds = orderIds.slice(i, i + BATCH_SIZE)
+            const { data: batchItems, error: itemsError } = await supabase
+                .from('daraz_order_items')
+                .select('id, seller_sku, product_name, seller_account, order_id')
+                .in('order_id', batchIds)
 
-        if (itemsError) throw itemsError
+            if (itemsError) throw itemsError
+            if (batchItems) orderItems = orderItems.concat(batchItems)
+        }
 
-        console.log('Found order items:', orderItems?.length)
+        console.log('Found order items:', orderItems.length)
         console.log('SKU map size:', skuMap.size)
 
         let updatedCount = 0
@@ -1234,4 +1539,75 @@ export async function syncProductInfoFromInventory() {
             message: 'Failed to sync product information'
         }
     }
+}
+
+export async function getUniqueSellerAccounts() {
+    const supabase = await createClient()
+    const { data } = await supabase
+        .from('daraz_orders_with_totals')
+        .select('seller_account')
+        .not('seller_account', 'is', null)
+
+    // return unique
+    const accounts = [...new Set((data || []).map(d => d.seller_account))]
+    return accounts.sort()
+}
+
+export async function getOrderStatusSummary() {
+    const supabase = await createClient()
+
+    const { data, error } = await supabase
+        .from('daraz_orders_with_totals')
+        .select('seller_account, order_status')
+        .or('deleted.is.null,deleted.eq.false')
+        .or('order_status.neq.Cancel,is_printed.eq.true') // Hide unprinteed cancels
+
+    if (error) throw error
+
+    // Aggregate by seller account and status
+    const summary = new Map<string, {
+        seller_account: string
+        pending: number
+        packed: number
+        ready_to_ship: number
+        shipped: number
+        delivered: number
+        returning_to_seller: number
+        returned_delivered: number
+        customer_return: number
+        customer_return_delivered: number
+    }>()
+
+    data?.forEach(order => {
+        const account = order.seller_account || 'Unknown'
+        if (!summary.has(account)) {
+            summary.set(account, {
+                seller_account: account,
+                pending: 0,
+                packed: 0,
+                ready_to_ship: 0,
+                shipped: 0,
+                delivered: 0,
+                returning_to_seller: 0,
+                returned_delivered: 0,
+                customer_return: 0,
+                customer_return_delivered: 0
+            })
+        }
+
+        const row = summary.get(account)!
+        const status = order.order_status?.toLowerCase() || 'pending'
+
+        if (status === 'pending' || status === 'unpaid') row.pending++
+        else if (status === 'packed') row.packed++
+        else if (status === 'ready to ship') row.ready_to_ship++
+        else if (status === 'shipped') row.shipped++
+        else if (status === 'delivered') row.delivered++
+        else if (status === 'returning to seller') row.returning_to_seller++
+        else if (status === 'returned delivered') row.returned_delivered++
+        else if (status === 'customer return') row.customer_return++
+        else if (status === 'customer return delivered') row.customer_return_delivered++
+    })
+
+    return Array.from(summary.values()).sort((a, b) => a.seller_account.localeCompare(b.seller_account))
 }

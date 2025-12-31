@@ -2,15 +2,17 @@
 
 import { useState, useEffect } from 'react'
 import { X } from 'lucide-react'
-import { createSupplier } from '@/features/suppliers/actions/supplier-actions'
+import { createSupplier, updateSupplier } from '@/features/suppliers/actions/supplier-actions'
 import { useQueryClient } from '@tanstack/react-query'
 
 interface AddSupplierModalProps {
     isOpen: boolean
     onClose: () => void
+    editMode?: boolean
+    supplierData?: any
 }
 
-export function AddSupplierModal({ isOpen, onClose }: AddSupplierModalProps) {
+export function AddSupplierModal({ isOpen, onClose, editMode = false, supplierData }: AddSupplierModalProps) {
     const [isSubmitting, setIsSubmitting] = useState(false)
     const [formData, setFormData] = useState({
         supplier_name: '',
@@ -33,13 +35,28 @@ export function AddSupplierModal({ isOpen, onClose }: AddSupplierModalProps) {
     }
 
     const resetForm = () => {
-        setFormData({
-            supplier_name: '',
-            contact_details: '',
-            remarks: ''
-        })
+        if (editMode && supplierData) {
+            setFormData({
+                supplier_name: supplierData.supplier_name || '',
+                contact_details: supplierData.contact_details || '',
+                remarks: supplierData.remarks || ''
+            })
+        } else {
+            setFormData({
+                supplier_name: '',
+                contact_details: '',
+                remarks: ''
+            })
+        }
         setErrors({})
     }
+
+    // Initialize form with supplier data in edit mode
+    useEffect(() => {
+        if (isOpen) {
+            resetForm()
+        }
+    }, [isOpen, editMode, supplierData])
 
     // Close modal on Escape key
     useEffect(() => {
@@ -76,12 +93,17 @@ export function AddSupplierModal({ isOpen, onClose }: AddSupplierModalProps) {
 
         setIsSubmitting(true)
         try {
-            await createSupplier(formData)
+            if (editMode && supplierData) {
+                await updateSupplier(supplierData.id, formData)
+                alert('Supplier updated successfully!')
+            } else {
+                await createSupplier(formData)
+                alert('Supplier added successfully!')
+            }
 
             // Refresh supplier list
             queryClient.invalidateQueries({ queryKey: ['suppliers'] })
 
-            alert('Supplier added successfully!')
             resetForm()
             onClose()
         } catch (error: any) {
@@ -103,7 +125,7 @@ export function AddSupplierModal({ isOpen, onClose }: AddSupplierModalProps) {
             <div className="relative bg-white dark:bg-zinc-900 rounded-lg shadow-xl max-w-md w-full mx-4">
                 {/* Header */}
                 <div className="flex items-center justify-between p-4 border-b dark:border-zinc-700">
-                    <h2 className="text-lg font-bold">Add New Supplier</h2>
+                    <h2 className="text-lg font-bold">{editMode ? 'Edit Supplier' : 'Add New Supplier'}</h2>
                     <button
                         onClick={handleClose}
                         className="p-1.5 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-lg transition-colors"
@@ -174,7 +196,7 @@ export function AddSupplierModal({ isOpen, onClose }: AddSupplierModalProps) {
                             disabled={isSubmitting}
                             className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                            {isSubmitting ? 'Saving...' : 'Save'}
+                            {isSubmitting ? 'Saving...' : (editMode ? 'Update' : 'Save')}
                         </button>
                     </div>
                 </form>

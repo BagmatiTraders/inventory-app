@@ -30,7 +30,7 @@ export function CountdownTimer({ targetDate }: { targetDate: string }) {
     }, [targetDate])
 
     return (
-        <span className={`font-mono text-xs ${isExpired ? 'text-red-500 font-bold' : 'text-blue-600'}`}>
+        <span className={`font-mono text-xs ${isExpired ? 'text-red-500 font-bold' : 'text-blue-600 dark:text-white'}`}>
             {timeLeft}
         </span>
     )

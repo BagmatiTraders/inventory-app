@@ -26,9 +26,9 @@ export default async function ProfilePage() {
     }
 
     return (
-        <div className="p-6 bg-gray-50 dark:bg-zinc-900 min-h-screen space-y-6">
+        <div className="p-4 md:p-6 bg-gray-50 dark:bg-zinc-900 min-h-screen space-y-6">
             <div className="max-w-7xl mx-auto">
-                <div className="flex items-center gap-2 mb-6">
+                <div className="hidden md:flex items-center gap-2 mb-6">
                     <User className="h-6 w-6 text-gray-500" />
                     <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100">My Profile</h1>
                 </div>

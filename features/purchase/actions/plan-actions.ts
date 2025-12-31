@@ -152,7 +152,7 @@ export async function createPurchasePlan(data: {
 
     if (error) throw new Error(error.message)
 
-    revalidatePath('/dashboard/purchase/daily-plan')
+    revalidatePath('/dashboard/purchase/daily-purchase-list')
 }
 
 /**
@@ -161,10 +161,26 @@ export async function createPurchasePlan(data: {
 export async function updatePurchasePlanStatus(id: string, status: 'Pending' | 'Complete' | 'Cancel') {
     const supabase = await createClient()
 
-    // Trigger will handle expires_at update
+    // Determine new expiry time based on status
+    let expiresAt: string | undefined
+    const now = new Date()
+
+    if (status === 'Complete') {
+        // Complete: 12 hours from now
+        expiresAt = new Date(now.getTime() + 12 * 60 * 60 * 1000).toISOString()
+    } else if (status === 'Cancel') {
+        // Cancel: 2 hours from now
+        expiresAt = new Date(now.getTime() + 2 * 60 * 60 * 1000).toISOString()
+    }
+
+    const updateData: any = { status }
+    if (expiresAt) {
+        updateData.expires_at = expiresAt
+    }
+
     const { error } = await supabase
         .from('purchase_plans')
-        .update({ status })
+        .update(updateData)
         .eq('id', id)
 
     if (error) throw new Error(error.message)
@@ -201,10 +217,13 @@ export async function updatePurchasePlan(id: string, data: { status?: string, qu
 export async function completePlanForProduct(productId: string) {
     const supabase = await createClient()
 
+    // Auto-complete (Purchased): 8 hours from now
+    const expiresAt = new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString()
+
     // Find active plans for this product that are Pending
     const { error } = await supabase
         .from('purchase_plans')
-        .update({ status: 'Complete' })
+        .update({ status: 'Complete', expires_at: expiresAt })
         .eq('product_id', productId)
         .eq('status', 'Pending')
 

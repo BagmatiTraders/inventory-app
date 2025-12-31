@@ -254,9 +254,9 @@ export default function UpdateOrderStatusPage() {
     }
 
     return (
-        <div className="flex flex-col h-full bg-gray-50 dark:bg-zinc-900">
-            {/* Compact Header */}
-            <div className="sticky top-0 z-10 bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 px-3 py-1.5 flex items-center justify-between shadow-sm">
+        <div className="flex flex-col h-full bg-gray-50 dark:bg-zinc-900 pt-16 md:pt-0">
+            {/* Compact Header - Hidden on mobile, visible on desktop */}
+            <div className="hidden md:flex sticky top-0 z-10 bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 px-3 py-1.5 items-center justify-between shadow-sm">
                 <div>
                     <h1 className="text-[17px] font-bold">Update Order Status</h1>
                     <p className="text-[13px] text-gray-500 dark:text-gray-400">Search & Add Orders</p>
@@ -271,7 +271,7 @@ export default function UpdateOrderStatusPage() {
             </div>
 
             {/* Compact Search Section */}
-            <div className="sticky top-[44px] z-10 bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 px-3 py-1.5 shadow-sm">
+            <div className="sticky top-16 md:top-[44px] z-10 bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 px-3 py-1.5 shadow-sm">
                 <div className="flex flex-wrap items-center gap-1.5">
                     {/* Search By Dropdown */}
                     <select
@@ -310,7 +310,7 @@ export default function UpdateOrderStatusPage() {
                         <Search size={12} />
                         Add to List
                     </button>
-                    <label className="flex items-center gap-1 px-2 py-1 text-sm border dark:border-zinc-700 hover:bg-gray-50 dark:hover:bg-zinc-800 rounded cursor-pointer transition-colors dark:text-gray-50">
+                    <label className="hidden md:flex items-center gap-1 px-2 py-1 text-sm border dark:border-zinc-700 hover:bg-gray-50 dark:hover:bg-zinc-800 rounded cursor-pointer transition-colors dark:text-gray-50">
                         <Upload size={12} />
                         Import
                         <input

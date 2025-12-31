@@ -1,10 +1,12 @@
 ﻿'use client'
 
-import { Package, ShoppingCart, TrendingUp, FileText, ArrowLeft } from 'lucide-react'
+import { Package, ShoppingCart, TrendingUp, Store, ArrowLeft, Menu } from 'lucide-react'
 import Link from 'next/link'
 import { Card } from '@/components/ui-shim'
+import { useDashboard } from '../layout'
 
 export default function SalesPage() {
+    const { setIsMobileMenuOpen } = useDashboard()
     const salesModules = [
         {
             name: 'Daraz Sales',
@@ -19,9 +21,9 @@ export default function SalesPage() {
             color: 'bg-blue-500'
         },
         {
-            name: 'Order List',
-            icon: FileText,
-            href: '/dashboard/sales/orders',
+            name: 'Store Sales',
+            icon: Store,
+            href: '/dashboard/sales/store-sales',
             color: 'bg-green-500'
         },
         {
@@ -35,11 +37,22 @@ export default function SalesPage() {
     return (
         <div className="flex flex-col h-full bg-gray-50 dark:bg-zinc-900 space-y-4">
             {/* Top Bar with Shadow */}
-            <div className="bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 px-4 py-3 shadow-md sticky top-0 z-10">
-                <h1 className="text-xl font-bold">Sales Management</h1>
+            <div className="bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 px-4 py-3 shadow-md fixed md:sticky top-0 left-0 right-0 z-50 flex items-center justify-between md:justify-end gap-4">
+                {/* Mobile Menu Button - shows only on mobile */}
+                <button
+                    onClick={() => setIsMobileMenuOpen(true)}
+                    className="md:hidden p-2 -ml-2 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-md relative z-20"
+                >
+                    <Menu size={24} />
+                </button>
+
+                <h1 className="text-xl font-bold w-full text-center md:text-left md:hidden block -ml-10">Sales Management</h1>
+                <h1 className="text-xl font-bold hidden md:block w-full">Sales Management</h1>
+
+                <div className="w-8 md:hidden"></div> {/* Balance spacer */}
             </div>
 
-            <div className="px-4 space-y-4">
+            <div className="px-4 space-y-2 md:space-y-4 pt-3 md:pt-0">
                 {/* Sales Modules Grid */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                     {salesModules.map((module) => {
@@ -51,6 +64,7 @@ export default function SalesPage() {
                                         <Icon size={18} className="text-white" />
                                     </div>
                                     <h3 className="font-semibold text-[15px] text-gray-800 dark:text-gray-100">{module.name}</h3>
+                                    <span className="text-[10px] font-bold text-gray-400 tracking-wider">DARAZ</span>
                                 </Card>
                             </Link>
                         )

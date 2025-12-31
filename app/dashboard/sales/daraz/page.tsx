@@ -31,16 +31,28 @@ export default function DarazSalesMenuPage() {
             color: 'bg-indigo-500'
         },
         {
+            name: 'Order Status Sync',
+            icon: RefreshCw,
+            href: '/dashboard/sales/daraz/status-sync',
+            color: 'bg-teal-500'
+        },
+        {
+            name: 'Profit Tracker',
+            icon: BarChart2,
+            href: '/dashboard/sales/daraz/profit-tracker',
+            color: 'bg-emerald-500'
+        },
+        {
             name: 'Sales Report',
             icon: TrendingUp,
             href: '/dashboard/sales/daraz/report',
-            color: 'bg-purple-500'
+            color: 'bg-rose-500'
         }
     ]
 
     return (
         <div className="flex flex-col h-full bg-gray-50 dark:bg-zinc-900 space-y-4">
-            <div className="bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 px-4 py-3 shadow-md sticky top-0 z-10 flex items-center justify-between">
+            <div className="hidden md:flex bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 px-4 py-3 shadow-md sticky top-0 z-10 items-center justify-between">
                 <div>
                     <h1 className="text-xl font-bold">Daraz Sales</h1>
                 </div>

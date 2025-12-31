@@ -1,6 +1,6 @@
 'use client'
 
-import { Search } from 'lucide-react'
+import { Search, X } from 'lucide-react'
 import { useRouter, useSearchParams, usePathname } from 'next/navigation'
 import { useState, useEffect } from 'react'
 
@@ -18,7 +18,11 @@ export function SearchInput() {
             } else {
                 params.delete('q')
             }
-            replace(`${pathname}?${params.toString()}`)
+
+            // Only replace if query actually changed to avoid infinite loop
+            if (params.toString() !== searchParams.toString()) {
+                replace(`${pathname}?${params.toString()}`)
+            }
         }, 300)
 
         return () => clearTimeout(handler)
@@ -30,10 +34,18 @@ export function SearchInput() {
             <input
                 type="search"
                 placeholder="Search Product Name..."
-                className="pl-9 w-full bg-gray-50 dark:bg-zinc-800 border rounded-md h-9 text-sm dark:border-zinc-700"
+                className="pl-9 pr-9 w-full bg-white dark:bg-zinc-800 border rounded-md h-9 text-sm dark:border-zinc-700"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
             />
+            {searchTerm && (
+                <button
+                    onClick={() => setSearchTerm('')}
+                    className="absolute right-2.5 top-1.5 text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 bg-gray-100 dark:bg-zinc-700 px-2 py-1 rounded"
+                >
+                    <X className="h-3 w-3" /> Clear
+                </button>
+            )}
         </div>
     )
 }

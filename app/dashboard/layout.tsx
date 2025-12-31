@@ -4,21 +4,55 @@ import { LocationGuard } from "@/features/security/components/LocationGuard"
 import { useSecurityCheck } from "@/features/security/hooks/useSecurityCheck"
 import { useTheme } from "@/lib/theme/ThemeProvider"
 import Link from "next/link"
-import { LogOut, LayoutDashboard, Settings, ShoppingCart, Calculator, Shield, Menu, MoreVertical, Moon, Sun, ChevronDown, ChevronRight, FileText, AlertTriangle, History, BarChart2, Package, ShoppingBag, User } from "lucide-react"
+import { LogOut, LayoutDashboard, Settings, ShoppingCart, Calculator, Shield, Menu, MoreVertical, Moon, Sun, ChevronDown, ChevronRight, FileText, AlertTriangle, History, BarChart2, Package, ShoppingBag, User, Plus } from "lucide-react"
 import { logout } from "@/features/auth/actions/auth-actions"
 import { useRouter, usePathname } from "next/navigation"
 import { useState, useEffect } from "react"
 
-export default function DashboardLayout({
+import { AddProductModal } from '@/features/inventory/components/AddProductModal'
+import { createContext, useContext } from "react"
+import { useQueryClient } from '@tanstack/react-query'
+import { MobileModeProvider, useMobileMode } from "@/context/MobileModeContext"
+import { MobileDashboard } from "@/components/dashboard/MobileDashboard"
+import { MobileFooter } from "@/components/dashboard/MobileFooter"
+
+interface DashboardContextType {
+    isMobileMenuOpen: boolean
+    setIsMobileMenuOpen: (isOpen: boolean) => void
+}
+
+const DashboardContext = createContext<DashboardContextType | undefined>(undefined)
+
+export function useDashboard() {
+    const context = useContext(DashboardContext)
+    if (context === undefined) {
+        throw new Error('useDashboard must be used within a DashboardLayout')
+    }
+    return context
+}
+
+export default function DashboardLayoutWrapper(props: any) {
+    return (
+        <MobileModeProvider>
+            <DashboardLayout {...props} />
+        </MobileModeProvider>
+    )
+}
+
+function DashboardLayout({
     children,
 }: {
     children: React.ReactNode
 }) {
     useSecurityCheck() // Run security hooks
     const router = useRouter()
+    const pathname = usePathname()
     const { theme, toggleTheme } = useTheme()
     const [isCollapsed, setIsCollapsed] = useState(false)
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
+    const [isAddProductModalOpen, setIsAddProductModalOpen] = useState(false)
+    const queryClient = useQueryClient()
+    const { isMobileMode } = useMobileMode()
 
     const handleLogout = async () => {
         await logout()
@@ -29,154 +63,288 @@ export default function DashboardLayout({
     return (
         // Temporarily disabled LocationGuard - will re-enable after setup
         // <LocationGuard>
-        <div className="flex h-screen bg-gray-100 dark:bg-zinc-900 relative">
-            {/* Mobile Header */}
-            <div className="md:hidden fixed top-0 left-0 right-0 h-16 bg-white dark:bg-zinc-800 border-b z-30 flex items-center justify-between px-4">
-                <div className="flex items-center gap-3">
-                    <button
-                        onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-                        className="p-2 -ml-2 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-zinc-700 rounded-md"
-                    >
-                        <Menu size={24} />
-                    </button>
-                    <span className="font-bold text-lg text-blue-600">Bagmati ERP</span>
-                </div>
-                <div className="flex items-center gap-2">
-                    {/* Add any mobile header actions here (like user avatar) */}
-                </div>
-            </div>
+        <DashboardContext.Provider value={{ isMobileMenuOpen, setIsMobileMenuOpen }}>
+            <div className="flex h-screen bg-gray-100 dark:bg-zinc-900 relative">
+                {/* Mobile Header - Hide for Stock Ledger and other specific pages */}
+                {pathname !== '/dashboard/purchase/inventory-price-reports' &&
+                    pathname !== '/dashboard/purchase/analytics' &&
+                    !pathname?.includes('/dashboard/inventory/stock-ledger') && (
+                        <div className={`md:hidden fixed top-0 left-0 right-0 h-16 bg-white dark:bg-zinc-800 border-b z-30 flex items-center justify-between px-4 transition-all ${isMobileMode ? 'shadow-sm' : ''}`}>
+                            <div className="flex items-center gap-3 relative z-20">
+                                {!isMobileMode && (
+                                    <button
+                                        onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+                                        className="p-2 -ml-2 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-zinc-700 rounded-md"
+                                    >
+                                        <Menu size={24} />
+                                    </button>
+                                )}
+                            </div>
 
-            {/* Mobile Overlay */}
-            {isMobileMenuOpen && (
-                <div
-                    className="fixed inset-0 bg-black/50 z-40 md:hidden"
-                    onClick={closeMobileMenu}
-                />
-            )}
+                            {/* Centered Titles */}
+                            <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-10 pointer-events-none">
+                                {pathname === '/dashboard/sales/daraz' && (
+                                    <span className="font-bold text-lg whitespace-nowrap">Daraz Sales</span>
+                                )}
+                                {pathname === '/dashboard/sales/marketplace' && (
+                                    <span className="font-bold text-lg whitespace-nowrap">Marketplace Sales</span>
+                                )}
+                                {pathname === '/dashboard/sales/daraz/sales-entry' && (
+                                    <span className="font-bold text-lg whitespace-nowrap">Sales Entry</span>
+                                )}
+                                {pathname === '/dashboard/sales/marketplace/sales-entry' && (
+                                    <span className="font-bold text-lg whitespace-nowrap">Marketplace Sales Entry</span>
+                                )}
+                                {pathname === '/dashboard/sales/daraz/update-status' && (
+                                    <span className="font-bold text-lg whitespace-nowrap">Update Order Status</span>
+                                )}
+                                {pathname === '/dashboard/sales/daraz/dashboard' && (
+                                    <span className="font-bold text-lg whitespace-nowrap">Sales Dashboard</span>
+                                )}
+                                {pathname === '/dashboard/inventory/stock-adjustment' && (
+                                    <span className="font-bold text-lg whitespace-nowrap">Stock Adjustment</span>
+                                )}
+                                {pathname === '/dashboard/inventory/product-list' && (
+                                    <span className="font-bold text-lg whitespace-nowrap">Product List</span>
+                                )}
+                                {pathname === '/dashboard/inventory/damaged-stocks' && (
+                                    <span className="font-bold text-lg whitespace-nowrap">Damaged Stocks</span>
+                                )}
+                                {pathname === '/dashboard/purchase' && (
+                                    <span className="font-bold text-lg whitespace-nowrap">Purchase Management</span>
+                                )}
+                                {pathname === '/dashboard/purchase/purchase-entry' && (
+                                    <span className="font-bold text-lg whitespace-nowrap">Purchase Entry</span>
+                                )}
+                                {pathname === '/dashboard/purchase/all-purchase-list' && (
+                                    <span className="font-bold text-lg whitespace-nowrap">All Purchase List</span>
+                                )}
+                                {pathname === '/dashboard/purchase/daily-purchase-list' && (
+                                    <span className="font-bold text-lg whitespace-nowrap">Daily Purchase List</span>
+                                )}
+                                {pathname === '/dashboard/purchase/buy-sell-suppliers' && (
+                                    <span className="font-bold text-lg whitespace-nowrap">Suppliers Buy / Sell Reports</span>
+                                )}
+                                {pathname === '/dashboard/suppliers/suppliers-transaction' && (
+                                    <span className="font-bold text-lg whitespace-nowrap">Suppliers Transaction</span>
+                                )}
+                                {pathname === '/dashboard/suppliers/suppliers-account' && (
+                                    <span className="font-bold text-lg whitespace-nowrap">Supplier Ledger</span>
+                                )}
+                                {pathname === '/dashboard/sales/daraz/status-sync' && (
+                                    <span className="font-bold text-lg whitespace-nowrap">Order Status Sync</span>
+                                )}
+                                {pathname === '/dashboard/sales/daraz/order-sync' && (
+                                    <span className="font-bold text-lg whitespace-nowrap">Order Sync</span>
+                                )}
+                                {pathname === '/dashboard/profile' && (
+                                    <span className="font-bold text-lg whitespace-nowrap">My Profile</span>
+                                )}
+                                {pathname === '/dashboard/sales/daraz/profit-tracker' && (
+                                    <span className="font-bold text-lg whitespace-nowrap">Profit Tracker</span>
+                                )}
 
-            {/* Sidebar */}
-            <aside
-                className={`
-                    fixed md:static inset-y-0 left-0 z-50
+                                {/* Default Title */}
+                                {pathname !== '/dashboard/sales/daraz' &&
+                                    pathname !== '/dashboard/sales/marketplace' &&
+                                    pathname !== '/dashboard/sales/daraz/sales-entry' &&
+                                    pathname !== '/dashboard/sales/marketplace/sales-entry' &&
+                                    pathname !== '/dashboard/sales/daraz/update-status' &&
+                                    pathname !== '/dashboard/sales/daraz/dashboard' &&
+                                    pathname !== '/dashboard/inventory/product-list' &&
+                                    pathname !== '/dashboard/inventory/stock-adjustment' &&
+                                    pathname !== '/dashboard/inventory/damaged-stocks' &&
+                                    pathname !== '/dashboard/purchase' &&
+                                    pathname !== '/dashboard/purchase/purchase-entry' &&
+                                    pathname !== '/dashboard/purchase/all-purchase-list' &&
+                                    pathname !== '/dashboard/purchase/daily-purchase-list' &&
+                                    pathname !== '/dashboard/purchase/buy-sell-suppliers' &&
+                                    pathname !== '/dashboard/suppliers/suppliers-transaction' &&
+                                    pathname !== '/dashboard/suppliers/suppliers-account' &&
+                                    pathname !== '/dashboard/sales/daraz/status-sync' &&
+                                    pathname !== '/dashboard/sales/daraz/order-sync' &&
+                                    pathname !== '/dashboard/profile' &&
+                                    pathname !== '/dashboard/sales/daraz/profit-tracker' && (
+                                        <span className="font-bold text-lg text-black dark:text-white whitespace-nowrap">BAGMATI TRADERS</span>
+                                    )}
+                            </div>
+
+                            {/* Portal Target for Page Actions */}
+                            <div id="mobile-header-actions" className="flex items-center gap-2 relative z-30" />
+
+                            <div id="navbar-actions" className="flex items-center gap-2 relative z-20">
+                                {/* Add any mobile header actions here (like user avatar) */}
+
+
+                                {pathname === '/dashboard/inventory/product-list' && (
+                                    <>
+                                        <button
+                                            onClick={() => setIsAddProductModalOpen(true)}
+                                            className="p-1.5 bg-blue-600 text-white rounded-md shadow-sm"
+                                        >
+                                            <Plus size={18} />
+                                        </button>
+                                        <AddProductModal
+                                            isOpen={isAddProductModalOpen}
+                                            onClose={() => setIsAddProductModalOpen(false)}
+                                        />
+                                    </>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
+                {/* Mobile Footer */}
+                {isMobileMode && pathname === '/dashboard' && <MobileFooter />}
+
+                {/* Mobile Overlay */}
+                {isMobileMenuOpen && (
+                    <div
+                        className="fixed inset-0 bg-black/50 z-40 md:hidden"
+                        onClick={closeMobileMenu}
+                    />
+                )}
+
+                {/* Sidebar */}
+                <aside
+                    className={`
+                    fixed md:static inset-y-0 left-0 z-[100]
                     bg-white dark:bg-zinc-800 border-r flex flex-col transition-all duration-300
                     ${isCollapsed ? 'md:w-16' : 'md:w-64'}
                     ${isMobileMenuOpen ? 'w-64 translate-x-0' : 'w-64 -translate-x-full md:translate-x-0'}
                     h-full
                 `}
-            >
-                {/* Desktop Toggle Button & Logo */}
-                <div className="h-16 flex items-center justify-between px-4 border-b shrink-0">
-                    {!isCollapsed && (
-                        <div className="hidden md:block">
-                            <h2 className="font-bold text-xl text-blue-600">Bagmati ERP</h2>
-                            <p className="text-xs text-gray-500 dark:text-gray-400">Staff Panel</p>
-                        </div>
+                >
+                    {/* Hide sidebar content if in mobile mode */}
+                    {!isMobileMode && (
+                        <>
+                            {/* Desktop Toggle Button & Logo */}
+                            <div className="h-16 flex items-center justify-between px-4 border-b shrink-0">
+                                {!isCollapsed && (
+                                    <div className="hidden md:block">
+                                        <h2 className="font-bold text-xl text-blue-600">Bagmati ERP</h2>
+                                        <p className="text-xs text-gray-500 dark:text-gray-400">Staff Panel</p>
+                                    </div>
+                                )}
+                                {/* Unique Logo for Mobile sidebar header */}
+                                <div className="md:hidden">
+                                    <h2 className="font-bold text-xl text-blue-600">Menu</h2>
+                                </div>
+
+                                <button
+                                    onClick={() => setIsCollapsed(!isCollapsed)}
+                                    className="p-2 text-gray-600 dark:text-gray-300 hidden md:block"
+                                    title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+                                >
+                                    <Menu size={20} />
+                                </button>
+
+                                {/* Close button for mobile */}
+                                <button
+                                    onClick={closeMobileMenu}
+                                    className="md:hidden p-2 text-gray-600 dark:text-gray-300"
+                                >
+                                    <Menu size={20} />
+                                </button>
+                            </div>
+
+                            <nav className={`flex-1 overflow-y-auto ${isCollapsed ? 'p-2' : 'p-4'}`}>
+                                <div onClick={closeMobileMenu}>
+                                    <NavItem href="/dashboard" icon={<LayoutDashboard size={20} />} isCollapsed={isCollapsed}>
+                                        Dashboard
+                                    </NavItem>
+                                </div>
+
+                                {/* Inventory with Sub-menu */}
+                                <div onClick={closeMobileMenu}>
+                                    <NavItem href="/dashboard/inventory" icon={<Calculator size={20} />} isCollapsed={isCollapsed}>
+                                        Inventory
+                                    </NavItem>
+                                </div>
+
+                                <div onClick={closeMobileMenu}>
+                                    <NavItem href="/dashboard/sales" icon={<ShoppingCart size={20} />} isCollapsed={isCollapsed}>
+                                        Sales
+                                    </NavItem>
+                                </div>
+
+                                <div onClick={closeMobileMenu}>
+                                    <NavItem
+                                        href="/dashboard/purchase"
+                                        icon={<ShoppingBag size={20} />}
+                                        isCollapsed={isCollapsed}
+                                    >
+                                        Purchase
+                                    </NavItem>
+                                </div>
+                                <div onClick={closeMobileMenu}>
+                                    <NavItem href="/dashboard/suppliers" icon={<Package size={20} />} isCollapsed={isCollapsed}>
+                                        Suppliers
+                                    </NavItem>
+                                </div>
+                                <div onClick={closeMobileMenu}>
+                                    <NavItem href="/dashboard/profile" icon={<User size={20} />} isCollapsed={isCollapsed}>
+                                        My Profile
+                                    </NavItem>
+                                </div>
+                                <div onClick={closeMobileMenu}>
+                                    <NavItem href="/dashboard/admin/users" icon={<Shield size={20} />} isCollapsed={isCollapsed}>
+                                        Users (Admin)
+                                    </NavItem>
+                                </div>
+                                <div onClick={closeMobileMenu}>
+                                    <NavItem href="/dashboard/settings" icon={<Settings size={20} />} isCollapsed={isCollapsed}>
+                                        Settings
+                                    </NavItem>
+                                </div>
+                            </nav>
+
+                            <div className="p-4 border-t space-y-2 shrink-0">
+                                {/* Theme Toggle Button */}
+                                <button
+                                    onClick={toggleTheme}
+                                    className={`flex items-center gap-2 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-zinc-700 w-full px-4 py-2 text-sm font-medium rounded-md transition-colors ${isCollapsed ? 'justify-center' : ''
+                                        }`}
+                                    title={theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode'}
+                                >
+                                    {theme === 'light' ? <Moon size={16} /> : <Sun size={16} />}
+                                    {!isCollapsed && <span>{theme === 'light' ? 'Dark Mode' : 'Light Mode'}</span>}
+                                </button>
+
+                                {/* Logout Button */}
+                                <button
+                                    onClick={handleLogout}
+                                    className={`flex items-center gap-2 text-red-500 hover:text-red-700 w-full px-4 py-2 text-sm font-medium rounded-md transition-colors hover:bg-red-50 dark:hover:bg-red-950/30 ${isCollapsed ? 'justify-center' : ''
+                                        }`}
+                                    title="Logout"
+                                >
+                                    <LogOut size={16} />
+                                    {!isCollapsed && <span>Logout</span>}
+                                </button>
+                            </div>
+                        </>
                     )}
-                    {/* Unique Logo for Mobile sidebar header */}
-                    <div className="md:hidden">
-                        <h2 className="font-bold text-xl text-blue-600">Menu</h2>
-                    </div>
+                </aside>
 
-                    <button
-                        onClick={() => setIsCollapsed(!isCollapsed)}
-                        className="p-2 text-gray-600 dark:text-gray-300 hidden md:block"
-                        title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-                    >
-                        <Menu size={20} />
-                    </button>
-
-                    {/* Close button for mobile */}
-                    <button
-                        onClick={closeMobileMenu}
-                        className="md:hidden p-2 text-gray-600 dark:text-gray-300"
-                    >
-                        <Menu size={20} />
-                    </button>
-                </div>
-
-                <nav className={`flex-1 overflow-y-auto ${isCollapsed ? 'p-2' : 'p-4'}`}>
-                    <div onClick={closeMobileMenu}>
-                        <NavItem href="/dashboard" icon={<LayoutDashboard size={20} />} isCollapsed={isCollapsed}>
-                            Dashboard
-                        </NavItem>
+                {/* Main Content */}
+                <main className={`
+                    flex-1 
+                    ${isMobileMode && pathname === '/dashboard' ? 'overflow-hidden' : 'overflow-y-auto'}
+                    ${isMobileMode && pathname === '/dashboard' ? 'overflow-hidden' : 'overflow-y-auto'}
+                    ${pathname === '/dashboard/purchase/inventory-price-reports' || pathname === '/dashboard/purchase/analytics' || pathname === '/dashboard/suppliers/suppliers-account' || pathname === '/dashboard/sales/daraz/status-sync' || pathname === '/dashboard/sales/daraz/order-sync' || pathname?.startsWith('/dashboard/inventory/stock-ledger') ? 'pt-0' : 'mt-16 md:mt-0'} 
+                    ${pathname === '/dashboard/purchase/inventory-price-reports' || pathname === '/dashboard/purchase/analytics' || pathname === '/dashboard/suppliers/suppliers-account' || pathname === '/dashboard/sales/daraz/status-sync' || pathname === '/dashboard/sales/daraz/order-sync' || pathname?.startsWith('/dashboard/inventory/stock-ledger') ? 'h-full' : 'h-[calc(100vh-4rem)] md:h-full'}
+                    pointer-events-auto
+                `}>
+                    <div className={`${pathname === '/dashboard/purchase/inventory-price-reports' || pathname === '/dashboard/purchase/analytics' || pathname === '/dashboard/purchase/buy-sell-suppliers' || pathname === '/dashboard/suppliers/suppliers-account' || pathname === '/dashboard/sales/daraz/status-sync' || pathname === '/dashboard/sales/daraz/order-sync' || pathname === '/dashboard/sales/marketplace/sales-entry' || pathname === '/dashboard/sales/daraz/profit-tracker' ? 'p-0 h-full' : 'px-4 pb-4 pt-1'} md:p-8 ${isMobileMode ? 'pb-24' : ''}`}>
+                        {isMobileMode && pathname === '/dashboard' ? (
+                            <MobileDashboard />
+                        ) : (
+                            children
+                        )}
                     </div>
-
-                    {/* Inventory with Sub-menu */}
-                    <div onClick={closeMobileMenu}>
-                        <NavItem href="/dashboard/inventory" icon={<Calculator size={20} />} isCollapsed={isCollapsed}>
-                            Inventory
-                        </NavItem>
-                    </div>
-
-                    <div onClick={closeMobileMenu}>
-                        <NavItem href="/dashboard/sales" icon={<ShoppingCart size={20} />} isCollapsed={isCollapsed}>
-                            Sales
-                        </NavItem>
-                    </div>
-
-                    <div onClick={closeMobileMenu}>
-                        <NavItem
-                            href="/dashboard/purchase"
-                            icon={<ShoppingBag size={20} />}
-                            isCollapsed={isCollapsed}
-                        >
-                            Purchase
-                        </NavItem>
-                    </div>
-                    <div onClick={closeMobileMenu}>
-                        <NavItem href="/dashboard/suppliers" icon={<Package size={20} />} isCollapsed={isCollapsed}>
-                            Suppliers
-                        </NavItem>
-                    </div>
-                    <div onClick={closeMobileMenu}>
-                        <NavItem href="/dashboard/profile" icon={<User size={20} />} isCollapsed={isCollapsed}>
-                            My Profile
-                        </NavItem>
-                    </div>
-                    <div onClick={closeMobileMenu}>
-                        <NavItem href="/dashboard/admin/users" icon={<Shield size={20} />} isCollapsed={isCollapsed}>
-                            Users (Admin)
-                        </NavItem>
-                    </div>
-                    <div onClick={closeMobileMenu}>
-                        <NavItem href="/dashboard/settings" icon={<Settings size={20} />} isCollapsed={isCollapsed}>
-                            Settings
-                        </NavItem>
-                    </div>
-                </nav>
-
-                <div className="p-4 border-t space-y-2 shrink-0">
-                    {/* Theme Toggle Button */}
-                    <button
-                        onClick={toggleTheme}
-                        className={`flex items-center gap-2 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-zinc-700 w-full px-4 py-2 text-sm font-medium rounded-md transition-colors ${isCollapsed ? 'justify-center' : ''
-                            }`}
-                        title={theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode'}
-                    >
-                        {theme === 'light' ? <Moon size={16} /> : <Sun size={16} />}
-                        {!isCollapsed && <span>{theme === 'light' ? 'Dark Mode' : 'Light Mode'}</span>}
-                    </button>
-
-                    {/* Logout Button */}
-                    <button
-                        onClick={handleLogout}
-                        className={`flex items-center gap-2 text-red-500 hover:text-red-700 w-full px-4 py-2 text-sm font-medium rounded-md transition-colors hover:bg-red-50 dark:hover:bg-red-950/30 ${isCollapsed ? 'justify-center' : ''
-                            }`}
-                        title="Logout"
-                    >
-                        <LogOut size={16} />
-                        {!isCollapsed && <span>Logout</span>}
-                    </button>
-                </div>
-            </aside>
-
-            {/* Main Content */}
-            <main className="flex-1 overflow-y-auto h-full pt-16 md:pt-0 pointer-events-auto">
-                <div className="p-4 md:p-8">
-                    {children}
-                </div>
-            </main>
-        </div>
+                </main>
+            </div>
+        </DashboardContext.Provider>
         // </LocationGuard>
     )
 }

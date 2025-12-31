@@ -1,6 +1,6 @@
 'use server'
 
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createAdminClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 
 export interface UserProfile {
@@ -61,8 +61,10 @@ export async function getUsers() {
         throw new Error('Only admins can view all users')
     }
 
-    // Get all auth users
-    const { data: users, error: usersError } = await supabase.auth.admin.listUsers()
+    // Get all auth users (Use Admin Client)
+    const adminSupabase = await createAdminClient()
+    const { data: users, error: usersError } = await adminSupabase.auth.admin.listUsers()
+
     if (usersError) throw new Error(usersError.message)
 
     // Get all user profiles
@@ -163,8 +165,10 @@ export async function getUserProfile(userId: string) {
         throw new Error('Unauthorized')
     }
 
-    // Get auth user
-    const { data: { user: authUser }, error: authError } = await supabase.auth.admin.getUserById(userId)
+    // Get auth user (Use Admin Client)
+    const adminSupabase = await createAdminClient()
+    const { data: { user: authUser }, error: authError } = await adminSupabase.auth.admin.getUserById(userId)
+
     if (authError) throw new Error(authError.message)
 
     // Get profile
@@ -384,8 +388,10 @@ export async function updateUserLocation(
 export async function checkUserStatus(email: string) {
     const supabase = await createClient()
 
-    // Get user by email
-    const { data: { users }, error: usersError } = await supabase.auth.admin.listUsers()
+    // Get user by email (Use Admin Client)
+    const adminSupabase = await createAdminClient()
+    const { data: { users }, error: usersError } = await adminSupabase.auth.admin.listUsers()
+
     if (usersError) throw new Error(usersError.message)
 
     const authUser = users.find(u => u.email === email)

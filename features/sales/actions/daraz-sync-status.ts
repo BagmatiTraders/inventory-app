@@ -16,8 +16,9 @@ export async function syncOrderStatusesFromDarazData() {
         // Get manual/CSV orders that have been matched to Daraz (have order_id)
         const { data: orders, error } = await supabase
             .from('daraz_orders')
+
             .select('id, order_number, order_id, order_status, import_source, statuses')
-            .in('import_source', ['manual', 'csv'])
+            // .in('import_source', ['manual', 'csv']) // REMOVED restriction to allow syncing for ALL orders (including api_sync)
             .not('order_id', 'is', null)
             .or('deleted.is.null,deleted.eq.false')
 
@@ -36,18 +37,31 @@ export async function syncOrderStatusesFromDarazData() {
         let updatedCount = 0
 
         for (const order of orders) {
-            const rawStatus = order.statuses?.[0]?.toLowerCase() || ''
-            let newStatus = order.order_status
+            const rawStatuses = order.statuses || (order.order_status ? [order.order_status] : [])
+            const s = rawStatuses.map((x: string) => x.toLowerCase())
 
-            // Map Daraz status to Sales status
-            if (rawStatus === 'pending') newStatus = 'Pending'
-            else if (rawStatus === 'packed') newStatus = 'Packed'
-            else if (rawStatus === 'ready_to_ship') newStatus = 'Ready to Ship'
-            else if (rawStatus === 'shipped') newStatus = 'Shipped'
-            else if (rawStatus === 'delivered' || rawStatus === 'completed') newStatus = 'Delivered'
-            else if (rawStatus === 'canceled' || rawStatus === 'cancelled') newStatus = 'Cancel'
-            else if (rawStatus === 'failed') newStatus = 'Failed Delivered'
-            else if (rawStatus === 'returned') newStatus = 'Customer Return'
+            let newStatus = 'Pending'
+
+            // Priority 0: Unpaid
+            if (s.includes('unpaid')) newStatus = 'Unpaid'
+
+            // Priority 1: Failures & Returns (High Priority)
+            // Priority Logic (Matches API route)
+            // 1. Failures
+            else if (s.includes('returned') || s.includes('customer_return_delivered')) newStatus = 'Customer Return Delivered'
+            else if (s.includes('shipped_back_success') || s.includes('returned_delivered')) newStatus = 'Returned Delivered'
+            else if (s.includes('customer_return') || s.includes('customer return')) newStatus = 'Customer Return'
+            else if (s.includes('returning_to_seller') || s.includes('returning to seller') || s.includes('shipped_back') ||
+                s.includes('failed') || s.includes('failed_delivery') || s.includes('failed_delivered') || s.includes('failed delivery') || s.includes('failed delivered') || s.includes('delivery_failed') || s.includes('delivery failed')) newStatus = 'Returning to Seller'
+
+            // 2. Cancellation (Moved UP)
+            else if (s.includes('canceled') || s.includes('cancelled')) newStatus = 'Cancel'
+
+            // 3. Success
+            else if (s.includes('delivered') || s.includes('completed')) newStatus = 'Delivered'
+            else if (s.includes('shipped')) newStatus = 'Shipped' // Strict Shipped
+            else if (s.includes('ready_to_ship') || s.includes('ready to ship')) newStatus = 'Ready to Ship'
+            else if (s.includes('packed')) newStatus = 'Packed'
 
             if (newStatus && newStatus !== order.order_status) {
                 console.log(`[OrderSync] ${order.order_number}: ${order.order_status} → ${newStatus}`)

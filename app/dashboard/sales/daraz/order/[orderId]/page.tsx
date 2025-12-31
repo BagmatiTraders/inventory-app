@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
 import { getDarazOrderById } from '@/features/sales/actions/daraz-actions'
 import { ArrowLeft, Edit, Calendar, Printer } from 'lucide-react'
@@ -32,6 +32,12 @@ export default function DarazOrderViewPage() {
         return `${new Date(timestamp).toLocaleString()} by ${userName || userEmail || 'Daraz sync'}`
     }
 
+    const searchParams = useSearchParams()
+    const fromPage = searchParams.get('from')
+    const backLink = fromPage === 'status-sync'
+        ? '/dashboard/sales/daraz/status-sync'
+        : '/dashboard/sales/daraz/sales-entry'
+
     return (
         <div className="min-h-screen bg-gray-50 dark:bg-zinc-950">
             {/* Header */}
@@ -39,7 +45,7 @@ export default function DarazOrderViewPage() {
                 <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
                     <div className="flex items-center gap-3">
                         <Link
-                            href="/dashboard/sales/daraz/sales-entry"
+                            href={backLink}
                             className="p-2 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded transition-colors"
                         >
                             <ArrowLeft size={20} />

@@ -4,12 +4,14 @@ import { useState, useEffect, Suspense } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { getAllDarazOrders, deleteDarazOrder, updateDarazOrderStatus, getDarazOrderById, getAllFiscalYears, getActiveFiscalYear } from '@/features/sales/actions/daraz-actions'
 import { getUserRole, getUserDeletionStats, createDeletionRequest, softDeleteOrder } from '@/features/sales/actions/daraz-deletion-actions'
+import { fixHistoricalProductLinks } from '@/features/sales/actions/migration-actions'
 import { Search, Printer, ArrowLeft, X, Trash2, Clock } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Card } from '@/components/ui-shim'
 import { DeletionReasonModal } from '@/features/sales/components/DeletionReasonModal'
 import { AdminDeleteConfirm } from '@/features/sales/components/AdminDeleteConfirm'
+import { AuditTrailHover } from '@/features/sales/components/AuditTrailHover'
 import { toast } from 'sonner'
 
 export const dynamic = 'force-dynamic'
@@ -29,7 +31,9 @@ function DarazOrderListContent() {
     const [userRole, setUserRole] = useState<'admin' | 'user' | null>(null)
     const [deletionModal, setDeletionModal] = useState<{ isOpen: boolean, order: any | null }>({ isOpen: false, order: null })
     const [adminDeleteModal, setAdminDeleteModal] = useState<{ isOpen: boolean, order: any | null }>({ isOpen: false, order: null })
+
     const [isSubmittingDeletion, setIsSubmittingDeletion] = useState(false)
+    const [isSyncingLinks, setIsSyncingLinks] = useState(false)
 
     const queryClient = useQueryClient()
     const searchParams = useSearchParams()
@@ -377,11 +381,16 @@ function DarazOrderListContent() {
                         className="px-2 py-1.5 text-sm border dark:border-zinc-700 rounded focus:ring-1 focus:ring-blue-500 dark:bg-zinc-800 dark:text-gray-50"
                     >
                         <option value="all">All Status</option>
+                        <option value="Unpaid">Unpaid</option>
                         <option value="Pending">Pending</option>
+                        <option value="Packed">Packed</option>
+                        <option value="Ready to Ship">Ready to Ship</option>
                         <option value="Shipped">Shipped</option>
                         <option value="Delivered">Delivered</option>
-                        <option value="Failed Delivered">Failed Delivered</option>
+                        <option value="Returning to Seller">Returning to Seller</option>
+                        <option value="Returned Delivered">Returned Delivered</option>
                         <option value="Customer Return">Customer Return</option>
+                        <option value="Customer Return Delivered">Customer Return Delivered</option>
                         <option value="Cancel">Cancel</option>
                     </select>
 
@@ -413,6 +422,17 @@ function DarazOrderListContent() {
                         className="px-4 py-1.5 text-sm font-medium bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors whitespace-nowrap shadow-sm"
                     >
                         Search
+                    </button>
+
+                    {/* Sync Links Button */}
+                    <button
+                        onClick={async () => {
+                            alert('For best results, use the SQL script instead:\n\n1. Open Supabase SQL Editor\n2. Run: Database/sync_product_links.sql\n3. Refresh this page\n\nThis ensures all links are updated correctly.')
+                        }}
+                        className="flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded transition-colors whitespace-nowrap shadow-sm"
+                        title="Fix mismatching Product IDs by re-linking SKUs"
+                    >
+                        {isSyncingLinks ? 'Syncing...' : 'Sync Links'}
                     </button>
 
                     {/* Clear All Filters Button - Now next to Search */}
@@ -448,11 +468,16 @@ function DarazOrderListContent() {
                             className="px-2 py-0.5 text-[13px] border dark:border-zinc-700 rounded focus:ring-1 focus:ring-blue-500 dark:bg-zinc-800 dark:text-gray-50"
                         >
                             <option value="">Change Status...</option>
+                            <option value="Unpaid">Unpaid</option>
                             <option value="Pending">Pending</option>
+                            <option value="Packed">Packed</option>
+                            <option value="Ready to Ship">Ready to Ship</option>
                             <option value="Shipped">Shipped</option>
                             <option value="Delivered">Delivered</option>
-                            <option value="Failed Delivered">Failed Delivered</option>
+                            <option value="Returning to Seller">Returning to Seller</option>
+                            <option value="Returned Delivered">Returned Delivered</option>
                             <option value="Customer Return">Customer Return</option>
+                            <option value="Customer Return Delivered">Customer Return Delivered</option>
                             <option value="Cancel">Cancel</option>
                         </select>
                         <button
@@ -473,7 +498,7 @@ function DarazOrderListContent() {
                         <table className="w-full table-fixed border-collapse">
                             <thead className="bg-gray-50 dark:bg-zinc-800 sticky top-0 shadow-sm z-10">
                                 <tr>
-                                    <th className="px-1.5 py-1 text-left w-8">
+                                    <th className="hidden md:table-cell px-1.5 py-1 text-left w-8">
                                         <input
                                             type="checkbox"
                                             checked={selectedOrders.length === orders.length && orders.length > 0}
@@ -482,40 +507,44 @@ function DarazOrderListContent() {
                                         />
                                     </th>
                                     <th className="px-1.5 py-1 text-left text-xs font-bold uppercase text-gray-900 dark:text-gray-100 w-10">SN</th>
-                                    <th className="px-1.5 py-1 text-left text-xs font-bold uppercase text-gray-900 dark:text-gray-100 w-22">Date</th>
-                                    <th className="px-1.5 py-1 text-left text-xs font-bold uppercase text-gray-900 dark:text-gray-100 w-28">Invoice</th>
-                                    <th className="px-1.5 py-1 text-left text-xs font-bold uppercase text-gray-900 dark:text-gray-100 w-32">Order#</th>
-                                    <th className="px-1.5 py-1 text-left text-xs font-bold uppercase text-gray-900 dark:text-gray-100 w-45">Customer</th>
-                                    <th className="px-1.5 py-1 text-left text-xs font-bold uppercase text-gray-900 dark:text-gray-100 w-64">Product</th>
-                                    <th className="px-1.5 py-1 text-right text-xs font-bold uppercase text-gray-900 dark:text-gray-100 w-16">Qty</th>
-                                    <th className="px-1.5 py-1 text-right text-xs font-bold uppercase text-gray-900 dark:text-gray-100 w-24">Amount</th>
-                                    <th className="px-1.5 py-1 text-left text-xs font-bold uppercase text-gray-900 dark:text-gray-100 w-24">Status</th>
-                                    <th className="px-1.5 py-1 text-center text-xs font-bold uppercase text-gray-900 dark:text-gray-100 w-29">Actions</th>
+                                    <th className="px-1.5 py-1 text-left text-xs font-bold uppercase text-gray-900 dark:text-gray-100 w-14 md:w-22">Date</th>
+                                    <th className="px-1.5 py-1 text-left text-xs font-bold uppercase text-gray-900 dark:text-gray-100 w-auto md:w-28">Invoice</th>
+                                    <th className="px-1.5 py-1 text-left text-xs font-bold uppercase text-gray-900 dark:text-gray-100 w-auto md:w-32">Order</th>
+                                    <th className="hidden md:table-cell px-1.5 py-1 text-left text-xs font-bold uppercase text-gray-900 dark:text-gray-100 w-45">Customer</th>
+                                    <th className="hidden md:table-cell px-1.5 py-1 text-left text-xs font-bold uppercase text-gray-900 dark:text-gray-100 w-64">Product</th>
+                                    <th className="hidden md:table-cell px-1.5 py-1 text-left text-xs font-bold uppercase text-gray-900 dark:text-gray-100 w-20">Product ID</th>
+                                    <th className="hidden md:table-cell px-1.5 py-1 text-right text-xs font-bold uppercase text-gray-900 dark:text-gray-100 w-16">Qty</th>
+                                    <th className="hidden md:table-cell px-1.5 py-1 text-right text-xs font-bold uppercase text-gray-900 dark:text-gray-100 w-24">Amount</th>
+                                    <th className="hidden md:table-cell px-1.5 py-1 text-left text-xs font-bold uppercase text-gray-900 dark:text-gray-100 w-24">Status</th>
+                                    <th className="hidden md:table-cell px-1.5 py-1 text-center text-xs font-bold uppercase text-gray-900 dark:text-gray-100 w-29">Actions</th>
                                 </tr>
                             </thead>
                             {isLoading || isFetching ? (
                                 <tbody className="divide-y divide-gray-200 dark:divide-zinc-700">
                                     <tr>
-                                        <td colSpan={11} className="text-center py-8 text-sm text-gray-500 dark:text-gray-400">Loading...</td>
+                                        <td colSpan={12} className="text-center py-8 text-sm text-gray-500 dark:text-gray-400">Loading...</td>
                                     </tr>
                                 </tbody>
                             ) : orders.length === 0 ? (
                                 <tbody className="divide-y divide-gray-200 dark:divide-zinc-700">
                                     <tr>
-                                        <td colSpan={11} className="hidden"></td>
+                                        <td colSpan={12} className="hidden"></td>
                                     </tr>
                                 </tbody>
                             ) : (
                                 Object.entries(groupedOrders).map(([date, groupOrders]) => (
                                     <tbody key={date} className="divide-y divide-gray-200 dark:divide-zinc-700 border-b-4 border-gray-100 dark:border-zinc-900 last:border-0 bg-white dark:bg-zinc-900">
-                                        {/* Date Header Row */}
+                                        {/* Date Header Row - 2-Row Layout like Sales Entry */}
                                         <tr className="bg-gray-50 dark:bg-zinc-800/50">
-                                            <td colSpan={11} className="px-2 py-1 border-y dark:border-zinc-700">
-                                                <div className="flex items-center justify-between font-bold text-[13px] text-gray-700 dark:text-gray-300">
-                                                    <span>{date}</span>
-                                                    <span className="text-xs font-normal text-gray-500">
-                                                        ({groupOrders.length} Orders)
-                                                    </span>
+                                            <td colSpan={12} className="px-2 py-1 border-y dark:border-zinc-700">
+                                                <div className="flex flex-col gap-1">
+                                                    {/* Row 1: Date and Total Count */}
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="font-bold text-[13px] text-gray-700 dark:text-gray-300">{date}</span>
+                                                        <span className="text-xs px-2 py-0.5 bg-white dark:bg-zinc-800 border dark:border-zinc-700 rounded-full text-gray-600 dark:text-gray-400 font-medium">
+                                                            Total: {groupOrders.length}
+                                                        </span>
+                                                    </div>
                                                 </div>
                                             </td>
                                         </tr>
@@ -525,7 +554,7 @@ function DarazOrderListContent() {
                                                 key={order.id}
                                                 className="hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors"
                                             >
-                                                <td className="px-1.5 py-0.5">
+                                                <td className="hidden md:table-cell px-1.5 py-0.5">
                                                     <input
                                                         type="checkbox"
                                                         checked={selectedOrders.includes(order.id)}
@@ -533,13 +562,14 @@ function DarazOrderListContent() {
                                                         className="rounded text-blue-600 focus:ring-blue-500 dark:bg-zinc-700 dark:border-zinc-600 w-3.5 h-3.5"
                                                     />
                                                 </td>
-                                                <td className="px-1.5 py-0.5 text-sm text-gray-700 dark:text-gray-300">
+                                                <td className="px-1.5 py-0.5 text-sm text-gray-700 dark:text-gray-300 align-top md:align-middle">
                                                     {((page - 1) * 50) + idx + 1}
                                                 </td>
-                                                <td className="px-1.5 py-0.5 text-sm text-transparent select-none">
-                                                    -
+                                                <td className="px-1.5 py-0.5 text-sm text-gray-700 dark:text-gray-300 align-top md:align-middle">
+                                                    <span className="md:hidden font-medium">{new Date(order.order_date).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit' })}</span>
+                                                    <span className="hidden md:inline">{new Date(order.order_date).toLocaleDateString('en-GB')}</span>
                                                 </td>
-                                                <td className="px-1.5 py-0.5">
+                                                <td className="px-1.5 py-0.5 align-top md:align-middle">
                                                     <button
                                                         onClick={() => router.push(`/dashboard/sales/daraz/order/${order.id}`)}
                                                         onMouseEnter={() => queryClient.prefetchQuery({
@@ -548,31 +578,68 @@ function DarazOrderListContent() {
                                                         })}
                                                         className="text-[13px] font-mono text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 hover:underline cursor-pointer"
                                                     >
-                                                        {order.invoice_number}
+                                                        <span className="md:hidden">...{order.invoice_number.slice(-5)}</span>
+                                                        <span className="hidden md:inline">{order.invoice_number}</span>
                                                     </button>
                                                 </td>
-                                                <td className="px-1.5 py-0.5 text-sm text-gray-700 dark:text-gray-300">
-                                                    {order.order_number}
+                                                <td className="px-1.5 py-0.5 text-sm text-gray-700 dark:text-gray-300 align-top md:align-middle">
+                                                    <div className="flex flex-col gap-0.5">
+                                                        {/* Row 1: Order Number */}
+                                                        <span className="font-medium break-all">{order.order_number}</span>
+
+                                                        {/* Row 2: Qty & Price (Mobile Only) */}
+                                                        <div className="md:hidden flex items-center gap-1.5 text-[11px] text-gray-500 dark:text-gray-400 font-mono">
+                                                            <span>{order.total_quantity}</span>
+                                                            <span>•</span>
+                                                            <span>Rs. {order.grand_total?.toLocaleString()}</span>
+                                                        </div>
+
+                                                        {/* Row 3: Status Badge (Mobile Only) */}
+                                                        <div className="md:hidden">
+                                                            <AuditTrailHover order={order}>
+                                                                <span className={`px-1.5 py-0.5 text-[10px] font-medium rounded ${order.order_status === 'Pending' ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200' :
+                                                                    order.order_status === 'Unpaid' ? 'bg-gray-100 text-gray-700 border border-gray-300' :
+                                                                        order.order_status === 'Shipped' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200' :
+                                                                            order.order_status === 'Delivered' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' :
+                                                                                ['Returning to Seller', 'Customer Return'].includes(order.order_status) ? 'bg-orange-50 text-orange-700 border border-orange-200' :
+                                                                                    ['Returned Delivered', 'Customer Return Delivered'].includes(order.order_status) ? 'bg-orange-100 text-orange-800 border border-orange-300' :
+                                                                                        (order.order_status === 'Cancel' || order.order_status === 'Cancelled') ? 'bg-red-50 text-red-700 border-red-200' :
+                                                                                            'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200'
+                                                                    }`}>
+                                                                    {order.order_status}
+                                                                </span>
+                                                            </AuditTrailHover>
+                                                        </div>
+                                                    </div>
                                                 </td>
-                                                <td className={`px-1.5 py-0.5 text-sm truncate ${getCustomerClass(order.customer_name, order.order_date)}`} title={order.customer_name}>
+                                                <td className={`hidden md:table-cell px-1.5 py-0.5 text-sm truncate ${getCustomerClass(order.customer_name, order.order_date)}`} title={order.customer_name}>
                                                     {order.customer_name}
                                                 </td>
-                                                <td className={`px-1.5 py-0.5 text-sm truncate ${order.first_product_name === 'Product Not Found' ? 'text-red-600 dark:text-red-400 font-bold' : 'text-gray-700 dark:text-gray-300'}`} title={order.first_product_name}>
+                                                <td className={`hidden md:table-cell px-1.5 py-0.5 text-sm truncate ${order.first_product_name === 'Product Not Found' ? 'text-red-600 dark:text-red-400 font-bold' : 'text-gray-700 dark:text-gray-300'}`} title={order.first_product_name}>
                                                     {order.first_product_name}
                                                     {order.item_count > 1 && <span className="text-gray-500 dark:text-gray-400 text-xs"> +{order.item_count - 1} Product{order.item_count - 1 > 1 ? 's' : ''}</span>}
                                                 </td>
-                                                <td className="px-1.5 py-0.5 text-sm text-right text-gray-700 dark:text-gray-300">{order.total_quantity}</td>
-                                                <td className="px-1.5 py-0.5 text-sm text-right font-medium text-gray-700 dark:text-gray-300">Rs. {order.grand_total?.toLocaleString()}</td>
-                                                <td className="px-1.5 py-0.5">
-                                                    <span className={`px-1 py-0.5 text-xs font-medium rounded ${order.order_status === 'Pending' ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200' :
-                                                        order.order_status === 'Shipped' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200' :
-                                                            order.order_status === 'Delivered' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' :
-                                                                'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200'
-                                                        }`}>
-                                                        {order.order_status}
-                                                    </span>
+                                                <td className="hidden md:table-cell px-1.5 py-0.5 text-sm font-semibold text-gray-900 dark:text-gray-100">
+                                                    {order.first_product_code ? `#${order.first_product_code}` : '-'}
                                                 </td>
-                                                <td className="px-1.5 py-0.5">
+                                                <td className="hidden md:table-cell px-1.5 py-0.5 text-sm text-right text-gray-700 dark:text-gray-300">{order.total_quantity}</td>
+                                                <td className="hidden md:table-cell px-1.5 py-0.5 text-sm text-right font-medium text-gray-700 dark:text-gray-300">Rs. {order.grand_total?.toLocaleString()}</td>
+                                                <td className="hidden md:table-cell px-1.5 py-0.5">
+                                                    <AuditTrailHover order={order}>
+                                                        <span className={`px-1 py-0.5 text-xs font-medium rounded ${order.order_status === 'Pending' ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200' :
+                                                            order.order_status === 'Unpaid' ? 'bg-gray-100 text-gray-700 border border-gray-300' :
+                                                                order.order_status === 'Shipped' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200' :
+                                                                    order.order_status === 'Delivered' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' :
+                                                                        ['Returning to Seller', 'Customer Return'].includes(order.order_status) ? 'bg-orange-50 text-orange-700 border-orange-200' :
+                                                                            ['Returned Delivered', 'Customer Return Delivered'].includes(order.order_status) ? 'bg-orange-100 text-orange-800 border-orange-300' :
+                                                                                (order.order_status === 'Cancel' || order.order_status === 'Cancelled') ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' :
+                                                                                    'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200'
+                                                            }`}>
+                                                            {order.order_status}
+                                                        </span>
+                                                    </AuditTrailHover>
+                                                </td>
+                                                <td className="hidden md:table-cell px-1.5 py-0.5">
                                                     <div className="flex items-center justify-between gap-0.5">
                                                         <button
                                                             className={`p-0.5 hover:bg-gray-100 dark:hover:bg-zinc-700 rounded ${order.is_printed ? 'text-green-600 dark:text-green-400' : 'text-gray-600 dark:text-gray-400'}`}

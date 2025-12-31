@@ -7,21 +7,60 @@ import { ArrowLeft, Download, Search, X } from 'lucide-react'
 import Link from 'next/link'
 import { Card } from '@/components/ui-shim'
 
+import { useSearchParams, useRouter } from 'next/navigation'
+import { getActiveFiscalYear, getAllFiscalYears } from '@/features/sales/actions/daraz-actions'
+import { useEffect } from 'react'
+
 export default function MarketplaceOrderListPage() {
+    const router = useRouter()
+    const searchParams = useSearchParams()
+    const urlFiscalYearId = searchParams.get('fiscalYearId')
+
+    const [activeFiscalYearId, setActiveFiscalYearId] = useState<string>('')
+    const [selectedFiscalYear, setSelectedFiscalYear] = useState<string>('')
     const [page, setPage] = useState(1)
     const [search, setSearch] = useState('')
     const [searchInput, setSearchInput] = useState('')
     const [statusFilter, setStatusFilter] = useState('all')
 
-    // Fetch ALL orders (no date filtering)
+    // Fetch active and all fiscal years
+    const { data: fiscalYears, isLoading: loadingFYs } = useQuery({ // Capture loading state
+        queryKey: ['fiscal-years'],
+        queryFn: getAllFiscalYears,
+    })
+
+    useEffect(() => {
+        // If URL param exists, respect it.
+        if (urlFiscalYearId) {
+            setSelectedFiscalYear(urlFiscalYearId)
+            // Still fetch active to know it
+            getActiveFiscalYear().then(fy => {
+                if (fy) setActiveFiscalYearId(fy.id)
+            })
+        } else {
+            // Otherwise default to active FY
+            getActiveFiscalYear().then(fy => {
+                if (fy) {
+                    setActiveFiscalYearId(fy.id)
+                    setSelectedFiscalYear(fy.id)
+                }
+            })
+        }
+    }, [urlFiscalYearId])
+
+    const isFyReady = !!selectedFiscalYear;
+
+    // Fetch orders with fiscal year filter
     const { data, isLoading, error } = useQuery({
-        queryKey: ['marketplace-orders-all', page, search, statusFilter],
+        queryKey: ['marketplace-orders-all', page, search, statusFilter, selectedFiscalYear], // Use selectedFiscalYear state
         queryFn: () => getMarketplaceOrders({
             page,
             search,
             status: statusFilter,
-            limit: 50
-        })
+            limit: 50,
+            fiscalYearId: selectedFiscalYear // Pass selected FY
+        }),
+        enabled: isFyReady // Wait for FY to be determined
     })
 
     const handleSearch = () => {
@@ -37,7 +76,10 @@ export default function MarketplaceOrderListPage() {
 
     const handleExport = async () => {
         try {
-            const exportData = await exportMarketplaceOrders({ status: statusFilter })
+            const exportData = await exportMarketplaceOrders({
+                status: statusFilter,
+                fiscalYearId: selectedFiscalYear
+            })
 
             const headers = Object.keys(exportData[0] || {})
             const csvRows = [
@@ -57,7 +99,8 @@ export default function MarketplaceOrderListPage() {
             const url = window.URL.createObjectURL(blob)
             const link = document.createElement('a')
             link.href = url
-            link.download = `marketplace_all_orders_${new Date().toISOString().split('T')[0]}.csv`
+            // Include FY in filename if possible, otherwise date
+            link.download = `marketplace_orders_${new Date().toISOString().split('T')[0]}.csv`
             document.body.appendChild(link)
             link.click()
             document.body.removeChild(link)
@@ -67,6 +110,17 @@ export default function MarketplaceOrderListPage() {
         } catch (error: any) {
             alert(`Export error: ${error.message}`)
         }
+    }
+
+    // Update URL when FY changes (optional, but good for shareability/refresh)
+    const handleFiscalYearChange = (fyId: string) => {
+        setSelectedFiscalYear(fyId);
+        setPage(1);
+        // Clean update of URL param without full reload
+        const newParams = new URLSearchParams(searchParams.toString());
+        if (fyId) newParams.set('fiscalYearId', fyId);
+        else newParams.delete('fiscalYearId');
+        router.push(`?${newParams.toString()}`);
     }
 
     return (
@@ -89,6 +143,25 @@ export default function MarketplaceOrderListPage() {
             {/* Action Bar */}
             <div className="sticky top-[44px] z-10 bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 px-3 py-1.5 shadow-sm">
                 <div className="flex flex-wrap items-center gap-1.5">
+                    {/* Fiscal Year Selector - Only show if navigated from Report (url param exists) */}
+                    {urlFiscalYearId && (
+                        <select
+                            value={selectedFiscalYear}
+                            onChange={(e) => handleFiscalYearChange(e.target.value)}
+                            className="px-2 py-1 text-sm border dark:border-zinc-700 rounded focus:ring-1 focus:ring-blue-500 dark:bg-zinc-800 font-medium bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 border-blue-200 dark:border-blue-800"
+                        >
+                            {!fiscalYears ? (
+                                <option>Loading FY...</option>
+                            ) : (
+                                fiscalYears.map(fy => (
+                                    <option key={fy.id} value={fy.id}>
+                                        FY {fy.name} {fy.is_active ? '(Active)' : ''}
+                                    </option>
+                                ))
+                            )}
+                        </select>
+                    )}
+
                     {/* Search */}
                     <div className="flex-1 min-w-[200px] max-w-sm">
                         <div className="relative">
@@ -160,10 +233,16 @@ export default function MarketplaceOrderListPage() {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-100 dark:divide-zinc-800">
-                                {isLoading ? (
+                                {!isFyReady ? (
                                     <tr>
                                         <td colSpan={10} className="px-2 py-8 text-center text-[15px] text-gray-500">
-                                            Loading orders...
+                                            Initializing Fiscal Year...
+                                        </td>
+                                    </tr>
+                                ) : isLoading ? (
+                                    <tr>
+                                        <td colSpan={10} className="px-2 py-8 text-center text-[15px] text-gray-500">
+                                            Loading orders for selected period...
                                         </td>
                                     </tr>
                                 ) : error ? (
@@ -175,7 +254,7 @@ export default function MarketplaceOrderListPage() {
                                 ) : !data || data.orders.length === 0 ? (
                                     <tr>
                                         <td colSpan={10} className="px-2 py-8 text-center text-[15px] text-gray-500">
-                                            No orders found.
+                                            No orders found for this Fiscal Year.
                                         </td>
                                     </tr>
                                 ) : (
@@ -207,10 +286,10 @@ export default function MarketplaceOrderListPage() {
                                             </td>
                                             <td className="px-2 py-1.5">
                                                 <span className={`inline-flex px-1.5 py-0.5 text-xs font-medium rounded ${order.order_status === 'Pending' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300' :
-                                                        order.order_status === 'Shipped' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300' :
-                                                            order.order_status === 'Delivered' ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300' :
-                                                                order.order_status === 'Cancel' ? 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300' :
-                                                                    'bg-gray-100 text-gray-700 dark:bg-zinc-800 dark:text-gray-300'
+                                                    order.order_status === 'Shipped' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300' :
+                                                        order.order_status === 'Delivered' ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300' :
+                                                            order.order_status === 'Cancel' ? 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300' :
+                                                                'bg-gray-100 text-gray-700 dark:bg-zinc-800 dark:text-gray-300'
                                                     }`}>
                                                     {order.order_status}
                                                 </span>

@@ -2,14 +2,15 @@
 
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { getDeletedItems, restoreProduct } from '@/features/inventory/actions/product-actions'
+import { getDeletedItems, restoreProduct, restoreMissingBackups, permanentlyDeleteAllProductsBackup } from '@/features/inventory/actions/product-actions'
 import { getDeletedOrders, restoreOrder, permanentlyDeleteOrder } from '@/features/sales/actions/daraz-deletion-actions'
 import { Card, CardContent } from '@/components/ui-shim'
 import { SettingsPageHeader } from "@/components/settings/SettingsPageHeader"
-import { RotateCcw, Clock, Trash2, AlertTriangle } from 'lucide-react'
+import { RotateCcw, Clock, Trash2, AlertTriangle, RefreshCw } from 'lucide-react'
 
 export default function RestoreBackupPage() {
     const [activeTab, setActiveTab] = useState('products')
+    const [isSyncing, setIsSyncing] = useState(false)
     const queryClient = useQueryClient()
 
     // Fetch deleted items
@@ -103,19 +104,73 @@ export default function RestoreBackupPage() {
             {/* Tabs */}
             <Card>
                 <div className="border-b dark:border-zinc-700">
-                    <div className="flex gap-4 p-4">
-                        {['products', 'sales', 'purchases', 'suppliers'].map((tab) => (
-                            <button
-                                key={tab}
-                                onClick={() => setActiveTab(tab)}
-                                className={`px-4 py-2 font-medium rounded-lg transition-colors ${activeTab === tab
-                                    ? 'bg-blue-600 text-white'
-                                    : 'hover:bg-gray-100 dark:hover:bg-zinc-800'
-                                    }`}
-                            >
-                                {tab.charAt(0).toUpperCase() + tab.slice(1)}
-                            </button>
-                        ))}
+                    <div className="flex justify-between items-center p-4">
+                        <div className="flex gap-4">
+                            {['products', 'sales', 'purchases', 'suppliers'].map((tab) => (
+                                <button
+                                    key={tab}
+                                    onClick={() => setActiveTab(tab)}
+                                    className={`px-4 py-2 font-medium rounded-lg transition-colors ${activeTab === tab
+                                        ? 'bg-blue-600 text-white'
+                                        : 'hover:bg-gray-100 dark:hover:bg-zinc-800'
+                                        }`}
+                                >
+                                    {tab.charAt(0).toUpperCase() + tab.slice(1)}
+                                </button>
+                            ))}
+                        </div>
+                        {activeTab === 'products' && (
+                            <>
+                                <button
+                                    onClick={async () => {
+                                        if (isSyncing) return;
+                                        setIsSyncing(true)
+                                        try {
+                                            const res = await restoreMissingBackups()
+                                            if (res.count > 0) {
+                                                alert(`Success: ${res.message}`)
+                                                queryClient.invalidateQueries({ queryKey: ['deleted-items'] })
+                                            } else {
+                                                alert(res.message)
+                                            }
+                                        } catch (e: any) {
+                                            alert(e.message)
+                                        } finally {
+                                            setIsSyncing(false)
+                                        }
+                                    }}
+                                    disabled={isSyncing}
+                                    className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 dark:bg-blue-900/20 dark:text-blue-400 dark:hover:bg-blue-900/30 rounded-lg transition-colors border border-blue-200 dark:border-blue-800"
+                                >
+                                    <RefreshCw size={14} className={isSyncing ? "animate-spin" : ""} />
+                                    {isSyncing ? 'Syncing...' : 'Sync Missing Backups'}
+                                </button>
+                                <button
+                                    onClick={async () => {
+                                        if (isSyncing) return;
+                                        if (!confirm("WARNING: This will PERMANENTLY delete all items in the backup list! \n\nThey cannot be restored. Continue?")) return;
+
+                                        setIsSyncing(true)
+                                        try {
+                                            const res = await permanentlyDeleteAllProductsBackup()
+                                            if (res.success) {
+                                                alert(res.message)
+                                                queryClient.invalidateQueries({ queryKey: ['deleted-items'] })
+                                            }
+                                        } catch (e: any) {
+                                            alert(e.message)
+                                        } finally {
+                                            setIsSyncing(false)
+                                        }
+                                    }}
+                                    disabled={isSyncing}
+                                    className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-red-600 bg-red-50 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-400 dark:hover:bg-red-900/30 rounded-lg transition-colors border border-red-200 dark:border-red-800 ml-2"
+                                >
+                                    <Trash2 size={14} />
+                                    Delete All
+                                </button>
+                            </>
+                        )}
                     </div>
                 </div>
 
@@ -228,7 +283,7 @@ export default function RestoreBackupPage() {
                         </div>
                     )}
                 </CardContent>
-            </Card>
-        </div>
+            </Card >
+        </div >
     )
 }

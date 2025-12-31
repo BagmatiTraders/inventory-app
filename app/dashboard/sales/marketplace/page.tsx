@@ -40,7 +40,7 @@ export default function MarketplaceSalesMenuPage() {
 
     return (
         <div className="flex flex-col h-full bg-gray-50 dark:bg-zinc-900 space-y-4">
-            <div className="bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 px-4 py-3 shadow-md sticky top-0 z-10 flex items-center justify-between">
+            <div className="hidden md:flex bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 px-4 py-3 shadow-md sticky top-0 z-10 items-center justify-between">
                 <div>
                     <h1 className="text-lg font-bold">Marketplace Sales</h1>
                 </div>

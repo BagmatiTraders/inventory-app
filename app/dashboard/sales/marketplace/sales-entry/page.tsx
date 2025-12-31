@@ -1,8 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { getMarketplaceOrders, exportMarketplaceOrders } from '@/features/sales/actions/marketplace-actions'
+import { getActiveFiscalYear } from '@/features/sales/actions/daraz-actions'
 import { ArrowLeft, Plus, Upload, Download, Search, X, List } from 'lucide-react'
 import Link from 'next/link'
 import { Card } from '@/components/ui-shim'
@@ -12,11 +13,30 @@ export default function MarketplaceSalesEntryPage() {
     const [search, setSearch] = useState('')
     const [searchInput, setSearchInput] = useState('')
     const [isModalOpen, setIsModalOpen] = useState(false)
+    const [activeFiscalYearId, setActiveFiscalYearId] = useState<string | null>(null) // null = loading, '' = no active
+    const [checkingFy, setCheckingFy] = useState(true)
 
-    // Fetch orders with special filter: today + pending + today's shipped
+    // Fetch active fiscal year on mount
+    useEffect(() => {
+        setCheckingFy(true)
+        getActiveFiscalYear().then(fy => {
+            if (fy) setActiveFiscalYearId(fy.id)
+            else setActiveFiscalYearId('') // No active FY found
+        }).finally(() => {
+            setCheckingFy(false)
+        })
+    }, [])
+
+    // Fetch orders with special filter: today + pending + today's shipped + ACTIVE FY
     const { data, isLoading, error, refetch } = useQuery({
-        queryKey: ['marketplace-orders-filtered', search],
-        queryFn: () => getMarketplaceOrders({ search, showTodayAndPending: true, limit: 500 })
+        queryKey: ['marketplace-orders-filtered', search, activeFiscalYearId],
+        queryFn: () => getMarketplaceOrders({
+            search,
+            showTodayAndPending: true,
+            limit: 500,
+            fiscalYearId: activeFiscalYearId || undefined // Enforce active FY
+        }),
+        enabled: !!activeFiscalYearId // Wait for FY to be loaded
     })
 
     const handleSearch = () => {
@@ -65,7 +85,7 @@ export default function MarketplaceSalesEntryPage() {
     return (
         <div className="flex flex-col h-full bg-gray-50 dark:bg-zinc-900">
             {/* Header */}
-            <div className="sticky top-0 z-10 bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 px-3 py-1.5 flex items-center justify-between shadow-sm">
+            <div className="hidden md:flex sticky top-0 z-10 bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 px-3 py-1.5 items-center justify-between shadow-sm">
                 <div>
                     <h1 className="text-[17px] font-bold">Marketplace Sales Entry</h1>
                     <p className="text-[13px] text-gray-500 dark:text-gray-400">Manage marketplace orders</p>
@@ -80,7 +100,7 @@ export default function MarketplaceSalesEntryPage() {
             </div>
 
             {/* Action Bar */}
-            <div className="sticky top-[44px] z-10 bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 px-3 py-1.5 shadow-sm">
+            <div className="sticky top-0 md:top-[44px] z-10 bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 px-2 md:px-3 py-1.5 shadow-sm">
                 <div className="flex flex-wrap items-center gap-1.5">
                     {/* Search */}
                     <div className="flex-1 min-w-[200px] max-w-sm">
@@ -121,14 +141,14 @@ export default function MarketplaceSalesEntryPage() {
                         Add Order
                     </button>
                     <button
-                        className="flex items-center gap-1 px-2 py-1 text-sm border dark:border-zinc-700 hover:bg-gray-50 dark:hover:bg-zinc-800 rounded transition-colors"
+                        className="hidden md:flex items-center gap-1 px-2 py-1 text-sm border dark:border-zinc-700 hover:bg-gray-50 dark:hover:bg-zinc-800 rounded transition-colors"
                     >
                         <Upload size={12} />
                         Import
                     </button>
                     <button
                         onClick={handleExport}
-                        className="flex items-center gap-1 px-2 py-1 text-sm border dark:border-zinc-700 hover:bg-gray-50 dark:hover:bg-zinc-800 rounded transition-colors"
+                        className="hidden md:flex items-center gap-1 px-2 py-1 text-sm border dark:border-zinc-700 hover:bg-gray-50 dark:hover:bg-zinc-800 rounded transition-colors"
                     >
                         <Download size={12} />
                         Export
@@ -137,7 +157,7 @@ export default function MarketplaceSalesEntryPage() {
             </div>
 
             {/* Orders Table */}
-            <div className="flex-1 overflow-auto px-3 py-3">
+            <div className="flex-1 overflow-auto px-2 md:px-3 py-2 md:py-3">
                 <Card className="overflow-hidden">
                     <div className="overflow-x-auto">
                         <table className="w-full text-left">
@@ -155,7 +175,19 @@ export default function MarketplaceSalesEntryPage() {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-100 dark:divide-zinc-800">
-                                {isLoading ? (
+                                {checkingFy ? (
+                                    <tr>
+                                        <td colSpan={9} className="px-2 py-8 text-center text-[15px] text-gray-500">
+                                            Checking Active Fiscal Year...
+                                        </td>
+                                    </tr>
+                                ) : !activeFiscalYearId ? (
+                                    <tr>
+                                        <td colSpan={9} className="px-2 py-8 text-center text-[15px] text-orange-500">
+                                            No Active Fiscal Year Configured. Please set one in Settings.
+                                        </td>
+                                    </tr>
+                                ) : isLoading ? (
                                     <tr>
                                         <td colSpan={9} className="px-2 py-8 text-center text-[15px] text-gray-500">
                                             Loading orders...
@@ -170,7 +202,7 @@ export default function MarketplaceSalesEntryPage() {
                                 ) : !data || data.orders.length === 0 ? (
                                     <tr>
                                         <td colSpan={9} className="px-2 py-8 text-center text-[15px] text-gray-500">
-                                            No orders found for today or pending.
+                                            No orders found for today or pending in Active FY.
                                         </td>
                                     </tr>
                                 ) : (

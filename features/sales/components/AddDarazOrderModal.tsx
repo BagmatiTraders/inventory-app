@@ -395,13 +395,16 @@ export function AddDarazOrderModal({ isOpen, onClose }: AddDarazOrderModalProps)
                                     onChange={(e) => setOrderStatus(e.target.value)}
                                     className="w-full px-2 py-1 text-[15px] border dark:border-zinc-700 rounded focus:ring-1 focus:ring-blue-500 dark:bg-zinc-900"
                                 >
+                                    <option value="Unpaid">Unpaid</option>
                                     <option value="Pending">Pending</option>
                                     <option value="Packed">Packed</option>
                                     <option value="Ready to Ship">Ready to Ship</option>
                                     <option value="Shipped">Shipped</option>
                                     <option value="Delivered">Delivered</option>
-                                    <option value="Failed Delivered">Failed Delivered</option>
+                                    <option value="Returning to Seller">Returning to Seller</option>
+                                    <option value="Returned Delivered">Returned Delivered</option>
                                     <option value="Customer Return">Customer Return</option>
+                                    <option value="Customer Return Delivered">Customer Return Delivered</option>
                                     <option value="Cancel">Cancel</option>
                                 </select>
                             </div>
@@ -437,8 +440,8 @@ export function AddDarazOrderModal({ isOpen, onClose }: AddDarazOrderModalProps)
                         </button>
                     </div>
                 </form>
-            </div>
-        </div>
+            </div >
+        </div >
     )
 }
 

@@ -168,6 +168,7 @@ interface GetMarketplaceOrdersFilters {
     startDate?: string
     endDate?: string
     showTodayAndPending?: boolean // Special filter for Sales Entry page
+    fiscalYearId?: string
 }
 
 /**
@@ -182,7 +183,8 @@ export async function getMarketplaceOrders(filters: GetMarketplaceOrdersFilters 
         status,
         startDate,
         endDate,
-        showTodayAndPending = false
+        showTodayAndPending = false,
+        fiscalYearId
     } = filters
 
     const from = (page - 1) * limit
@@ -204,6 +206,21 @@ export async function getMarketplaceOrders(filters: GetMarketplaceOrdersFilters 
         const today = new Date().toISOString().split('T')[0]
 
         query = query.or(`order_date.eq.${today},order_status.eq.Pending,shipped_at.gte.${today}T00:00:00`)
+    }
+
+    // Fiscal Year Filter
+    if (fiscalYearId) {
+        const { data: fy } = await supabase
+            .from('fiscal_years')
+            .select('start_date, end_date')
+            .eq('id', fiscalYearId)
+            .single()
+
+        if (fy) {
+            query = query
+                .gte('order_date', fy.start_date)
+                .lte('order_date', fy.end_date)
+        }
     }
 
     // Date range filter
@@ -419,4 +436,183 @@ export async function exportMarketplaceOrders(filters: GetMarketplaceOrdersFilte
         'Remarks': order.remarks || '',
         'Created At': order.created_at
     }))
+}
+
+// ============================================================================
+// REPORTING
+// ============================================================================
+
+/**
+ * Get Marketplace sales summary by fiscal year
+ */
+export async function getMarketplaceSalesByFiscalYear(fiscalYearId: string) {
+    try {
+        const supabase = await createClient()
+
+        const { data: fiscalYear, error: fyError } = await supabase
+            .from('fiscal_years')
+            .select('start_date, end_date, name')
+            .eq('id', fiscalYearId)
+            .single()
+
+        if (fyError || !fiscalYear) throw new Error('Fiscal year not found')
+
+        const { data, error } = await supabase
+            .from('marketplace_orders')
+            .select('id, items:marketplace_order_items(quantity, amount)')
+            .gte('order_date', fiscalYear.start_date)
+            .lte('order_date', fiscalYear.end_date)
+            .neq('order_status', 'Cancel') // Exclude cancelled orders
+
+        if (error) {
+            console.error('Orders query error:', error)
+            return {
+                fiscalYear: fiscalYear.name,
+                totalOrders: 0,
+                totalQuantity: 0,
+                totalAmount: 0
+            }
+        }
+
+        const orders = data || []
+        const totalOrders = orders.length
+        const totalQuantity = orders.reduce((sum, order) =>
+            sum + (order.items?.reduce((itemSum: number, item: any) => itemSum + (item.quantity || 0), 0) || 0), 0)
+        const totalAmount = orders.reduce((sum, order) =>
+            sum + (order.items?.reduce((itemSum: number, item: any) => itemSum + ((item.quantity || 0) * (item.amount || 0)), 0) || 0), 0)
+
+        return {
+            fiscalYear: fiscalYear.name,
+            totalOrders,
+            totalQuantity,
+            totalAmount
+        }
+    } catch (error: any) {
+        console.error('getMarketplaceSalesByFiscalYear error:', error)
+        return {
+            fiscalYear: 'Error',
+            totalOrders: 0,
+            totalQuantity: 0,
+            totalAmount: 0
+        }
+    }
+}
+
+/**
+ * Get Marketplace monthly sales breakdown by fiscal year
+ */
+export async function getMarketplaceMonthlySalesByFiscalYear(fiscalYearId: string) {
+    try {
+        const supabase = await createClient()
+
+        const { data: fiscalYear, error: fyError } = await supabase
+            .from('fiscal_years')
+            .select('start_date, end_date')
+            .eq('id', fiscalYearId)
+            .single()
+
+        if (fyError || !fiscalYear) return []
+
+        const { data, error } = await supabase
+            .from('marketplace_orders')
+            .select(`
+                order_date,
+                items:marketplace_order_items(quantity, amount)
+            `)
+            .gte('order_date', fiscalYear.start_date)
+            .lte('order_date', fiscalYear.end_date)
+            .neq('order_status', 'Cancel')
+
+        if (error) {
+            console.error('Monthly orders error:', error)
+            return []
+        }
+
+        // Group by month
+        const monthlyData: { [key: string]: { count: number, total: number } } = {}
+
+        data?.forEach(order => {
+            const month = new Date(order.order_date).toISOString().substring(0, 7) // YYYY-MM
+            if (!monthlyData[month]) {
+                monthlyData[month] = { count: 0, total: 0 }
+            }
+            monthlyData[month].count++
+            // Calculate total from items
+            const orderTotal = order.items?.reduce((sum: number, item: any) => sum + ((item.quantity || 0) * (item.amount || 0)), 0) || 0
+            monthlyData[month].total += orderTotal
+        })
+
+        return Object.entries(monthlyData)
+            .map(([month, data]) => ({
+                month,
+                orderCount: data.count,
+                totalAmount: data.total
+            }))
+            .sort((a, b) => a.month.localeCompare(b.month))
+    } catch (error: any) {
+        console.error('getMarketplaceMonthlySalesByFiscalYear error:', error)
+        return []
+    }
+}
+
+/**
+ * Get Marketplace daily sales breakdown by fiscal year (Day by Day)
+ */
+export async function getMarketplaceDailySalesByFiscalYear(fiscalYearId: string) {
+    try {
+        const supabase = await createClient()
+
+        const { data: fiscalYear, error: fyError } = await supabase
+            .from('fiscal_years')
+            .select('start_date, end_date')
+            .eq('id', fiscalYearId)
+            .single()
+
+        if (fyError || !fiscalYear) return []
+
+        const { data, error } = await supabase
+            .from('marketplace_orders')
+            .select(`
+                order_date,
+                items:marketplace_order_items(quantity, amount)
+            `)
+            .gte('order_date', fiscalYear.start_date)
+            .lte('order_date', fiscalYear.end_date)
+            .neq('order_status', 'Cancel')
+            .order('order_date', { ascending: false })
+
+        if (error) {
+            console.error('Daily sales error:', error)
+            return []
+        }
+
+        // Group by date
+        const dailyData: { [key: string]: { count: number, quantity: number, total: number } } = {}
+
+        data?.forEach(order => {
+            const date = order.order_date
+            if (!dailyData[date]) {
+                dailyData[date] = { count: 0, quantity: 0, total: 0 }
+            }
+            dailyData[date].count++
+
+            const orderQty = order.items?.reduce((sum: number, item: any) => sum + (item.quantity || 0), 0) || 0
+            const orderTotal = order.items?.reduce((sum: number, item: any) => sum + ((item.quantity || 0) * (item.amount || 0)), 0) || 0
+
+            dailyData[date].quantity += orderQty
+            dailyData[date].total += orderTotal
+        })
+
+        return Object.entries(dailyData)
+            .map(([date, data]) => ({
+                date,
+                orderCount: data.count,
+                quantity: data.quantity,
+                totalAmount: data.total
+            }))
+            .sort((a, b) => b.date.localeCompare(a.date)) // Descending by date
+    } catch (error: any) {
+        console.error('getMarketplaceDailySalesByFiscalYear error:', error)
+        return []
+    }
 }

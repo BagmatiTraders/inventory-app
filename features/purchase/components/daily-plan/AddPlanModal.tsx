@@ -2,12 +2,14 @@
 
 import { useState, useEffect } from 'react'
 import { X, Plus, Loader2 } from 'lucide-react'
+import { useRouter } from 'next/navigation'
 import { createPurchasePlan, getProductPurchaseStats, ProductPurchaseStats } from '@/features/purchase/actions/plan-actions'
 import { getProducts, Product, getProductBySku } from '@/features/inventory/actions/product-actions'
 import { toast } from 'sonner'
 import AsyncSelect from 'react-select/async'
 
-export function AddPlanModal({ onPlanAdded }: { onPlanAdded: () => void }) {
+export function AddPlanModal({ onPlanAdded, trigger }: { onPlanAdded: () => void, trigger?: React.ReactNode }) {
+    const router = useRouter()
     const [open, setOpen] = useState(false)
     const [loading, setLoading] = useState(false)
 
@@ -112,6 +114,28 @@ export function AddPlanModal({ onPlanAdded }: { onPlanAdded: () => void }) {
         setOpen(false)
     }
 
+    // Sound Logic (Duplicate from PlanList for self-contained modal)
+    const playClapSound = () => {
+        try {
+            const clapAudio = new Audio("https://codeskulptor-demos.commondatastorage.googleapis.com/pang/pop.mp3");
+            clapAudio.volume = 0.5;
+            clapAudio.play().catch(e => console.error("Audio play failed", e));
+        } catch (e) {
+            console.error("Sound error", e)
+        }
+    }
+
+    const triggerMobileFeedback = (withSound: boolean) => {
+        if (typeof window !== 'undefined' && window.innerWidth < 768) {
+            if (navigator.vibrate) {
+                navigator.vibrate(200)
+            }
+            if (withSound) {
+                playClapSound()
+            }
+        }
+    }
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
         if (!productId) {
@@ -129,9 +153,14 @@ export function AddPlanModal({ onPlanAdded }: { onPlanAdded: () => void }) {
                 status,
                 stats: stats || undefined
             })
+
+            // Mobile Feedback
+            triggerMobileFeedback(true)
+
             toast.success("Plan added successfully")
             resetForm() // Reset immediately after success
             setOpen(false)
+            router.refresh()
             onPlanAdded()
         } catch (error: any) {
             toast.error(error.message)
@@ -142,12 +171,16 @@ export function AddPlanModal({ onPlanAdded }: { onPlanAdded: () => void }) {
 
     return (
         <>
-            <button
-                onClick={() => setOpen(true)}
-                className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 flex items-center gap-2 text-sm font-medium"
-            >
-                <Plus size={16} /> Add List
-            </button>
+            {trigger ? (
+                <div onClick={() => setOpen(true)}>{trigger}</div>
+            ) : (
+                <button
+                    onClick={() => setOpen(true)}
+                    className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 flex items-center gap-2 text-sm font-medium"
+                >
+                    <Plus size={16} /> Add List
+                </button>
+            )}
 
             {open && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4">

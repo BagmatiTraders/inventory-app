@@ -27,6 +27,7 @@ export interface Product {
     updated_at: string
     import_flag: boolean
     is_deleted: boolean
+    status?: string // 'Active' | 'Inactive'
     product_combos?: { count: number }[]
 }
 
@@ -98,7 +99,8 @@ export async function getProducts(params: {
         .from('products')
         // Select all fields + count of combo items (where product is PARENT)
         .select('*, product_combos!product_combos_parent_product_id_fkey(count)', { count: 'exact' })
-        .eq('is_deleted', false)
+        // .eq('is_deleted', false) // Removed to show 'Inactive' products in the list
+        .order('is_deleted', { ascending: true }) // Active first (false), then Inactive (true)
 
     // Apply product type filter
     if (productType !== 'all') {
@@ -135,6 +137,33 @@ export async function getProducts(params: {
         limit,
         totalPages: Math.ceil((count || 0) / limit)
     }
+}
+
+/**
+ * Optimized product search for dropdowns
+ * Selects minimal fields and removes heavy joins
+ */
+export async function searchProducts(search: string) {
+    const supabase = await createClient()
+
+    if (!search || !search.trim()) return []
+
+    const searchTerm = `%${search.trim()}%`
+
+    // Search primarily in product_name and seller_sku1
+    const { data, error } = await supabase
+        .from('products')
+        .select('id, product_name, seller_sku1')
+        .or(`product_name.ilike.${searchTerm},seller_sku1.ilike.${searchTerm}`)
+        .order('product_name', { ascending: true })
+        .limit(20)
+
+    if (error) {
+        console.error('Search products error:', error)
+        return []
+    }
+
+    return data || []
 }
 
 /**
@@ -239,7 +268,8 @@ export async function createProduct(data: {
             seller_account4: data.seller_account4 || null,
             created_by: user.id,
             updated_by: user.id,
-            import_flag: data.import_flag || false
+            import_flag: data.import_flag || false,
+            status: 'Active'
         })
         .select()
         .single()
@@ -390,9 +420,13 @@ export async function deleteProduct(productId: string) {
     if (isAdmin) {
         // Admin: Direct delete
         // 1. Mark product as deleted
+        // 1. Mark product as deleted and Inactive
         await supabase
             .from('products')
-            .update({ is_deleted: true })
+            .update({
+                is_deleted: true,
+                status: 'Inactive'
+            })
             .eq('id', productId)
 
         // 2. Move to restore backup
@@ -599,10 +633,15 @@ export async function getDeletedItems(resourceType?: string) {
         .from('deleted_items')
         .select('*')
         .eq('is_restored', false)
+        // Filter out items "permanently deleted" (hidden) but kept for FK integrity
+        .not('related_data->>hidden', 'eq', 'true')
         .order('deleted_at', { ascending: false })
 
     if (resourceType) {
-        query = query.eq('resource_type', resourceType)
+        // Map plural from UI tabs to singular in DB
+        const typeMap: Record<string, string> = { 'products': 'product', 'sales': 'order' }
+        const mapped = typeMap[resourceType] || resourceType
+        query = query.eq('resource_type', mapped)
     }
 
     const { data, error } = await query
@@ -703,7 +742,8 @@ export async function bulkImportProducts(products: Array<Partial<Product>>) {
         seller_account4: productData.seller_account4 || null,
         created_by: user.id,
         updated_by: user.id,
-        import_flag: true
+        import_flag: true,
+        status: 'Active'
     }))
 
     // Process in chunks of 500 to avoid timeout
@@ -804,13 +844,43 @@ export async function deleteAllProducts() {
     }
 
     // Get all products
+    // Get all products with deletion info
     const { data: products } = await supabase
         .from('products')
-        .select('*')
+        .select('*, product_combos!product_combos_parent_product_id_fkey(id, quantity, child_product_id)')
         .eq('is_deleted', false)
 
     if (!products || products.length === 0) {
         return { deleted: 0, message: 'No products to delete' }
+    }
+
+    // Prepare backup entries
+    const expiresAt = new Date()
+    expiresAt.setDate(expiresAt.getDate() + 15) // 15 days retention
+    const expiresAtStr = expiresAt.toISOString()
+    const nowStr = new Date().toISOString()
+
+    const backupEntries = products.map(p => ({
+        resource_type: 'product',
+        resource_id: p.id,
+        resource_name: p.product_name,
+        resource_data: p,
+        related_data: { combo_items: p.product_combos || [] },
+        deleted_by: user.id,
+        approved_by: user.id,
+        approved_at: nowStr,
+        expires_at: expiresAtStr,
+        created_at: nowStr,
+        is_restored: false
+    }))
+
+    // Bulk insert into deleted_items
+    const { error: backupError } = await supabase
+        .from('deleted_items')
+        .insert(backupEntries)
+
+    if (backupError) {
+        throw new Error(`Backup failed: ${backupError.message}`)
     }
 
     // Mark all products as deleted
@@ -822,7 +892,8 @@ export async function deleteAllProducts() {
     if (error) throw new Error(error.message)
 
     revalidatePath('/dashboard/inventory/product-list')
-    return { deleted: products.length, message: `Successfully deleted ${products.length} products` }
+    revalidatePath('/dashboard/settings/backup')
+    return { deleted: products.length, message: `Successfully deleted ${products.length} products (moved to backup)` }
 }
 
 /**
@@ -847,4 +918,114 @@ export async function getProductBySku(sku: string) {
     }
 
     return data as Product | null
+}
+
+/**
+ * Restore/Rescue missing backup items
+ * Finds products that are is_deleted=true but missing from deleted_items table
+ * and inserts them into deleted_items so they can be managed
+ */
+export async function restoreMissingBackups() {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+
+    if (!user) {
+        throw new Error('Not authenticated')
+    }
+
+    // 1. Get all deleted products
+    const { data: deletedProducts, error: prodError } = await supabase
+        .from('products')
+        .select('*')
+        .eq('is_deleted', true)
+
+    if (prodError) throw new Error(`Fetch products error: ${prodError.message}`)
+    if (!deletedProducts || deletedProducts.length === 0) return { count: 0, message: 'No deleted products found in database' }
+
+    // 2. Get existing backup entries for products
+    const { data: backups, error: backupError } = await supabase
+        .from('deleted_items')
+        .select('resource_id')
+        .eq('resource_type', 'product')
+
+    if (backupError) throw new Error(`Fetch backups error: ${backupError.message}`)
+
+    const existingIds = new Set(backups?.map(b => b.resource_id) || [])
+
+    // 3. Find missing items
+    const missingProducts = deletedProducts.filter(p => !existingIds.has(p.id))
+
+    if (missingProducts.length === 0) return { count: 0, message: 'All deleted products are already backed up' }
+
+    // 4. Create backup entries
+    const expiresAt = new Date()
+    expiresAt.setDate(expiresAt.getDate() + 15) // Give them 15 days from now
+
+    // Simplistic backup: doesn't include product_combos in related_data for rescue, but linking works
+    const entries = missingProducts.map(p => ({
+        resource_type: 'product',
+        resource_id: p.id,
+        resource_name: p.product_name,
+        resource_data: p,
+        related_data: { rescued: true, note: 'Recovered from missing backup' },
+        deleted_by: user.id, // Attributed to current user as rescuer
+        deleted_at: p.updated_at || new Date().toISOString(), // Use updated_at as proxy for delete time
+        expires_at: expiresAt.toISOString()
+    }))
+
+    const { error: insertError } = await supabase.from('deleted_items').insert(entries)
+    if (insertError) throw new Error(`Insert failed: ${insertError.message}`)
+
+    revalidatePath('/dashboard/settings/backup')
+    return { count: entries.length, message: `Recovered ${entries.length} missing backup items` }
+}
+
+/**
+ * Permanently delete ALL products in backup (Empty Trash)
+ */
+export async function permanentlyDeleteAllProductsBackup() {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) throw new Error('Not authenticated')
+
+    // Admin check
+    const { data: profile } = await supabase.from('user_profiles').select('role').eq('id', user.id).single()
+    if (profile?.role !== 'admin') throw new Error('Only admins can delete permanently')
+
+    // 1. Get all visible backup items for products
+    const { data: items } = await supabase
+        .from('deleted_items')
+        .select('*')
+        .eq('resource_type', 'product')
+        .eq('is_restored', false)
+        .not('related_data->>hidden', 'eq', 'true')
+
+    if (!items || items.length === 0) return { success: true, message: 'No items to delete.' }
+
+    let deletedCount = 0
+    let hiddenCount = 0
+
+    for (const item of items) {
+        // 2. Try to hard delete from products table
+        const { error } = await supabase.from('products').delete().eq('id', item.resource_id)
+
+        if (error) {
+            // Failed (likely FK because product used in history). 
+            // Mark as hidden in backup list so it "looks" deleted to user.
+            const newData = { ...(item.related_data || {}), hidden: 'true' }
+            await supabase.from('deleted_items').update({ related_data: newData }).eq('id', item.id)
+            hiddenCount++
+        } else {
+            // Success. Product gone. Now remove backup entry.
+            await supabase.from('deleted_items').delete().eq('id', item.id)
+            deletedCount++
+        }
+    }
+
+    revalidatePath('/dashboard/settings/backup')
+    let message = ''
+    if (deletedCount > 0) message += `Permanently deleted ${deletedCount} unused products.`
+    if (hiddenCount > 0) message += ` ${hiddenCount} used products were invalid for hard-delete and have been hidden.`
+
+    return { success: true, message: message.trim() || 'Process complete.' }
 }

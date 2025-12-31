@@ -9,25 +9,50 @@ import { useSearchParams, useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 
 import { Suspense } from 'react'
+import { useState as useReactState } from 'react'
 
 export const dynamic = 'force-dynamic'
+
+// Helper: Same logic as backend to keep consistency
+// Helper: Same logic as backend to keep consistency
+function getProminentStatus(statuses: string[], currentStatus: string = ''): string {
+    const rawStatuses = statuses || (currentStatus ? [currentStatus] : [])
+    if (!rawStatuses || rawStatuses.length === 0) return 'pending'
+
+    const s = rawStatuses.map(x => x.toLowerCase())
+
+    if (s.includes('unpaid')) return 'Unpaid'
+
+    // Priority 1: Failures & Returns (Action Required)
+    if (s.includes('returned') || s.includes('customer_return_delivered')) return 'Customer Return Delivered'
+    if (s.includes('shipped_back_success') || s.includes('returned_delivered')) return 'Returned Delivered'
+    if (s.includes('customer_return')) return 'Customer Return'
+    if (s.includes('returning_to_seller') || s.includes('returning to seller') || s.includes('shipped_back') ||
+        s.includes('failed_delivery') || s.includes('failed_delivered') || s.includes('delivery_failed') || s.includes('delivery failed')) return 'Returning to Seller'
+
+    // Priority 2: Cancellation (Should override Packed/RTS)
+    if (s.includes('canceled') || s.includes('cancelled')) return 'Cancel'
+
+    // Priority 3: Success Flow (Most Advanced State)
+    if (s.includes('delivered') || s.includes('completed')) return 'Delivered'
+    if (s.includes('shipped')) return 'Shipped'
+    if (s.includes('ready_to_ship') || s.includes('ready to ship')) return 'Ready to Ship'
+    if (s.includes('packed')) return 'Packed'
+
+    return 'Pending'
+}
 
 function OrderSyncPageContent() {
     const { data: stores, isLoading } = useOnlineStores()
     const searchParams = useSearchParams()
     const router = useRouter()
     const [syncedOrders, setSyncedOrders] = useState<any[]>([])
-    const [isAutoSync, setIsAutoSync] = useState(false)
     const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
     const [isSyncingGlobal, setIsSyncingGlobal] = useState(false)
 
     // Load initial data (Local Storage & DB Orders)
     useEffect(() => {
-        const savedAutoSync = localStorage.getItem('daraz_auto_sync')
-        if (savedAutoSync === 'true') {
-            setIsAutoSync(true)
-        }
-
+        // Initialize lastUpdated from localStorage if available
         // Initialize lastUpdated from localStorage if available
         const lastSyncTime = localStorage.getItem('daraz_last_sync_time')
         if (lastSyncTime) {
@@ -39,10 +64,6 @@ function OrderSyncPageContent() {
         }
     }, [stores])
 
-    // Save auto-sync preference
-    useEffect(() => {
-        localStorage.setItem('daraz_auto_sync', String(isAutoSync))
-    }, [isAutoSync])
 
     useEffect(() => {
         if (searchParams.get('status') === 'success') {
@@ -105,43 +126,7 @@ function OrderSyncPageContent() {
         return totalNewOrders
     }
 
-    // Auto-sync effect
-    useEffect(() => {
-        let interval: NodeJS.Timeout
-        if (isAutoSync && stores && stores.length > 0) {
-            // Rule: Only auto-sync if last sync was > 5 minutes ago
-            const lastSync = localStorage.getItem('daraz_last_sync_time')
-            const now = Date.now()
-            const fiveMinutes = 5 * 60 * 1000
 
-            const timeSinceLastSync = lastSync ? (now - parseInt(lastSync)) : Infinity
-            const shouldAutoSync = timeSinceLastSync > fiveMinutes
-
-            if (shouldAutoSync) {
-                console.log('Auto-sync triggered on page load (last sync was', Math.round(timeSinceLastSync / 60000), 'minutes ago)')
-                syncAllStores('api')
-                localStorage.setItem('daraz_last_sync_time', String(now))
-            } else {
-                const minutesRemaining = Math.ceil((fiveMinutes - timeSinceLastSync) / 60000)
-                console.log(`Auto-sync skipped: Last sync was ${Math.round(timeSinceLastSync / 60000)} minutes ago. Next auto-sync in ${minutesRemaining} minutes.`)
-            }
-
-            // Set up interval for future syncs (every 5 minutes)
-            interval = setInterval(() => {
-                const currentNow = Date.now()
-                const currentLastSync = localStorage.getItem('daraz_last_sync_time')
-                const currentTimeSince = currentLastSync ? (currentNow - parseInt(currentLastSync)) : Infinity
-
-                if (currentTimeSince > fiveMinutes) {
-                    console.log('Interval auto-sync triggered')
-                    syncAllStores('api')
-                    localStorage.setItem('daraz_last_sync_time', String(currentNow))
-                }
-            }, fiveMinutes) // Check every 5 minutes
-        }
-
-        return () => { if (interval) clearInterval(interval) }
-    }, [isAutoSync, stores])
 
     // Grouping and Sorting Logic
     const groupedOrders = useMemo(() => {
@@ -156,12 +141,16 @@ function OrderSyncPageContent() {
             'delivered': 4,
             'canceled': 5,
             'failed': 5,
-            'returned': 5
+            'failed_delivered': 5,
+            'delivery_failed': 5,
+            'returning_to_seller': 5,
+            'returned': 5,
+            'customer_return_delivered': 6
         }
 
         const getStatusRank = (o: any) => {
-            const s = (o.statuses?.[0] || o.status || 'pending').toLowerCase()
-            return statusPriority[s] || 6
+            const displayStatus = getProminentStatus(o.statuses, o.status).toLowerCase()
+            return statusPriority[displayStatus] || 6
         }
 
         // 2. Group by Date
@@ -206,12 +195,13 @@ function OrderSyncPageContent() {
         const byStore: Record<string, Record<string, number>> = {}
 
         syncedOrders.forEach(o => {
-            const rawStatus = o.statuses?.[0] || o.status || 'pending'
+            const displayStatus = getProminentStatus(o.statuses, o.status)
             let statusKey = ''
-            if (rawStatus.toLowerCase() === 'pending') statusKey = 'Pending'
-            else if (rawStatus.toLowerCase() === 'packed') statusKey = 'Packed'
-            else if (rawStatus.toLowerCase() === 'ready_to_ship') statusKey = 'Ready to Ship'
-            else if (rawStatus.toLowerCase() === 'shipped') statusKey = 'Shipped'
+
+            if (displayStatus === 'Pending') statusKey = 'Pending'
+            else if (displayStatus === 'Packed') statusKey = 'Packed'
+            else if (displayStatus === 'Ready to Ship') statusKey = 'Ready to Ship'
+            else if (displayStatus === 'Shipped') statusKey = 'Shipped'
 
             if (statusKey) {
                 summary[statusKey] = (summary[statusKey] || 0) + 1
@@ -225,38 +215,19 @@ function OrderSyncPageContent() {
     }, [syncedOrders, stores])
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-6 pt-16 md:pt-0">
             {/* Compact Header */}
-            <div className="sticky top-0 z-10 bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 px-3 py-1.5 shadow-sm space-y-2">
+            <div className="sticky top-16 md:top-0 z-10 bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 px-3 py-1.5 shadow-sm space-y-2">
                 <div className="flex items-center justify-between">
-                    <div>
+                    <div className="hidden md:block">
                         <h1 className="text-[17px] font-bold">Daraz Order sync</h1>
                         <p className="text-[13px] text-gray-500 dark:text-gray-400">Sync orders from your connected Daraz stores</p>
                     </div>
                     <div className="flex items-center gap-2">
-                        {/* Auto Sync Toggle */}
-                        <div className="flex items-center gap-2 bg-gray-50 dark:bg-zinc-800 px-2 py-1 rounded border border-gray-200 dark:border-zinc-700">
-                            <div className="flex items-center gap-1.5">
-                                <span className="relative flex h-1.5 w-1.5">
-                                    <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${isAutoSync ? 'bg-green-400' : 'hidden'}`}></span>
-                                    <span className={`relative inline-flex rounded-full h-1.5 w-1.5 ${isAutoSync ? 'bg-green-500' : 'bg-gray-300'}`}></span>
-                                </span>
-                                <span className="text-[13px] font-medium">Auto Sync (5m)</span>
-                            </div>
-                            <label className="relative inline-flex items-center cursor-pointer">
-                                <input
-                                    type="checkbox"
-                                    className="sr-only peer"
-                                    checked={isAutoSync}
-                                    onChange={(e) => setIsAutoSync(e.target.checked)}
-                                />
-                                <div className="w-7 h-3.5 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-2.5 after:w-2.5 after:transition-all dark:border-gray-600 peer-checked:bg-green-600"></div>
-                            </label>
-                        </div>
-
+                        {/* Auto Sync Removed */}
                         <Link
                             href="/dashboard/sales/daraz"
-                            className="flex items-center gap-1 px-2 py-1 text-[13px] bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700 rounded transition-colors"
+                            className="hidden md:flex items-center gap-1 px-2 py-1 text-[13px] bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700 rounded transition-colors"
                         >
                             <ArrowLeft size={12} />
                             Back to Menu
@@ -266,9 +237,9 @@ function OrderSyncPageContent() {
 
                 {/* Status Summary Bar */}
                 {Object.keys(statusSummary.byStore).length > 0 && (
-                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px] pt-1 border-t dark:border-zinc-800">
+                    <div className="flex flex-wrap items-center gap-2 text-[13px] pt-2 border-t dark:border-zinc-800 pb-1">
                         {Object.entries(statusSummary.byStore).map(([storeName, counts]) => (
-                            <div key={storeName} className="flex items-center gap-2 bg-gray-50 dark:bg-zinc-800/50 px-2 py-0.5 rounded border border-gray-100 dark:border-zinc-800">
+                            <div key={storeName} className="flex items-center gap-2 bg-gray-50 dark:bg-zinc-800/50 px-2 py-1 rounded border border-gray-100 dark:border-zinc-800">
                                 <span className="font-bold text-gray-700 dark:text-gray-300">{storeName}:</span>
                                 <div className="flex gap-2 text-gray-500 dark:text-gray-400">
                                     {counts['Pending'] > 0 && <span className="text-yellow-600 dark:text-yellow-500">Pending: {counts['Pending']}</span>}
@@ -344,48 +315,68 @@ function OrderSyncPageContent() {
                                                 <th className="px-2 py-1 text-xs font-bold uppercase text-gray-600 text-right">Amount</th>
                                                 <th className="px-2 py-1 text-xs font-bold uppercase text-gray-600 text-center">Qty</th>
                                                 <th className="px-2 py-1 text-xs font-bold uppercase text-gray-600 text-center">Status</th>
+                                                <th className="px-2 py-1 text-xs font-bold uppercase text-gray-600 text-center">Raw Status</th>
+                                                <th className="px-2 py-1 text-xs font-bold uppercase text-gray-600 text-center">Item Statuses</th>
+                                                <th className="px-2 py-1 text-xs font-bold uppercase text-gray-600 text-center">Actions</th>
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-gray-100 dark:divide-zinc-800">
                                             {orders.map((order: any, index: number) => {
-                                                const rawStatus = (order.statuses?.[0] || order.status || 'pending').toLowerCase()
+                                                const rawStatus = getProminentStatus(order.statuses, order.status).toLowerCase()
                                                 const skus = order.items_detail?.map((i: any) => i.sku || i.shop_sku || 'N/A').join(', ') || '-'
+                                                const itemStatuses = order.items_detail?.map((i: any) => i.status).filter(Boolean) || []
 
                                                 let displayStatus = 'Pending'
                                                 let statusColor = 'bg-gray-100 text-gray-800'
 
-                                                if (['pending'].includes(rawStatus)) {
-                                                    displayStatus = 'Pending'
-                                                    statusColor = 'bg-yellow-50 text-yellow-700 border border-yellow-200'
-                                                }
-                                                else if (['packed'].includes(rawStatus)) {
-                                                    displayStatus = 'Packed'
-                                                    statusColor = 'bg-blue-50 text-blue-700 border border-blue-200'
-                                                }
-                                                else if (['ready_to_ship'].includes(rawStatus)) {
-                                                    displayStatus = 'Ready to Ship'
-                                                    statusColor = 'bg-green-50 text-green-700 border border-green-200' // Visual match to Sales Entry (Green)
-                                                }
-                                                else if (['shipped'].includes(rawStatus)) {
-                                                    displayStatus = 'Shipped'
-                                                    statusColor = 'bg-indigo-50 text-indigo-700 border border-indigo-200'
-                                                }
-                                                else if (['delivered', 'completed'].includes(rawStatus)) {
-                                                    displayStatus = 'Delivered'
-                                                    statusColor = 'bg-green-50 text-green-700 border border-green-200'
-                                                }
-                                                else if (['canceled', 'cancelled'].includes(rawStatus)) {
-                                                    displayStatus = 'Cancel'
-                                                    statusColor = 'bg-red-50 text-red-700 border border-red-200'
-                                                }
-                                                else if (['failed', 'failed delivery'].includes(rawStatus)) {
-                                                    displayStatus = 'Failed Delivery'
-                                                    statusColor = 'bg-red-50 text-red-700 border border-red-200'
-                                                }
-                                                else if (['returned', 'customer return'].includes(rawStatus)) {
-                                                    displayStatus = 'Returned'
-                                                    statusColor = 'bg-orange-50 text-orange-700 border border-orange-200'
-                                                }
+                                                // Determine display status and color based on raw values
+                                                if (rawStatus) {
+                                                    if (['unpaid'].includes(rawStatus)) {
+                                                        displayStatus = 'Unpaid'
+                                                        statusColor = 'bg-gray-100 text-gray-700 border border-gray-300'
+                                                    }
+                                                    else if (['pending'].includes(rawStatus)) {
+                                                        displayStatus = 'Pending'
+                                                        statusColor = 'bg-yellow-50 text-yellow-700 border border-yellow-200'
+                                                    }
+                                                    else if (['packed'].includes(rawStatus)) {
+                                                        displayStatus = 'Packed'
+                                                        statusColor = 'bg-blue-50 text-blue-700 border border-blue-200'
+                                                    }
+                                                    else if (['ready to ship', 'ready_to_ship'].includes(rawStatus)) {
+                                                        displayStatus = 'Ready to Ship'
+                                                        statusColor = 'bg-green-50 text-green-700 border border-green-200'
+                                                    }
+                                                    else if (['shipped'].includes(rawStatus)) {
+                                                        displayStatus = 'Shipped'
+                                                        statusColor = 'bg-indigo-50 text-indigo-700 border border-indigo-200'
+                                                    }
+                                                    else if (['delivered', 'completed'].includes(rawStatus)) {
+                                                        displayStatus = 'Delivered'
+                                                        statusColor = 'bg-green-50 text-green-700 border border-green-200'
+                                                    }
+                                                    else if (['cancel', 'canceled', 'cancelled'].includes(rawStatus)) {
+                                                        displayStatus = 'Cancel'
+                                                        statusColor = 'bg-red-50 text-red-700 border border-red-200'
+                                                    }
+                                                    else if (['failed delivered', 'failed', 'failed_delivery', 'failed_delivered', 'failed delivery', 'shipped_back_success', 'delivery failed', 'delivery_failed', 'returning to seller', 'returning_to_seller', 'shipped_back'].includes(rawStatus)) {
+                                                        displayStatus = 'Returning to Seller' // Combined Failure/Return status
+                                                        statusColor = 'bg-orange-50 text-orange-700 border border-orange-200'
+                                                    }
+                                                    else if (['customer return', 'customer_return'].includes(rawStatus)) {
+                                                        displayStatus = 'Customer Return'
+                                                        statusColor = 'bg-orange-50 text-orange-700 border border-orange-200'
+                                                    }
+                                                    else if (['returned', 'customer_return_delivered', 'customer return delivered'].includes(rawStatus)) {
+                                                        displayStatus = 'Customer Return Delivered'
+                                                        statusColor = 'bg-orange-100 text-orange-800 border border-orange-300'
+                                                    }
+                                                    else if (['shipped_back_success', 'returned_delivered', 'returned delivered'].includes(rawStatus)) {
+                                                        displayStatus = 'Returned Delivered'
+                                                        statusColor = 'bg-orange-100 text-orange-800 border border-orange-300'
+                                                    }
+
+                                                } // End of if(rawStatus) checks
 
                                                 return (
                                                     <tr key={order.order_id} className="bg-white hover:bg-gray-50 dark:bg-zinc-900 dark:hover:bg-zinc-800/50">
@@ -423,6 +414,26 @@ function OrderSyncPageContent() {
                                                             <span className={`px-1.5 py-0.5 rounded text-xs uppercase font-bold tracking-wider ${statusColor}`}>
                                                                 {displayStatus}
                                                             </span>
+                                                        </td>
+                                                        <td className="px-2 py-1 text-center">
+                                                            <span className="text-[11px] font-mono text-gray-600 dark:text-gray-400">
+                                                                {JSON.stringify(order.statuses || [order.status])}
+                                                            </span>
+                                                        </td>
+                                                        <td className="px-2 py-1 text-center">
+                                                            <span className="text-[11px] font-mono text-blue-600 dark:text-blue-400">
+                                                                {itemStatuses.length > 0 ? JSON.stringify(itemStatuses) : 'N/A'}
+                                                            </span>
+                                                        </td>
+                                                        <td className="px-2 py-1 text-center">
+                                                            <RefreshOrderButton
+                                                                orderId={order.order_id}
+                                                                storeId={order.store_id}
+                                                                onRefreshComplete={() => {
+                                                                    // Reload orders from DB
+                                                                    syncAllStores('db')
+                                                                }}
+                                                            />
                                                         </td>
                                                     </tr>
                                                 )
@@ -553,6 +564,51 @@ function StoreCard({ store, onSyncSuccess }: { store: any, onSyncSuccess: (order
                 </div>
             )}
         </div>
+    )
+}
+
+function RefreshOrderButton({ orderId, storeId, onRefreshComplete }: { orderId: string, storeId: string, onRefreshComplete: () => void }) {
+    const [isRefreshing, setIsRefreshing] = useReactState(false)
+
+    const handleRefresh = async () => {
+        setIsRefreshing(true)
+        try {
+            const response = await fetch('/api/daraz/orders/refresh', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ orderId, storeId })
+            })
+
+            const data = await response.json()
+
+            if (response.ok) {
+                toast.success('Order refreshed!', {
+                    description: `Updated statuses: ${data.statuses?.join(', ')}`
+                })
+                onRefreshComplete()
+            } else {
+                throw new Error(data.error || 'Failed to refresh')
+            }
+        } catch (error: any) {
+            console.error('Refresh error:', error)
+            toast.error('Failed to refresh order', {
+                description: error.message
+            })
+        } finally {
+            setIsRefreshing(false)
+        }
+    }
+
+    return (
+        <Button
+            onClick={handleRefresh}
+            variant="ghost"
+            size="sm"
+            className="h-6 w-6 p-0"
+            disabled={isRefreshing}
+        >
+            <RefreshCw className={`h-3 w-3 ${isRefreshing ? 'animate-spin' : ''}`} />
+        </Button>
     )
 }
 

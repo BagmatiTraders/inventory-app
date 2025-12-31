@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import crypto from 'crypto'
 import axios from 'axios'
+import { syncOrderPurchaseCost } from '@/features/sales/actions/report-actions'
 
 function signRequest(apiName: string, params: Record<string, any>, appSecret: string) {
     const keys = Object.keys(params).sort()
@@ -11,6 +12,37 @@ function signRequest(apiName: string, params: Record<string, any>, appSecret: st
         str += key + params[key]
     })
     return crypto.createHmac('sha256', appSecret).update(str).digest('hex').toUpperCase()
+    return crypto.createHmac('sha256', appSecret).update(str).digest('hex').toUpperCase()
+}
+
+// Helper: Determine highest priority status from a list
+// Helper: Determine highest priority status from a list
+function getProminentStatus(statuses: string[]): string {
+    if (!statuses || statuses.length === 0) return 'Pending'
+
+    const s = statuses.map(x => x.toLowerCase())
+
+    // Priority 0: Unpaid (Highest priority if we want to show it distinctly)
+    if (s.includes('unpaid')) return 'Unpaid'
+
+    // Priority 1: Failures & Returns (Action Required)
+    if (s.includes('returned') || s.includes('customer_return_delivered')) return 'Customer Return Delivered'
+    if (s.includes('shipped_back_success') || s.includes('returned_delivered')) return 'Returned Delivered'
+    if (s.includes('customer_return')) return 'Customer Return'
+    // Failed Delivery basically means it's coming back, so we map it to Returning to Seller if user wants no specific "Delivery Failed" status
+    if (s.includes('returning_to_seller') || s.includes('returning to seller') || s.includes('shipped_back') ||
+        s.includes('failed_delivery') || s.includes('failed_delivered') || s.includes('delivery_failed') || s.includes('delivery failed')) return 'Returning to Seller'
+
+    // Priority 2: Cancellation (Should override Packed/RTS)
+    if (s.includes('canceled') || s.includes('cancelled')) return 'Cancel'
+
+    // Priority 3: Success Flow (Most Advanced State)
+    if (s.includes('delivered') || s.includes('completed')) return 'Delivered'
+    if (s.includes('shipped')) return 'Shipped'
+    if (s.includes('ready_to_ship') || s.includes('ready to ship')) return 'Ready to Ship'
+    if (s.includes('packed')) return 'Packed'
+
+    return 'Pending'
 }
 
 export async function GET(request: NextRequest) {
@@ -95,29 +127,44 @@ export async function GET(request: NextRequest) {
         const orders = response.data.data?.orders || []
 
         // 3. Enrich with Items (Fetch for ALL 20 orders - limit is safe)
-        const enrichedOrders = await Promise.all(orders.map(async (order: any) => {
+        // 3. Enrich with Items (Sequential Fetch to avoid Rate Limiting)
+        // Rate limits are often tight (e.g. 5 req/sec). Promise.all bursts too hard.
+        const enrichedOrders = []
+        for (const order of orders) {
             try {
+                // Formatting helper for logs
+                const oid = order.order_id
+
                 const itemTimestamp = new Date().getTime()
                 const itemParams: Record<string, any> = {
                     app_key: appKey,
                     access_token: tokenData.access_token,
                     timestamp: itemTimestamp,
                     sign_method: 'sha256',
-                    order_id: order.order_id
+                    order_id: oid
                 }
                 itemParams.sign = signRequest('/order/items/get', itemParams, appSecret)
 
+                // Small delay to be nice to the API (50ms)
+                await new Promise(resolve => setTimeout(resolve, 50))
+
                 const itemRes = await axios.get(`${apiUrl}/order/items/get`, { params: itemParams })
-                return {
+
+                const items = itemRes.data.data || []
+                // Debug log to verify we are getting data
+                // console.log(`[DarazSync] Items for ${oid}: ${items.length} found. Statuses: ${items.map((i:any) => i.status).join(',')}`)
+
+                enrichedOrders.push({
                     ...order,
-                    store_id: storeId, // Inject store_id for frontend
-                    items_detail: itemRes.data.data || []
-                }
+                    store_id: storeId,
+                    items_detail: items
+                })
             } catch (err) {
                 console.error(`Error fetching items for order ${order.order_id}`, err)
-                return { ...order, store_id: storeId, items_detail: [] } // Fail gracefully
+                // Fail gracefully but keep order
+                enrichedOrders.push({ ...order, store_id: storeId, items_detail: [] })
             }
-        }))
+        }
 
         // No need to slice/combine anymore since we try map all
         const finalOrders = enrichedOrders
@@ -128,6 +175,7 @@ export async function GET(request: NextRequest) {
             const { data: products } = await supabase
                 .from('products')
                 .select('id, seller_sku1, seller_sku2, seller_sku3, seller_sku4, product_name, seller_account')
+                .limit(10000)
 
             // Fetch Sync Settings (Cutoff Date) - with safety check
             let cutoffDate: Date | null = null
@@ -146,13 +194,17 @@ export async function GET(request: NextRequest) {
                 // Ignore error, proceed with null cutoff
             }
 
-            // Map for quick lookup: SKU -> Product
+            // Map for quick lookup: SKU -> Product AND Name -> Product
             const skuMap = new Map<string, any>()
+            const nameMap = new Map<string, any>()
+
             products?.forEach(p => {
                 if (p.seller_sku1) skuMap.set(p.seller_sku1.toLowerCase(), p)
                 if (p.seller_sku2) skuMap.set(p.seller_sku2.toLowerCase(), p)
                 if (p.seller_sku3) skuMap.set(p.seller_sku3.toLowerCase(), p)
                 if (p.seller_sku4) skuMap.set(p.seller_sku4.toLowerCase(), p)
+
+                if (p.product_name) nameMap.set(p.product_name.toLowerCase().trim(), p)
             })
 
             // B. Batch fetch ALL existing orders to avoid N queries in the loop
@@ -184,18 +236,21 @@ export async function GET(request: NextRequest) {
 
             // C. Process each order
             for (const o of finalOrders) {
-                const status = (o.statuses?.[0] || o.status || 'pending').toLowerCase()
+                // Use priority logic
+                // Ensure we look at ALL statuses provided (Order Level + Item Level)
+                const itemStatuses = o.items_detail?.map((i: any) => i.status).filter(Boolean) || []
+                const orderStatuses = o.statuses || (o.status ? [o.status] : [])
+
+                // Combine and Deduplicate
+                const allStatuses = Array.from(new Set([...orderStatuses, ...itemStatuses]))
+
+                const salesStatus = getProminentStatus(allStatuses)
+
+                // Get the 'main' raw status just for other checks if needed, but salesStatus drives logic
+                const status = orderStatuses[0]?.toLowerCase() || 'pending'
+
                 const orderId = String(o.order_id)
                 const orderDate = new Date(o.created_at)
-
-                // Logic: "Pending - Pending, Packed, Ready to ship" -> Sales "Pending"
-                let salesStatus = 'Pending'
-                if (['packed'].includes(status)) salesStatus = 'Packed'
-                if (['ready_to_ship'].includes(status)) salesStatus = 'Ready to Ship'
-                if (['shipped'].includes(status)) salesStatus = 'Shipped'
-                if (['delivered', 'completed'].includes(status)) salesStatus = 'Delivered'
-                if (['failed', 'returned'].includes(status)) salesStatus = status === 'returned' ? 'Customer Return' : 'Failed Delivered'
-                if (['canceled'].includes(status)) salesStatus = 'Cancel'
 
                 // Rule: "Did not add Canceled and Unpaid"
                 // But we must check if we need to UPDATE an existing one to 'Cancel' or DELETE/IGNORE 'Unpaid'.
@@ -272,7 +327,7 @@ export async function GET(request: NextRequest) {
                 // Common Payload
                 const commonPayload: any = {
                     order_status: salesStatus,
-                    statuses: o.statuses || (o.status ? [o.status] : []),
+                    statuses: allStatuses, // SAVE the combined statuses so repairs work later
                     daraz_updated_at: o.updated_at,
                     synced_at: new Date().toISOString(),
                     updated_at: new Date().toISOString(),
@@ -301,7 +356,11 @@ export async function GET(request: NextRequest) {
                 if (salesStatus === 'Shipped') commonPayload.shipped_at = eventTime
                 if (salesStatus === 'Delivered') commonPayload.delivered_at = eventTime
                 if (salesStatus === 'Failed Delivered') commonPayload.failed_delivered_at = eventTime
-                if (salesStatus === 'Customer Return') commonPayload.customer_returned_at = eventTime
+                if (salesStatus === 'Delivery Failed') commonPayload.delivery_failed_at = eventTime
+                if (salesStatus === 'Customer Return') commonPayload.customer_return_at = eventTime
+                if (salesStatus === 'Returning To Seller') commonPayload.returning_to_seller_at = eventTime
+                if (salesStatus === 'Customer Return Delivered') commonPayload.customer_return_delivered_at = eventTime
+                if (salesStatus === 'Cancel' || salesStatus === 'Cancelled') commonPayload.cancelled_at = eventTime
 
 
                 // If matched by ID or Order Number, Update it
@@ -327,6 +386,14 @@ export async function GET(request: NextRequest) {
                         .eq('id', existingOrderObj.id)
                         .select()
                         .single()
+
+                    if (error) {
+                        console.error(`[DarazSync] Failed to update order ${orderId}:`, error)
+                    } else if (data) {
+                        if (data.order_status !== salesStatus) {
+                            console.warn(`[DarazSync] WARNING: Update success but status mismatch for ${orderId}. Expected ${salesStatus}, got ${data.order_status}. Trigger logic?`)
+                        }
+                    }
 
                     savedOrder = data
                     upsertError = error
@@ -396,7 +463,18 @@ export async function GET(request: NextRequest) {
                     const shopSku = item.shop_sku || item.ShopSku || ''
                     const sku = item.sku || item.Sku || ''
                     const itemStatus = item.status || 'pending'
-                    const matchedProduct = skuMap.get(sku.toLowerCase()) || skuMap.get(shopSku.toLowerCase())
+                    const itemName = (item.name || '').toLowerCase().trim()
+
+                    // Try Match: SKU -> Name
+                    let matchedProduct = skuMap.get(sku.toLowerCase()) || skuMap.get(shopSku.toLowerCase())
+                    if (!matchedProduct && itemName) {
+                        matchedProduct = nameMap.get(itemName)
+                    }
+
+                    // Debug log for Name Match
+                    if (matchedProduct && !skuMap.get(sku.toLowerCase())) {
+                        console.log(`[DarazSync] Matched via Name: ${itemName} -> ID ${matchedProduct.id}`)
+                    }
 
                     orderItemsPayload.push({
                         order_id: savedOrder.id,
@@ -431,8 +509,22 @@ export async function GET(request: NextRequest) {
                 (o as any).invoice_number = invoiceNumber;
                 (o as any).is_synced_to_sales = true
 
+                // ==========================================
+                // AUTO-SYNC FINANCE & COST (New Feature)
+                // ==========================================
+                if (effectiveShouldSync && salesStatus === 'Delivered') {
+                    try {
+                        console.log(`[DarazSync] Auto-syncing finance for Delivered order ${o.order_number}...`)
+                        await syncOrderPurchaseCost(String(o.order_number))
+                    } catch (syncErr) {
+                        console.error(`[DarazSync] Auto-sync finance failed for ${o.order_number}:`, syncErr)
+                    }
+                }
+                // ==========================================
+
             }
         }
+
 
         return NextResponse.json({ orders: finalOrders, count: response.data.data?.count || finalOrders.length })
 

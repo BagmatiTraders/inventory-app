@@ -6,7 +6,7 @@ import { getDarazOrders, getDarazOrderById, deleteDarazOrder, updateDarazOrderSt
 import { syncOrderStatusesFromDarazData } from '@/features/sales/actions/daraz-sync-status'
 import { getUserRole, getUserDeletionStats, createDeletionRequest, softDeleteOrder } from '@/features/sales/actions/daraz-deletion-actions'
 import { getOnlineStores } from '@/features/settings/actions/settingsActions'
-import { Search, Plus, Upload, Download, Printer, List, X, ArrowLeft, Trash2, Clock, RefreshCw, Filter, FileX } from 'lucide-react'
+import { Search, Plus, Upload, Download, Printer, List, X, ArrowLeft, Trash2, Clock, RefreshCw, Filter, FileX, ChevronUp, ChevronDown } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Card } from '@/components/ui-shim'
@@ -14,6 +14,7 @@ import { AddDarazOrderModal } from '@/features/sales/components/AddDarazOrderMod
 import { ImportDarazOrdersModal } from '@/features/sales/components/ImportDarazOrdersModal'
 import { DeletionReasonModal } from '@/features/sales/components/DeletionReasonModal'
 import { AdminDeleteConfirm } from '@/features/sales/components/AdminDeleteConfirm'
+import { AuditTrailHover } from '@/features/sales/components/AuditTrailHover'
 // DarazInvoice removed
 
 import { toast } from 'sonner'
@@ -37,6 +38,7 @@ export default function DarazSalesEntryPage() {
     const [deletionModal, setDeletionModal] = useState<{ isOpen: boolean, order: any | null }>({ isOpen: false, order: null })
     const [adminDeleteModal, setAdminDeleteModal] = useState<{ isOpen: boolean, order: any | null }>({ isOpen: false, order: null })
     const [isSubmittingDeletion, setIsSubmittingDeletion] = useState(false)
+
 
     const queryClient = useQueryClient()
 
@@ -138,13 +140,22 @@ export default function DarazSalesEntryPage() {
     const handleSyncOrders = async () => {
         setIsSyncingOrders(true)
         try {
-            // Simply refetch all data from the database
-            // The Order Sync page should have already updated statuses when it synced from Daraz API
+
+            // 1. Trigger Status Sync Logic (Fix mismatches between Raw JSON and Status Column)
+            const syncResult = await syncOrderStatusesFromDarazData()
+            if (syncResult.success && syncResult.updated > 0) {
+                toast.success(syncResult.message)
+            } else if (syncResult.success && syncResult.updated === 0) {
+                // constant feedback might be annoying, but good for confirmation
+                console.log(syncResult.message)
+            }
+
+            // 2. Refetch queries
             await queryClient.refetchQueries({ queryKey: ['daraz-orders'] })
             await queryClient.refetchQueries({ queryKey: ['daraz-order-stats'] })
 
             toast.success('Orders refreshed successfully', {
-                description: 'Showing latest data from database'
+                description: 'Latest statuses synchronized.'
             })
         } catch (error: any) {
             toast.error(error.message || 'Failed to refresh orders')
@@ -352,8 +363,12 @@ export default function DarazSalesEntryPage() {
             'cancelled': 5,
             'delivered': 6,
             'failed delivery': 7,
+            'delivery failed': 7,
+            'fail delivered': 7,
+            'returning to seller': 7,
             'customer return': 8,
-            'returned': 8
+            'returned': 8,
+            'customer return delivered': 9
         }
 
         const getStatusRank = (status: string) => statusPriority[status.toLowerCase()] || 99
@@ -368,7 +383,7 @@ export default function DarazSalesEntryPage() {
 
         // 2. Sort Groups by Order Count (Descending) - Largest group first
         const sortedKeys = Object.keys(groups).sort((a, b) => {
-            return groups[b].length - groups[a].length
+            return (groups[b]?.length || 0) - (groups[a]?.length || 0)
         })
 
         // 3. Sort Orders within Groups
@@ -389,6 +404,111 @@ export default function DarazSalesEntryPage() {
         }))
     }, [orders])
 
+    /* REMOVED: Navigation code that used deleted currentGroupIndex state
+    // Sync current group index on scroll (Placed here so groupedOrders is defined)
+    useEffect(() => {
+        const handleScroll = () => {
+            const headerOffset = 180 // Increased offset for safety
+ 
+            // Find the group that is currently at the top of the viewport
+            let activeIndex = 0
+ 
+            for (let i = 0; i < groupedOrders.length; i++) {
+                const element = document.getElementById(`group-${i}`)
+                if (element) {
+                    const rect = element.getBoundingClientRect()
+                    // If the top of the element is visible or above the viewport, 
+                    // and the bottom is still in view (or it's the last one)
+                    if (rect.top <= headerOffset + 50) {
+                        activeIndex = i
+                    }
+                }
+            }
+ 
+            setCurrentGroupIndex(activeIndex)
+        }
+ 
+        window.addEventListener('scroll', handleScroll, { passive: true })
+        return () => window.removeEventListener('scroll', handleScroll)
+    }, [groupedOrders.length])
+    */
+
+    /* REMOVED: handleNextGroup function
+    const handleNextGroup = () => {
+        const headerOffset = 150 // Approx header height + sticky group header
+        let targetIndex = -1
+ 
+        // Find the FIRST group that starts BELOW the current header line
+        for (let i = 0; i < groupedOrders.length; i++) {
+            const element = document.getElementById(`group-${i}`)
+            if (element) {
+                const rect = element.getBoundingClientRect()
+                // If this group's top is reasonably below the header, it's our target
+                // We use a small buffer (+10) to avoid selecting the current one if it's just barely aligned
+                if (rect.top > headerOffset + 10) {
+                    targetIndex = i
+                    break
+                }
+            }
+        }
+ 
+        // If no group is below (e.g. we are at the last one), do nothing or strictly +1 if valid
+        if (targetIndex === -1 && currentGroupIndex < groupedOrders.length - 1) {
+            targetIndex = currentGroupIndex + 1
+        }
+ 
+        if (targetIndex !== -1) {
+            const element = document.getElementById(`group-${targetIndex}`)
+            if (element) {
+                const elementPosition = element.getBoundingClientRect().top
+                const offsetPosition = elementPosition + window.scrollY - headerOffset
+                window.scrollTo({
+                    top: offsetPosition,
+                    behavior: 'smooth'
+                })
+                // No need to manually set index, the scroll listener will pick it up
+            }
+        }
+    }
+    */
+
+    /* REMOVED: handlePrevGroup function
+    const handlePrevGroup = () => {
+        const headerOffset = 150
+        let targetIndex = -1
+ 
+        // Find the LAST group that is ABOVE or AT the header line
+        // We want to go to the "Previous" visual block
+        // Best logic: Find the group currently at the top (activeIndex), and go to activeIndex - 1
+ 
+        // Let's re-calculate active index from DOM to be sure
+        let currentVisualIndex = 0
+        for (let i = 0; i < groupedOrders.length; i++) {
+            const element = document.getElementById(`group-${i}`)
+            if (element) {
+                const rect = element.getBoundingClientRect()
+                if (rect.top <= headerOffset + 50) {
+                    currentVisualIndex = i
+                }
+            }
+        }
+ 
+        targetIndex = currentVisualIndex - 1
+ 
+        if (targetIndex >= 0) {
+            const element = document.getElementById(`group-${targetIndex}`)
+            if (element) {
+                const elementPosition = element.getBoundingClientRect().top
+                const offsetPosition = elementPosition + window.scrollY - headerOffset
+                window.scrollTo({
+                    top: offsetPosition,
+                    behavior: 'smooth'
+                })
+            }
+        }
+    }
+    */
+
     const getStatusColor = (status: string) => {
         const s = status.toLowerCase()
         if (s === 'pending') return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'
@@ -398,7 +518,7 @@ export default function DarazSalesEntryPage() {
         if (s === 'delivered') return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
         if (s === 'cancel' || s === 'cancelled') return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' // Red as requested
         if (s.includes('return')) return 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200'
-        if (s.includes('fail')) return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
+        if (s.includes('fail') || s.includes('delivery failed') || s === 'failed delivered') return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
         return 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200'
     }
 
@@ -416,7 +536,7 @@ export default function DarazSalesEntryPage() {
             {/* Compact Header */}
             <div className="z-10 bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 px-3 py-1.5 shadow-sm">
                 <div className="flex items-center justify-between gap-2 flex-wrap">
-                    <div>
+                    <div className="hidden md:block">
                         <h1 className="text-[17px] font-bold">Daraz Sales</h1>
                         <p className="text-[13px] text-gray-500 dark:text-gray-400">Sales Entry</p>
                     </div>
@@ -506,14 +626,17 @@ export default function DarazSalesEntryPage() {
                         className="px-2 py-1 text-[11px] border dark:border-zinc-700 rounded focus:ring-1 focus:ring-blue-500 dark:bg-zinc-800 dark:text-gray-200"
                     >
                         <option value="all">All Status</option>
+                        <option value="Unpaid">Unpaid</option>
                         <option value="Pending">Pending</option>
                         <option value="Packed">Packed</option>
                         <option value="Ready to Ship">Ready to Ship</option>
                         <option value="Shipped">Shipped</option>
                         <option value="Delivered">Delivered</option>
+                        <option value="Delivery Failed">Delivery Failed</option>
+                        <option value="Returning To Seller">Returning To Seller</option>
+                        <option value="Customer Return">Customer Return</option>
+                        <option value="Customer Return Delivered">Customer Return Delivered</option>
                         <option value="Cancelled">Cancelled</option>
-                        <option value="Returned">Returned</option>
-                        <option value="Failed Delivery">Failed Delivery</option>
                     </select>
 
                     {/* Awb Unprint Button */}
@@ -565,12 +688,12 @@ export default function DarazSalesEntryPage() {
 
                     <button
                         onClick={() => setIsImportModalOpen(true)}
-                        className="flex items-center gap-1 px-2 py-1 text-[11px] border dark:border-zinc-700 hover:bg-gray-50 dark:hover:bg-zinc-800 rounded transition-colors dark:text-gray-50 whitespace-nowrap"
+                        className="flex items-center gap-1 px-2 py-1 text-[11px] border dark:border-zinc-700 hover:bg-gray-50 dark:hover:bg-zinc-800 rounded transition-colors dark:text-gray-50 whitespace-nowrap hidden md:flex"
                     >
                         <Upload size={11} />
                         Import
                     </button>
-                    <button className="flex items-center gap-1 px-2 py-1 text-[11px] border dark:border-zinc-700 hover:bg-gray-50 dark:hover:bg-zinc-800 rounded transition-colors dark:text-gray-50 whitespace-nowrap">
+                    <button className="flex items-center gap-1 px-2 py-1 text-[11px] border dark:border-zinc-700 hover:bg-gray-50 dark:hover:bg-zinc-800 rounded transition-colors dark:text-gray-50 whitespace-nowrap hidden md:flex">
                         <Download size={11} />
                         Export
                     </button>
@@ -618,11 +741,16 @@ export default function DarazSalesEntryPage() {
                             className="px-2 py-0.5 text-[13px] border dark:border-zinc-700 rounded focus:ring-1 focus:ring-blue-500 dark:bg-zinc-800 dark:text-gray-50"
                         >
                             <option value="">Change Status...</option>
+                            <option value="Unpaid">Unpaid</option>
                             <option value="Pending">Pending</option>
+                            <option value="Packed">Packed</option>
+                            <option value="Ready to Ship">Ready to Ship</option>
                             <option value="Shipped">Shipped</option>
                             <option value="Delivered">Delivered</option>
-                            <option value="Failed Delivered">Failed Delivered</option>
+                            <option value="Returning to Seller">Returning to Seller</option>
+                            <option value="Returned Delivered">Returned Delivered</option>
                             <option value="Customer Return">Customer Return</option>
+                            <option value="Customer Return Delivered">Customer Return Delivered</option>
                             <option value="Cancel">Cancel</option>
                         </select>
                         <button
@@ -637,8 +765,8 @@ export default function DarazSalesEntryPage() {
             </div>
 
             {/* Orders Area - Grouped by Seller */}
-            <div className="flex-1 overflow-y-auto p-2">
-                {groupedOrders.map((group) => {
+            <div className="flex-1 overflow-y-auto p-2 pb-24">
+                {groupedOrders.map((group, groupIdx) => {
                     // Calculate stats for this group
                     const groupStats = group.orders.reduce((acc: any, order) => {
                         const status = order.order_status
@@ -658,17 +786,20 @@ export default function DarazSalesEntryPage() {
                     if (displayedOrders.length === 0) return null // Skip empty groups after filter
 
                     return (
-                        <div key={group.seller} className="mb-6">
+                        <div key={group.seller} id={`group-${groupIdx}`} className="mb-6 scroll-mt-32">
                             {/* Group Header */}
-                            <div className="flex items-center gap-2 mb-2 px-1 sticky top-0 z-10 bg-gray-50 dark:bg-zinc-900 py-1">
-                                <h3 className="text-sm font-bold text-gray-800 dark:text-gray-100 uppercase tracking-wide min-w-[150px]">
-                                    {group.seller}
-                                </h3>
-                                <div className="flex flex-wrap gap-2 items-center">
+                            <div className="flex flex-col gap-1 mb-2 px-1 sticky top-0 z-10 bg-gray-50 dark:bg-zinc-900 py-1">
+                                {/* Row 1: Name and Total */}
+                                <div className="flex items-center gap-2">
+                                    <h3 className="text-sm font-bold text-gray-800 dark:text-gray-100 uppercase tracking-wide min-w-fit">
+                                        {group.seller}
+                                    </h3>
                                     <span className="text-xs px-2 py-0.5 bg-white dark:bg-zinc-800 border dark:border-zinc-700 rounded-full text-gray-600 dark:text-gray-400 font-medium">
                                         Total: {group.orders.length}
                                     </span>
-                                    {/* Per Status Counts */}
+                                </div>
+                                {/* Row 2: Status Badges (Scrollable) */}
+                                <div className="flex items-center gap-2 overflow-x-auto whitespace-nowrap scrollbar-hide pb-1">
                                     {Object.entries(groupStats).map(([status, count]) => (
                                         <span key={status} className={`text-[11px] px-1.5 py-0.5 rounded border ${status === 'Pending' ? 'bg-yellow-50 text-yellow-700 border-yellow-200' :
                                             status === 'Packed' ? 'bg-indigo-50 text-indigo-700 border-indigo-200' :
@@ -687,19 +818,26 @@ export default function DarazSalesEntryPage() {
                                     <table className="w-full table-fixed border-collapse">
                                         <thead className="bg-gray-50 dark:bg-zinc-800 border-b dark:border-zinc-700">
                                             <tr>
-                                                <th className="px-1.5 py-1 text-left w-8">
-                                                    {/* Select All for Group could go here */}
+                                                <th className="hidden md:table-cell px-1.5 py-1 text-left w-8">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={orders.length > 0 && selectedOrders.length === orders.length}
+                                                        onChange={(e) => handleSelectAll(e.target.checked)}
+                                                        className="rounded text-blue-600 focus:ring-blue-500 dark:bg-zinc-700 dark:border-zinc-600 w-3.5 h-3.5"
+                                                        title="Select All Orders"
+                                                    />
                                                 </th>
                                                 <th className="px-1.5 py-1 text-left text-xs font-bold uppercase text-gray-900 dark:text-gray-100 w-10">SN</th>
-                                                <th className="px-1.5 py-1 text-left text-xs font-bold uppercase text-gray-900 dark:text-gray-100 w-22">Date</th>
-                                                <th className="px-1.5 py-1 text-left text-xs font-bold uppercase text-gray-900 dark:text-gray-100 w-28">Invoice</th>
-                                                <th className="px-1.5 py-1 text-left text-xs font-bold uppercase text-gray-900 dark:text-gray-100 w-32">Order#</th>
-                                                <th className="px-1.5 py-1 text-left text-xs font-bold uppercase text-gray-900 dark:text-gray-100 w-45">Customer</th>
-                                                <th className="px-1.5 py-1 text-left text-xs font-bold uppercase text-gray-900 dark:text-gray-100 w-64">Product</th>
-                                                <th className="px-1.5 py-1 text-right text-xs font-bold uppercase text-gray-900 dark:text-gray-100 w-16">Qty</th>
-                                                <th className="px-1.5 py-1 text-right text-xs font-bold uppercase text-gray-900 dark:text-gray-100 w-24">Amount</th>
-                                                <th className="px-1.5 py-1 text-left text-xs font-bold uppercase text-gray-900 dark:text-gray-100 w-24">Status</th>
-                                                <th className="px-1.5 py-1 text-center text-xs font-bold uppercase text-gray-900 dark:text-gray-100 w-29">Actions</th>
+                                                <th className="px-1.5 py-1 text-left text-xs font-bold uppercase text-gray-900 dark:text-gray-100 w-14 md:w-22">Date</th>
+                                                <th className="px-1.5 py-1 text-left text-xs font-bold uppercase text-gray-900 dark:text-gray-100 w-auto md:w-28">Invoice</th>
+                                                <th className="px-1.5 py-1 text-left text-xs font-bold uppercase text-gray-900 dark:text-gray-100 w-auto md:w-32">Order</th>
+                                                <th className="hidden md:table-cell px-1.5 py-1 text-left text-xs font-bold uppercase text-gray-900 dark:text-gray-100 w-45">Customer</th>
+                                                <th className="hidden md:table-cell px-1.5 py-1 text-left text-xs font-bold uppercase text-gray-900 dark:text-gray-100 w-48">Product</th>
+                                                <th className="hidden md:table-cell px-1.5 py-1 text-left text-xs font-bold uppercase text-gray-900 dark:text-gray-100 w-20">Product ID</th>
+                                                <th className="hidden md:table-cell px-1.5 py-1 text-right text-xs font-bold uppercase text-gray-900 dark:text-gray-100 w-16">Qty</th>
+                                                <th className="hidden md:table-cell px-1.5 py-1 text-right text-xs font-bold uppercase text-gray-900 dark:text-gray-100 w-24">Amount</th>
+                                                <th className="hidden md:table-cell px-1.5 py-1 text-left text-xs font-bold uppercase text-gray-900 dark:text-gray-100 w-24">Status</th>
+                                                <th className="hidden md:table-cell px-1.5 py-1 text-center text-xs font-bold uppercase text-gray-900 dark:text-gray-100 w-29">Actions</th>
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-gray-200 dark:divide-zinc-700">
@@ -708,7 +846,7 @@ export default function DarazSalesEntryPage() {
                                                     key={order.id}
                                                     className={getRowClass(order)}
                                                 >
-                                                    <td className="px-1.5 py-0.5">
+                                                    <td className="hidden md:table-cell px-1.5 py-0.5">
                                                         <input
                                                             type="checkbox"
                                                             checked={selectedOrders.includes(order.id)}
@@ -716,9 +854,12 @@ export default function DarazSalesEntryPage() {
                                                             className="rounded text-blue-600 focus:ring-blue-500 dark:bg-zinc-700 dark:border-zinc-600 w-3.5 h-3.5"
                                                         />
                                                     </td>
-                                                    <td className="px-1.5 py-0.5 text-sm text-gray-700 dark:text-gray-300">{idx + 1}</td>
-                                                    <td className="px-1.5 py-0.5 text-sm text-gray-700 dark:text-gray-300">{new Date(order.order_date).toLocaleDateString('en-GB')}</td>
-                                                    <td className="px-1.5 py-0.5">
+                                                    <td className="px-1.5 py-0.5 text-sm text-gray-700 dark:text-gray-300 align-top md:align-middle">{idx + 1}</td>
+                                                    <td className="px-1.5 py-0.5 text-sm text-gray-700 dark:text-gray-300 align-top md:align-middle">
+                                                        <span className="md:hidden font-medium">{new Date(order.order_date).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit' })}</span>
+                                                        <span className="hidden md:inline">{new Date(order.order_date).toLocaleDateString('en-GB')}</span>
+                                                    </td>
+                                                    <td className="px-1.5 py-0.5 align-top md:align-middle">
                                                         <button
                                                             onClick={() => router.push(`/dashboard/sales/daraz/order/${order.id}`)}
                                                             onMouseEnter={() => queryClient.prefetchQuery({
@@ -727,28 +868,59 @@ export default function DarazSalesEntryPage() {
                                                             })}
                                                             className="text-[13px] font-mono text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 hover:underline cursor-pointer"
                                                         >
-                                                            {order.invoice_number}
+                                                            <span className="md:hidden">{order.invoice_number?.slice(-5)}</span>
+                                                            <span className="hidden md:inline">{order.invoice_number}</span>
                                                         </button>
                                                     </td>
-                                                    <td className="px-1.5 py-0.5 text-sm text-gray-700 dark:text-gray-300">
-                                                        {order.order_number}
-                                                        {highlightedDuplicates.includes(order.id) && (
-                                                            <span className="ml-1 text-red-600 text-xs font-bold" title="Duplicate">⚠️</span>
-                                                        )}
+                                                    <td className="px-1.5 py-0.5 text-sm text-gray-700 dark:text-gray-300 align-top md:align-middle">
+                                                        {/* Desktop View */}
+                                                        <div className="hidden md:block">
+                                                            {order.order_number}
+                                                            {highlightedDuplicates.includes(order.id) && (
+                                                                <span className="ml-1 text-red-600 text-xs font-bold" title="Duplicate">⚠️</span>
+                                                            )}
+                                                        </div>
+
+                                                        {/* Mobile Merged View (3 Rows) */}
+                                                        <div className="md:hidden flex flex-col gap-0.5">
+                                                            {/* Row 1: Order # */}
+                                                            <div className="font-bold text-[13px] break-all">
+                                                                #{order.order_number}
+                                                            </div>
+                                                            {/* Row 2: Qty • Price */}
+                                                            <div className="text-[11px] font-medium text-gray-600 dark:text-gray-400">
+                                                                {order.total_quantity} • Rs. {order.grand_total?.toLocaleString()}
+                                                            </div>
+                                                            {/* Row 3: Status */}
+                                                            <div>
+                                                                <AuditTrailHover order={order}>
+                                                                    <span className={`px-1.5 py-0.5 text-[10px] font-bold uppercase rounded ${getStatusColor(order.order_status)} inline-block`}>
+                                                                        {order.order_status}
+                                                                    </span>
+                                                                </AuditTrailHover>
+                                                            </div>
+                                                        </div>
                                                     </td>
-                                                    <td className={`px-1.5 py-0.5 text-sm truncate ${getCustomerClass(order.customer_name, order.order_date)}`} title={order.customer_name}>{order.customer_name}</td>
-                                                    <td className={`px-1.5 py-0.5 text-sm truncate ${order.first_product_name === 'Product Not Found' ? 'text-red-600 dark:text-red-400 font-bold' : 'text-gray-700 dark:text-gray-300'}`} title={order.first_product_name}>
+                                                    <td className={`hidden md:table-cell px-1.5 py-0.5 text-sm truncate ${getCustomerClass(order.customer_name, order.order_date)}`} title={order.customer_name}>{order.customer_name}</td>
+                                                    <td className={`hidden md:table-cell px-1.5 py-0.5 text-sm truncate ${order.first_product_name === 'Product Not Found' ? 'text-red-600 dark:text-red-400 font-bold' : 'text-gray-700 dark:text-gray-300'}`} title={order.first_product_name}>
                                                         {order.first_product_name}
                                                         {order.item_count > 1 && <span className="text-gray-500 dark:text-gray-400 text-xs"> +{order.item_count - 1} Product{order.item_count - 1 > 1 ? 's' : ''}</span>}
                                                     </td>
-                                                    <td className="px-1.5 py-0.5 text-sm text-right text-gray-700 dark:text-gray-300">{order.total_quantity}</td>
-                                                    <td className="px-1.5 py-0.5 text-sm text-right font-medium text-gray-700 dark:text-gray-300">Rs. {order.grand_total?.toLocaleString()}</td>
-                                                    <td className="px-1.5 py-0.5">
-                                                        <span className={`px-1 py-0.5 text-xs font-medium rounded ${getStatusColor(order.order_status)}`}>
-                                                            {order.order_status}
-                                                        </span>
+                                                    <td className="hidden md:table-cell px-1.5 py-0.5 text-sm text-gray-600 dark:text-gray-400">
+                                                        {order.first_product_code ? `#${order.first_product_code}` : '-'}
                                                     </td>
-                                                    <td className="px-1.5 py-0.5">
+                                                    <td className="hidden md:table-cell px-1.5 py-0.5 text-sm text-right text-gray-700 dark:text-gray-300">{order.total_quantity}</td>
+                                                    <td className="hidden md:table-cell px-1.5 py-0.5 text-sm text-right font-medium text-gray-700 dark:text-gray-300">
+                                                        <span>Rs. {order.grand_total?.toLocaleString()}</span>
+                                                    </td>
+                                                    <td className="hidden md:table-cell px-1.5 py-0.5">
+                                                        <AuditTrailHover order={order}>
+                                                            <span className={`px-1 py-0.5 text-xs font-medium rounded ${getStatusColor(order.order_status)}`}>
+                                                                {order.order_status}
+                                                            </span>
+                                                        </AuditTrailHover>
+                                                    </td>
+                                                    <td className="hidden md:table-cell px-1.5 py-0.5">
                                                         <div className="flex items-center justify-center gap-0.5">
                                                             <button
                                                                 onClick={() => window.open(`/print/daraz-invoice/${order.id}`, '_blank')}
@@ -845,10 +1017,8 @@ export default function DarazSalesEntryPage() {
                 isDeleting={isSubmittingDeletion}
             />
 
-
-
-
         </div >
     )
 }
+
 
