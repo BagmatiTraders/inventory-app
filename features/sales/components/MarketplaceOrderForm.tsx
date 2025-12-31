@@ -226,117 +226,115 @@ export function MarketplaceOrderForm({ onSuccess, onCancel, initialData }: Marke
     }
 
     return (
-        <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Row 1: Date, Customer Name, Phone Number */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <div>
-                    <label className="block text-xs font-medium mb-1">
-                        Date <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                        type="date"
-                        value={orderDate}
-                        onChange={(e) => setOrderDate(e.target.value)}
-                        className="w-full px-2.5 py-1.5 text-sm border dark:border-zinc-700 rounded-md focus:ring-2 focus:ring-blue-500 dark:bg-zinc-900"
-                        required
-                    />
-                </div>
-
-                <div>
-                    <label className="block text-xs font-medium mb-1">
-                        Customer Name <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                        type="text"
-                        value={customerName}
-                        onChange={(e) => setCustomerName(e.target.value)}
-                        className="w-full px-2.5 py-1.5 text-sm border dark:border-zinc-700 rounded-md focus:ring-2 focus:ring-blue-500 dark:bg-zinc-900"
-                        placeholder="Enter customer name"
-                        required
-                    />
-                </div>
-
-                <div>
-                    <label className="block text-xs font-medium mb-1">
-                        Phone Number <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                        type="text"
-                        value={phoneNumber}
-                        onChange={(e) => {
-                            const value = e.target.value.replace(/\D/g, '').slice(0, 10)
-                            setPhoneNumber(value)
-                        }}
-                        className="w-full px-2.5 py-1.5 text-sm border dark:border-zinc-700 rounded-md focus:ring-2 focus:ring-blue-500 dark:bg-zinc-900"
-                        placeholder="10 digit number"
-                        maxLength={10}
-                        required
-                    />
-                </div>
+        <form onSubmit={handleSubmit} className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {/* Row 1: Date, Sales ID */}
+            <div className="col-span-1">
+                <label className="block text-xs font-medium mb-1">
+                    Date <span className="text-red-500">*</span>
+                </label>
+                <input
+                    type="date"
+                    value={orderDate}
+                    onChange={(e) => setOrderDate(e.target.value)}
+                    className="w-full px-2.5 py-1.5 text-sm border dark:border-zinc-700 rounded-md focus:ring-2 focus:ring-blue-500 dark:bg-zinc-900"
+                    required
+                />
             </div>
 
-            {/* Row 2: Sales ID (auto), Address, Delivery Branch, Branch Charge */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-                <div>
-                    <label className="block text-xs font-medium mb-1">
-                        Sales ID
-                    </label>
-                    <input
-                        type="text"
-                        value={initialData?.sales_id || "Auto-generated"}
-                        disabled
-                        className="w-full px-2.5 py-1.5 text-sm bg-gray-100 dark:bg-zinc-800 border dark:border-zinc-700 rounded-md text-gray-500 cursor-not-allowed"
-                    />
-                </div>
+            <div className="col-span-1">
+                <label className="block text-xs font-medium mb-1">
+                    Sales ID
+                </label>
+                <input
+                    type="text"
+                    value={initialData?.sales_id || "Auto-generated"}
+                    disabled
+                    className="w-full px-2.5 py-1.5 text-sm bg-gray-100 dark:bg-zinc-800 border dark:border-zinc-700 rounded-md text-gray-500 cursor-not-allowed"
+                />
+            </div>
 
-                <div>
-                    <label className="block text-xs font-medium mb-1">
-                        Address
-                    </label>
-                    <input
-                        type="text"
-                        value={address}
-                        onChange={(e) => setAddress(e.target.value)}
-                        className="w-full px-2.5 py-1.5 text-sm border dark:border-zinc-700 rounded-md focus:ring-2 focus:ring-blue-500 dark:bg-zinc-900"
-                        placeholder="Customer address"
-                    />
-                </div>
+            {/* Row 2: Customer Name, Phone Number */}
+            <div className="col-span-1 md:col-span-2">
+                <label className="block text-xs font-medium mb-1">
+                    Customer Name <span className="text-red-500">*</span>
+                </label>
+                <input
+                    type="text"
+                    value={customerName}
+                    onChange={(e) => setCustomerName(e.target.value)}
+                    className="w-full px-2.5 py-1.5 text-sm border dark:border-zinc-700 rounded-md focus:ring-2 focus:ring-blue-500 dark:bg-zinc-900"
+                    placeholder="Enter customer name"
+                    required
+                />
+            </div>
 
-                <div>
-                    <label className="block text-xs font-medium mb-1">
-                        Delivery Branch
-                    </label>
-                    <Select
-                        options={branchOptions}
-                        value={branchOptions.find(b => b.value === deliveryBranchId)}
-                        onChange={handleBranchSelect}
-                        className="text-sm"
-                        classNamePrefix="select"
-                        placeholder="Select branch..."
-                        isClearable
-                    />
-                </div>
+            <div className="col-span-1 md:col-span-2">
+                <label className="block text-xs font-medium mb-1">
+                    Phone Number <span className="text-red-500">*</span>
+                </label>
+                <input
+                    type="text"
+                    value={phoneNumber}
+                    onChange={(e) => {
+                        const value = e.target.value.replace(/\D/g, '').slice(0, 10)
+                        setPhoneNumber(value)
+                    }}
+                    className="w-full px-2.5 py-1.5 text-sm border dark:border-zinc-700 rounded-md focus:ring-2 focus:ring-blue-500 dark:bg-zinc-900"
+                    placeholder="10 digit number"
+                    maxLength={10}
+                    required
+                />
+            </div>
 
-                <div>
-                    <label className="block text-xs font-medium mb-1">
-                        Branch Charge
-                    </label>
-                    <input
-                        type="number"
-                        value={branchCharge}
-                        disabled
-                        className="w-full px-2.5 py-1.5 text-sm bg-gray-100 dark:bg-zinc-800 border dark:border-zinc-700 rounded-md text-gray-500 cursor-not-allowed"
-                    />
-                </div>
+            {/* Row 3: Address */}
+            <div className="col-span-2 md:col-span-4">
+                <label className="block text-xs font-medium mb-1">
+                    Address
+                </label>
+                <input
+                    type="text"
+                    value={address}
+                    onChange={(e) => setAddress(e.target.value)}
+                    className="w-full px-2.5 py-1.5 text-sm border dark:border-zinc-700 rounded-md focus:ring-2 focus:ring-blue-500 dark:bg-zinc-900"
+                    placeholder="Customer address"
+                />
+            </div>
+
+            {/* Row 4: Delivery Branch, Branch Charge */}
+            <div className="col-span-1 md:col-span-2">
+                <label className="block text-xs font-medium mb-1">
+                    Delivery Branch
+                </label>
+                <Select
+                    options={branchOptions}
+                    value={branchOptions.find(b => b.value === deliveryBranchId)}
+                    onChange={handleBranchSelect}
+                    className="text-sm"
+                    classNamePrefix="select"
+                    placeholder="Select branch..."
+                    isClearable
+                />
+            </div>
+
+            <div className="col-span-1 md:col-span-2">
+                <label className="block text-xs font-medium mb-1">
+                    Branch Charge
+                </label>
+                <input
+                    type="number"
+                    value={branchCharge}
+                    disabled
+                    className="w-full px-2.5 py-1.5 text-sm bg-gray-100 dark:bg-zinc-800 border dark:border-zinc-700 rounded-md text-gray-500 cursor-not-allowed"
+                />
             </div>
 
             {/* Product Items */}
-            <div className="border dark:border-zinc-700 rounded-lg p-3 bg-blue-50 dark:bg-blue-900/10">
+            <div className="col-span-2 md:col-span-4 border dark:border-zinc-700 rounded-lg p-3 bg-blue-50 dark:bg-blue-900/10">
                 <h3 className="text-sm font-medium mb-3">Order Items</h3>
 
                 {orderItems.map((item, index) => (
-                    <div key={index} className="flex items-end gap-2 mb-3">
-                        <div className="flex-1">
+                    <div key={index} className="grid grid-cols-2 gap-3 mb-4 pb-4 border-b dark:border-zinc-700 last:border-0 last:pb-0">
+                        <div className="col-span-2">
                             <label className="block text-xs font-medium mb-1">
                                 Product Name <span className="text-red-500">*</span>
                             </label>
@@ -357,7 +355,7 @@ export function MarketplaceOrderForm({ onSuccess, onCancel, initialData }: Marke
                             />
                         </div>
 
-                        <div className="w-24">
+                        <div className="col-span-1">
                             <label className="block text-xs font-medium mb-1">
                                 Qty <span className="text-red-500">*</span>
                             </label>
@@ -370,105 +368,102 @@ export function MarketplaceOrderForm({ onSuccess, onCancel, initialData }: Marke
                             />
                         </div>
 
-                        <div className="w-32">
+                        <div className="col-span-1">
                             <label className="block text-xs font-medium mb-1">
                                 Amount <span className="text-red-500">*</span>
                             </label>
-                            <input
-                                type="number"
-                                min="0"
-                                step="0.01"
-                                value={item.amount}
-                                onChange={(e) => handleItemChange(index, 'amount', parseFloat(e.target.value) || 0)}
-                                className="w-full px-2.5 py-1.5 text-sm border dark:border-zinc-700 rounded-md focus:ring-2 focus:ring-blue-500 dark:bg-zinc-900 bg-white"
-                            />
+                            <div className="flex gap-2">
+                                <input
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    value={item.amount}
+                                    onChange={(e) => handleItemChange(index, 'amount', parseFloat(e.target.value) || 0)}
+                                    className="w-full px-2.5 py-1.5 text-sm border dark:border-zinc-700 rounded-md focus:ring-2 focus:ring-blue-500 dark:bg-zinc-900 bg-white"
+                                />
+                                <button
+                                    type="button"
+                                    onClick={() => handleRemoveItem(index)}
+                                    disabled={orderItems.length === 1}
+                                    className="px-2 py-1.5 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    <X size={16} />
+                                </button>
+                            </div>
                         </div>
-
-                        <button
-                            type="button"
-                            onClick={() => handleRemoveItem(index)}
-                            disabled={orderItems.length === 1}
-                            className="px-2 py-1.5 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                            <X size={16} />
-                        </button>
                     </div>
                 ))}
 
                 <button
                     type="button"
                     onClick={handleAddItem}
-                    className="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded flex items-center gap-1"
+                    className="w-full mt-2 px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded flex items-center justify-center gap-1"
                 >
                     <Plus size={14} />
                     Add Product
                 </button>
             </div>
 
-            {/* Row 4: Delivery Charge, Total Amount */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div>
-                    <label className="block text-xs font-medium mb-1">
-                        Delivery Charge
-                    </label>
-                    <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={deliveryCharge}
-                        onChange={(e) => setDeliveryCharge(parseFloat(e.target.value) || 0)}
-                        className="w-full px-2.5 py-1.5 text-sm border dark:border-zinc-700 rounded-md focus:ring-2 focus:ring-blue-500 dark:bg-zinc-900"
-                    />
-                </div>
-
-                <div>
-                    <label className="block text-xs font-medium mb-1">
-                        Total Amount
-                    </label>
-                    <input
-                        type="text"
-                        value={`Rs ${totalAmount.toFixed(2)}`}
-                        disabled
-                        className="w-full px-2.5 py-1.5 text-sm font-bold bg-gray-100 dark:bg-zinc-800 border dark:border-zinc-700 rounded-md text-gray-900 dark:text-gray-100"
-                    />
-                </div>
+            {/* Next Row: Delivery Charge, Total Amount, Order Status */}
+            <div className="col-span-1 md:col-span-1">
+                <label className="block text-xs font-medium mb-1">
+                    Delivery Charge
+                </label>
+                <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={deliveryCharge}
+                    onChange={(e) => setDeliveryCharge(parseFloat(e.target.value) || 0)}
+                    className="w-full px-2.5 py-1.5 text-sm border dark:border-zinc-700 rounded-md focus:ring-2 focus:ring-blue-500 dark:bg-zinc-900"
+                />
             </div>
 
-            {/* Row 5: Order Status, Remarks */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div>
-                    <label className="block text-xs font-medium mb-1">
-                        Order Status
-                    </label>
-                    <select
-                        value={orderStatus}
-                        onChange={(e) => setOrderStatus(e.target.value)}
-                        className="w-full px-2.5 py-1.5 text-sm border dark:border-zinc-700 rounded-md focus:ring-2 focus:ring-blue-500 dark:bg-zinc-900"
-                    >
-                        <option value="Pending">Pending</option>
-                        <option value="Shipped">Shipped</option>
-                        <option value="Delivered">Delivered</option>
-                        <option value="Fail Delivered">Fail Delivered</option>
-                        <option value="Cancel">Cancel</option>
-                    </select>
-                </div>
+            <div className="col-span-1 md:col-span-1">
+                <label className="block text-xs font-medium mb-1">
+                    Total Amount
+                </label>
+                <input
+                    type="text"
+                    value={`Rs ${totalAmount.toFixed(2)}`}
+                    disabled
+                    className="w-full px-2.5 py-1.5 text-sm font-bold bg-gray-100 dark:bg-zinc-800 border dark:border-zinc-700 rounded-md text-gray-900 dark:text-gray-100"
+                />
+            </div>
 
-                <div>
-                    <label className="block text-xs font-medium mb-1">
-                        Remarks
-                    </label>
-                    <textarea
-                        value={remarks}
-                        onChange={(e) => setRemarks(e.target.value)}
-                        className="w-full px-2.5 py-1.5 text-sm border dark:border-zinc-700 rounded-md focus:ring-2 focus:ring-blue-500 dark:bg-zinc-900"
-                        rows={1}
-                        placeholder="Optional notes..."
-                    />
-                </div>
+            <div className="col-span-2 md:col-span-2">
+                <label className="block text-xs font-medium mb-1">
+                    Order Status
+                </label>
+                <select
+                    value={orderStatus}
+                    onChange={(e) => setOrderStatus(e.target.value)}
+                    className="w-full px-2.5 py-1.5 text-sm border dark:border-zinc-700 rounded-md focus:ring-2 focus:ring-blue-500 dark:bg-zinc-900"
+                >
+                    <option value="Pending">Pending</option>
+                    <option value="Shipped">Shipped</option>
+                    <option value="Delivered">Delivered</option>
+                    <option value="Fail Delivered">Fail Delivered</option>
+                    <option value="Cancel">Cancel</option>
+                </select>
+            </div>
+
+            {/* Remarks */}
+            <div className="col-span-2 md:col-span-4">
+                <label className="block text-xs font-medium mb-1">
+                    Remarks
+                </label>
+                <textarea
+                    value={remarks}
+                    onChange={(e) => setRemarks(e.target.value)}
+                    className="w-full px-2.5 py-1.5 text-sm border dark:border-zinc-700 rounded-md focus:ring-2 focus:ring-blue-500 dark:bg-zinc-900"
+                    rows={1}
+                    placeholder="Optional notes..."
+                />
             </div>
 
             {/* Action Buttons */}
-            <div className="flex items-center justify-end gap-3 pt-3 border-t dark:border-zinc-700">
+            <div className="col-span-2 md:col-span-4 flex items-center justify-end gap-3 pt-3 border-t dark:border-zinc-700">
                 <button
                     type="button"
                     onClick={onCancel}
