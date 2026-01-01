@@ -106,7 +106,7 @@ export async function getStockLedger(page = 1, limit = 100, search = ''): Promis
         ] = await Promise.all([
             supabase.from('opening_stocks').select('product_id, quantity').in('product_id', chunkIds),
             supabase.from('manual_adjustments').select('product_id, quantity').in('product_id', chunkIds),
-            supabase.from('damaged_stocks').select('product_id, damage_qty').eq('status', 'Damaged').in('product_id', chunkIds),
+            supabase.from('damaged_stocks').select('product_id, quantity').eq('status', 'Damaged').in('product_id', chunkIds),
             supabase.from('purchases').select('product_id, quantity').in('product_id', chunkIds),
             supabase.from('daraz_order_items')
                 .select('product_id, quantity, order:daraz_orders!inner(order_status)')
@@ -242,7 +242,7 @@ export async function getStockLedger(page = 1, limit = 100, search = ''): Promis
         const autoAdjust = autoAdjustMap.get(pid) || 0
 
         // Damage Stock
-        const damageStock = damageMap.get(pid)?.reduce((sum, i) => sum + (i.damage_qty || 0), 0) || 0
+        const damageStock = damageMap.get(pid)?.reduce((sum, i) => sum + (i.quantity || 0), 0) || 0
 
         // Purchase
         const purchase = purchaseMap.get(pid)?.reduce((sum, i) => sum + (i.quantity || 0), 0) || 0
@@ -411,7 +411,7 @@ export async function getProductStockDetails(productId: string): Promise<StockLe
         // Direct Adjustments
         supabase.from('opening_stocks').select('quantity').eq('product_id', productId),
         supabase.from('manual_adjustments').select('quantity').eq('product_id', productId),
-        supabase.from('damaged_stocks').select('damage_qty').eq('product_id', productId).eq('status', 'Damaged'),
+        supabase.from('damaged_stocks').select('quantity').eq('product_id', productId).eq('status', 'Damaged'),
         supabase.from('purchases').select('quantity').eq('product_id', productId),
 
         // Sales Data
@@ -468,7 +468,7 @@ export async function getProductStockDetails(productId: string): Promise<StockLe
     // 3. Aggregate Basic Metrics
     const openingStock = openingStats.data?.reduce((sum, item) => sum + (item.quantity || 0), 0) || 0
     const manualAdjustment = manualStats.data?.reduce((sum, item) => sum + (item.quantity || 0), 0) || 0
-    const damageStock = damageStats.data?.reduce((sum, item) => sum + (item.damage_qty || 0), 0) || 0
+    const damageStock = damageStats.data?.reduce((sum, item) => sum + (item.quantity || 0), 0) || 0
     const purchase = purchaseStats.data?.reduce((sum, item) => sum + (item.quantity || 0), 0) || 0
     const storeSales = storeItems.data?.reduce((sum, item) => sum + (item.qty || 0), 0) || 0
 
