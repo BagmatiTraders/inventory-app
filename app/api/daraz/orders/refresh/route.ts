@@ -17,9 +17,12 @@ function getProminentStatus(statuses: string[]): string {
     const s = statuses.map(x => x.toLowerCase())
 
     // Priority 1: Failures & Returns
+    if (s.includes('shipped_back_success') || s.includes('returned_delivered')) return 'Returned Delivered'
+    if (s.includes('returned') || s.includes('customer_return_delivered')) return 'Customer Return Delivered'
+
     if (s.includes('failed') || s.includes('failed_delivery') || s.includes('failed_delivered') || s.includes('failed delivery') || s.includes('failed delivered')) return 'Failed Delivered'
     if (s.includes('delivery_failed') || s.includes('delivery failed')) return 'Delivery Failed'
-    if (s.includes('returned') || s.includes('customer_return')) return 'Customer Return'
+    if (s.includes('customer_return')) return 'Customer Return'
 
     // Priority 2: Cancellation
     if (s.includes('canceled') || s.includes('cancelled')) return 'Cancel'
