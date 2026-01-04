@@ -15,7 +15,7 @@ export function OrderStatusSyncTable() {
     const [isBatchRefreshing, setIsBatchRefreshing] = useState(false)
     const [refreshProgress, setRefreshProgress] = useState({ current: 0, total: 0 })
     const [page, setPage] = useState(1)
-    const ITEMS_PER_PAGE = 20
+    const [limit, setLimit] = useState(50) // Default 50 as requested
 
     const queryClient = useQueryClient()
 
@@ -28,10 +28,10 @@ export function OrderStatusSyncTable() {
 
     // 2. Fetch Filtered Orders (Server-Side)
     const { data: ordersResult, isLoading } = useQuery({
-        queryKey: ['status-sync-orders', page, sellerAccountFilter, statusFilter, searchInput],
+        queryKey: ['status-sync-orders', page, sellerAccountFilter, statusFilter, searchInput, limit],
         queryFn: () => getAllDarazOrders({
             page,
-            limit: ITEMS_PER_PAGE,
+            limit: limit,
             search: searchInput,
             status: statusFilter,
             sellerAccount: sellerAccountFilter
@@ -379,7 +379,7 @@ export function OrderStatusSyncTable() {
 
                                     return (
                                         <tr key={order.id} className="hover:bg-gray-50 dark:hover:bg-zinc-800/50">
-                                            <td className="px-2 py-2 text-[11px] align-top text-gray-500">{(page - 1) * ITEMS_PER_PAGE + index + 1}</td>
+                                            <td className="px-2 py-2 text-[11px] align-top text-gray-500">{(page - 1) * limit + index + 1}</td>
                                             <td className="px-2 py-2 text-[11px] max-w-[60px] truncate align-top">{order.seller_account || 'Unknown'}</td>
                                             <td className="px-2 py-2 align-top">
                                                 <Link href={`/dashboard/sales/daraz/order/${order.id}?from=status-sync`} className="hover:underline block">
@@ -490,7 +490,7 @@ export function OrderStatusSyncTable() {
 
                                     return (
                                         <tr key={order.id} className="hover:bg-gray-50 dark:hover:bg-zinc-800/50">
-                                            <td className="px-4 py-3 text-sm">{(page - 1) * ITEMS_PER_PAGE + index + 1}</td>
+                                            <td className="px-4 py-3 text-sm">{(page - 1) * limit + index + 1}</td>
                                             <td className="px-4 py-3 text-sm">{order.seller_account || 'Unknown'}</td>
                                             <td className="px-4 py-3 text-sm font-medium text-blue-600">
                                                 <Link href={`/dashboard/sales/daraz/order/${order.id}?from=status-sync`} className="hover:underline">
@@ -549,9 +549,23 @@ export function OrderStatusSyncTable() {
                 {totalPages > 1 && (
                     <div className="flex justify-between items-center px-4 py-3 border-t">
                         <div className="text-xs text-gray-500 hidden md:block">
-                            Showing {((page - 1) * ITEMS_PER_PAGE) + 1} to {Math.min(page * ITEMS_PER_PAGE, totalOrders)} of {totalOrders} orders
+                            Showing {((page - 1) * limit) + 1} to {Math.min(page * limit, totalOrders)} of {totalOrders} orders
                         </div>
-                        <div className="flex gap-2 w-full md:w-auto justify-center md:justify-end">
+                        <div className="flex gap-2 w-full md:w-auto justify-center md:justify-end items-center">
+                            {/* Rows per page dropdown */}
+                            <select
+                                value={limit}
+                                onChange={(e) => {
+                                    setLimit(Number(e.target.value))
+                                    setPage(1) // Reset to page 1 on limit change
+                                }}
+                                className="h-8 md:h-9 px-2 text-xs border rounded bg-white dark:bg-zinc-800 dark:border-zinc-700"
+                            >
+                                <option value={20}>20 / page</option>
+                                <option value={50}>50 / page</option>
+                                <option value={100}>100 / page</option>
+                            </select>
+
                             <Button
                                 variant="outline"
                                 size="sm"
