@@ -12,26 +12,35 @@ function signRequest(apiName: string, params: Record<string, any>, appSecret: st
     return crypto.createHmac('sha256', appSecret).update(str).digest('hex').toUpperCase()
 }
 
+// Helper: Determine highest priority status from a list
 function getProminentStatus(statuses: string[]): string {
     if (!statuses || statuses.length === 0) return 'Pending'
+
     const s = statuses.map(x => x.toLowerCase())
 
-    // Priority 1: Failures & Returns
-    if (s.includes('shipped_back_success') || s.includes('returned_delivered')) return 'Returned Delivered'
+    // Priority 0: Unpaid (Highest priority if we want to show it distinctly)
+    if (s.includes('unpaid')) return 'Unpaid'
+
+    // Priority 1: Failures & Returns (Action Required)
     if (s.includes('returned') || s.includes('customer_return_delivered')) return 'Customer Return Delivered'
-
-    if (s.includes('failed') || s.includes('failed_delivery') || s.includes('failed_delivered') || s.includes('failed delivery') || s.includes('failed delivered')) return 'Failed Delivered'
-    if (s.includes('delivery_failed') || s.includes('delivery failed')) return 'Delivery Failed'
+    if (s.includes('shipped_back_success') || s.includes('returned_delivered')) return 'Returned Delivered'
     if (s.includes('customer_return')) return 'Customer Return'
+    // Failed Delivery basically means it's coming back, so we map it to Returning to Seller if user wants no specific "Delivery Failed" status
+    if (s.includes('returning_to_seller') || s.includes('returning to seller') || s.includes('shipped_back') ||
+        s.includes('failed_delivery') || s.includes('failed_delivered') || s.includes('delivery_failed') ||
+        s.includes('delivery failed') || s.includes('failed')) return 'Returning to Seller'
 
-    // Priority 2: Cancellation
-    if (s.includes('canceled') || s.includes('cancelled')) return 'Cancel'
-
-    // Priority 3: Success Flow
+    // Priority 3: Success Flow (Most Advanced State) - Check these FIRST to capture active movement
     if (s.includes('delivered') || s.includes('completed')) return 'Delivered'
     if (s.includes('shipped')) return 'Shipped'
     if (s.includes('ready_to_ship') || s.includes('ready to ship')) return 'Ready to Ship'
     if (s.includes('packed')) return 'Packed'
+
+    // Priority 4: Pending (If any item is pending, the order is still active, even if some items are cancelled)
+    if (s.includes('pending')) return 'Pending'
+
+    // Priority 2: Cancellation (Only if NO success/pending/failure status exists)
+    if (s.includes('canceled') || s.includes('cancelled')) return 'Cancel'
 
     return 'Pending'
 }

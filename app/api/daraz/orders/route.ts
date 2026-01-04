@@ -4,18 +4,6 @@ import { createClient } from '@/lib/supabase/server'
 import crypto from 'crypto'
 import axios from 'axios'
 import { syncOrderPurchaseCost } from '@/features/sales/actions/report-actions'
-import fs from 'fs'
-import path from 'path'
-
-function logToDebug(message: string) {
-    try {
-        const logPath = path.join(process.cwd(), 'sync_debug.log')
-        const timestamp = new Date().toISOString()
-        fs.appendFileSync(logPath, `[${timestamp}] ${message}\n`)
-    } catch (e) {
-        // ignore logging errors
-    }
-}
 
 function signRequest(apiName: string, params: Record<string, any>, appSecret: string) {
     const keys = Object.keys(params).sort()
@@ -24,10 +12,8 @@ function signRequest(apiName: string, params: Record<string, any>, appSecret: st
         str += key + params[key]
     })
     return crypto.createHmac('sha256', appSecret).update(str).digest('hex').toUpperCase()
-    return crypto.createHmac('sha256', appSecret).update(str).digest('hex').toUpperCase()
 }
 
-// Helper: Determine highest priority status from a list
 // Helper: Determine highest priority status from a list
 function getProminentStatus(statuses: string[]): string {
     if (!statuses || statuses.length === 0) return 'Pending'
@@ -43,16 +29,20 @@ function getProminentStatus(statuses: string[]): string {
     if (s.includes('customer_return')) return 'Customer Return'
     // Failed Delivery basically means it's coming back, so we map it to Returning to Seller if user wants no specific "Delivery Failed" status
     if (s.includes('returning_to_seller') || s.includes('returning to seller') || s.includes('shipped_back') ||
-        s.includes('failed_delivery') || s.includes('failed_delivered') || s.includes('delivery_failed') || s.includes('delivery failed')) return 'Returning to Seller'
+        s.includes('failed_delivery') || s.includes('failed_delivered') || s.includes('delivery_failed') ||
+        s.includes('delivery failed') || s.includes('failed')) return 'Returning to Seller'
 
-    // Priority 2: Cancellation (Should override Packed/RTS)
-    if (s.includes('canceled') || s.includes('cancelled')) return 'Cancel'
-
-    // Priority 3: Success Flow (Most Advanced State)
+    // Priority 3: Success Flow (Most Advanced State) - Check these FIRST to capture active movement
     if (s.includes('delivered') || s.includes('completed')) return 'Delivered'
     if (s.includes('shipped')) return 'Shipped'
     if (s.includes('ready_to_ship') || s.includes('ready to ship')) return 'Ready to Ship'
     if (s.includes('packed')) return 'Packed'
+
+    // Priority 4: Pending (If any item is pending, the order is still active, even if some items are cancelled)
+    if (s.includes('pending')) return 'Pending'
+
+    // Priority 2: Cancellation (Only if NO success/pending/failure status exists)
+    if (s.includes('canceled') || s.includes('cancelled')) return 'Cancel'
 
     return 'Pending'
 }
@@ -60,10 +50,6 @@ function getProminentStatus(statuses: string[]): string {
 export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams
     const storeId = searchParams.get('storeId')
-
-    // DEBUG LOG
-    logToDebug(`[API-ENTRY] Request URL: ${request.url}`)
-    logToDebug(`[API-ENTRY] Params: ${JSON.stringify(Object.fromEntries(searchParams))}`)
 
     if (!storeId) {
         return NextResponse.json({ error: 'Store ID is required' }, { status: 400 })
@@ -311,13 +297,12 @@ export async function GET(request: NextRequest) {
                 let existingOrderObj = existingByIdMap.get(orderId) || existingByNumberMap.get(String(o.order_number)) || null
 
                 if (!effectiveShouldSync) {
-                    logToDebug(`[DarazSync] Skipping order ${orderId} (Status: ${status}, ValidStatus: ${shouldBeInSales}, Cutoff: ${isBeforeCutoff})`)
                     if (existingOrderObj && isBeforeCutoff) { // Only soft delete if cutoff violation, user might want cancel updates?
                         // If we want to hide cancelled orders that were previously synced:
                         // User said: "except unpaid or cancel". So if it BECOMES cancel, we hide it?
                         // Soft delete is the safest way to "hide" from sales lists which filter deleted=false.
                         if (['cancel', 'canceled', 'cancelled'].includes(status)) {
-                            logToDebug(`[DarazSync] Soft deleting cancelled order ${orderId}`)
+                            console.log(`[DarazSync] Soft deleting cancelled order ${orderId}`)
                             await supabase.from('daraz_orders').update({ deleted: true, order_status: salesStatus }).eq('id', existingOrderObj.id)
                         }
                     }
@@ -374,7 +359,7 @@ export async function GET(request: NextRequest) {
 
                 let savedOrder
                 if (existingOrderObj) {
-                    logToDebug(`[DarazSync] Updating existing order ${orderId}`)
+                    console.log(`[DarazSync] Updating existing order ${orderId}`)
                     const updatePayload = {
                         ...commonPayload,
                         tracking_code: trackingCode,
@@ -387,10 +372,10 @@ export async function GET(request: NextRequest) {
                         delete (updatePayload as any).import_source
                     }
                     const { data, error } = await supabase.from('daraz_orders').update(updatePayload).eq('id', existingOrderObj.id).select().single()
-                    if (error) logToDebug(`[DarazSync] Update failed for ${orderId}: ${error.message}`)
+                    if (error) console.error(`[DarazSync] Update failed for ${orderId}:`, error)
                     savedOrder = data
                 } else {
-                    logToDebug(`[DarazSync] Inserting new order ${orderId}`)
+                    console.log(`[DarazSync] Inserting new order ${orderId}`)
                     const { data, error } = await supabase.from('daraz_orders').upsert({
                         ...commonPayload,
                         order_id: String(o.order_id),
@@ -413,12 +398,12 @@ export async function GET(request: NextRequest) {
                         order_date: o.created_at,
                         order_source: 'sync'
                     }, { onConflict: 'order_id' }).select().single()
-                    if (error) logToDebug(`[DarazSync] Insert failed for ${orderId}: ${error.message}`)
+                    if (error) console.error(`[DarazSync] Insert failed for ${orderId}:`, error)
                     savedOrder = data
                 }
 
                 if (!savedOrder) {
-                    logToDebug(`[DarazSync] No savedOrder for ${orderId}, skipping items`)
+                    console.log(`[DarazSync] No savedOrder for ${orderId}, skipping items`)
                     continue
                 }
 

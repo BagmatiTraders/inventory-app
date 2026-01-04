@@ -280,6 +280,25 @@ export default function DarazSalesEntryPage() {
         }
     }
 
+    // New: Handle selection for a specific group of orders
+    const handleSelectGroup = (checked: boolean, groupOrders: any[]) => {
+        const groupIds = groupOrders.map(o => o.id)
+
+        if (checked) {
+            // Add group IDs to selection (avoid duplicates)
+            const newSelected = [...selectedOrders]
+            groupIds.forEach(id => {
+                if (!newSelected.includes(id)) {
+                    newSelected.push(id)
+                }
+            })
+            setSelectedOrders(newSelected)
+        } else {
+            // Remove group IDs from selection
+            setSelectedOrders(selectedOrders.filter(id => !groupIds.includes(id)))
+        }
+    }
+
     const handleBulkStatusUpdate = async () => {
         if (selectedOrders.length === 0 || !bulkStatus) {
             toast.error('Please select orders and a status')
@@ -821,10 +840,11 @@ export default function DarazSalesEntryPage() {
                                                 <th className="hidden md:table-cell px-1.5 py-1 text-left w-8">
                                                     <input
                                                         type="checkbox"
-                                                        checked={orders.length > 0 && selectedOrders.length === orders.length}
-                                                        onChange={(e) => handleSelectAll(e.target.checked)}
+                                                        // Checked if ALL displayed orders in this group are selected
+                                                        checked={displayedOrders.length > 0 && displayedOrders.every(o => selectedOrders.includes(o.id))}
+                                                        onChange={(e) => handleSelectGroup(e.target.checked, displayedOrders)}
                                                         className="rounded text-blue-600 focus:ring-blue-500 dark:bg-zinc-700 dark:border-zinc-600 w-3.5 h-3.5"
-                                                        title="Select All Orders"
+                                                        title="Select Group"
                                                     />
                                                 </th>
                                                 <th className="px-1.5 py-1 text-left text-xs font-bold uppercase text-gray-900 dark:text-gray-100 w-10">SN</th>

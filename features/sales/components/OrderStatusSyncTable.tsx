@@ -370,6 +370,7 @@ export function OrderStatusSyncTable() {
                                         'failed delivered': 'bg-red-100 text-red-800 border border-red-300',
                                         'returned delivered': 'bg-orange-100 text-orange-800 border border-orange-300',
                                         'customer return': 'bg-orange-50 text-orange-700 border border-orange-200',
+                                        'returning to seller': 'bg-orange-50 text-orange-700 border border-orange-200', // Added matching color
                                         'customer return delivered': 'bg-orange-100 text-orange-800 border border-orange-300',
                                     }
 
@@ -480,6 +481,7 @@ export function OrderStatusSyncTable() {
                                         'failed delivered': 'bg-red-100 text-red-800 border border-red-300',
                                         'returned delivered': 'bg-orange-100 text-orange-800 border border-orange-300',
                                         'customer return': 'bg-orange-50 text-orange-700 border border-orange-200',
+                                        'returning to seller': 'bg-orange-50 text-orange-700 border border-orange-200',
                                         'customer return delivered': 'bg-orange-100 text-orange-800 border border-orange-300',
                                     }
 
