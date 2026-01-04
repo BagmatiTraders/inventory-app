@@ -114,125 +114,188 @@ export async function POST(request: NextRequest) {
 
         console.log(`[DarazRefresh] Order ${orderId}: Fetched ${items.length} items`)
 
-        // Update in database
+        // Check if exists
         const { data: existingOrder } = await supabase
             .from('daraz_orders')
-            .select('id')
+            .select('*') // Select all to get invoice_number/status
             .eq('order_id', orderId)
             .single()
 
+        let invoiceNumber = existingOrder?.invoice_number
+
+        // Generate Invoice if new
+        if (!invoiceNumber) {
+            const { data: invData, error: invErr } = await supabase.rpc('generate_daraz_invoice_number')
+            if (!invErr) invoiceNumber = invData
+        }
+
+        // Extract item statuses and combine with order status
+        const itemStatuses = items.map((i: any) => i.status).filter(Boolean)
+        const orderStatuses = order.statuses || (order.status ? [order.status] : [])
+        const allStatuses = Array.from(new Set([...orderStatuses, ...itemStatuses]))
+
+        // Calculate the prominent status
+        const newStatus = getProminentStatus(allStatuses as string[])
+
+        const hasExisting = !!existingOrder
+
+        // Prepare Payload
+        const shipping = typeof order.address_shipping === 'string' ? JSON.parse(order.address_shipping || '{}') : order.address_shipping || {}
+        const billing = typeof order.address_billing === 'string' ? JSON.parse(order.address_billing || '{}') : order.address_billing || {}
+
+        let trackingCode: string | null = null
+        if (!['pending', 'unpaid', 'canceled'].includes(newStatus.toLowerCase())) {
+            const codes = new Set<string>()
+            if (order.tracking_code) codes.add(order.tracking_code)
+            if (items && Array.isArray(items)) {
+                items.forEach((i: any) => {
+                    const code = i.tracking_code || i.trackingCode || i.tracking_number || i.package_id
+                    if (code) codes.add(String(code))
+                })
+            }
+            trackingCode = codes.size > 0 ? Array.from(codes).join(', ') : null
+        }
+
+        const upsertPayload: any = {
+            order_id: String(orderId),
+            order_number: String(order.order_number),
+            store_id: storeId,
+            order_status: newStatus,
+            statuses: allStatuses,
+            items_detail: items,
+            daraz_updated_at: order.updated_at,
+            synced_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+            invoice_number: invoiceNumber,
+            deleted: false,
+
+            // Basic fields for new orders
+            customer_first_name: order.customer_first_name,
+            customer_last_name: order.customer_last_name,
+            shipping_name: shipping.first_name || shipping.firstName || shipping.name || order.customer_first_name || 'N/A',
+            shipping_address: shipping.address1 || shipping.address2 || billing.address1 || '',
+            shipping_city: shipping.city || shipping.City,
+            shipping_postcode: shipping.post_code || shipping.postCode || shipping.PostCode,
+            shipping_phone: shipping.phone || shipping.Phone || null,
+            tracking_code: trackingCode,
+            tracking_number: trackingCode,
+            customer_name: shipping.first_name || shipping.firstName || shipping.name || order.customer_name || order.customer_first_name || 'Guest',
+            price: order.price,
+            items_count: order.items_count,
+            // Only set create date if new, but safe to set always if we trust Daraz data
+            daraz_created_at: order.created_at,
+            order_date: order.created_at,
+            order_source: 'sync'
+        }
+
+        // If updating, preserve certain fields?
         if (existingOrder) {
-            // Extract item statuses and combine with order status
-            const itemStatuses = items.map((i: any) => i.status).filter(Boolean)
-            const orderStatuses = order.statuses || (order.status ? [order.status] : [])
-            const allStatuses = Array.from(new Set([...orderStatuses, ...itemStatuses]))
+            // Keep original created_at or source if needed?
+            // Usually fine to overwrite with current Daraz data
+        } else {
+            // New specific fields
+        }
 
-            // Calculate the prominent status
-            const newStatus = getProminentStatus(allStatuses as string[])
+        const { data: savedOrder, error: saveError } = await supabase
+            .from('daraz_orders')
+            .upsert(upsertPayload, { onConflict: 'order_id' })
+            .select()
+            .single()
 
-            await supabase
-                .from('daraz_orders')
-                .update({
-                    order_status: newStatus,
-                    statuses: allStatuses,
-                    items_detail: items,
-                    daraz_updated_at: order.updated_at,
-                    synced_at: new Date().toISOString(),
-                    updated_at: new Date().toISOString()
-                })
-                .eq('id', existingOrder.id)
+        if (saveError) {
+            console.error('Failed to save refreshed order:', saveError)
+            throw new Error('Failed to save order to database')
+        }
 
-            console.log(`[DarazRefresh] Updated order ${orderId}: ${newStatus} from statuses:`, allStatuses)
+        console.log(`[DarazRefresh] Updated/Inserted order ${orderId}: ${newStatus}`)
 
-            // --- SYNC ITEMS FOR REPORTS (Fix for Missing Costs) ---
-            if (items.length > 0) {
-                // 1. Fetch Products for SKU matching
-                const { data: products } = await supabase
-                    .from('products')
-                    .select('id, seller_sku1, seller_sku2, seller_sku3, seller_sku4, product_name, seller_account')
-                    .limit(10000)
+        // --- SYNC ITEMS FOR REPORTS ---
+        if (items.length > 0 && savedOrder) {
+            // 1. Fetch Products for SKU matching
+            const { data: products } = await supabase
+                .from('products')
+                .select('id, seller_sku1, seller_sku2, seller_sku3, seller_sku4, product_name, seller_account')
+                .limit(10000)
 
-                // Map: SKU -> Product AND Name -> Product
-                const skuMap = new Map<string, any>()
-                const nameMap = new Map<string, any>()
+            // Map: SKU -> Product AND Name -> Product
+            const skuMap = new Map<string, any>()
+            const nameMap = new Map<string, any>()
 
-                products?.forEach(p => {
-                    if (p.seller_sku1) skuMap.set(p.seller_sku1.toLowerCase(), p)
-                    if (p.seller_sku2) skuMap.set(p.seller_sku2.toLowerCase(), p)
-                    if (p.seller_sku3) skuMap.set(p.seller_sku3.toLowerCase(), p)
-                    if (p.seller_sku4) skuMap.set(p.seller_sku4.toLowerCase(), p)
-                    if (p.product_name) nameMap.set(p.product_name.toLowerCase().trim(), p)
-                })
+            products?.forEach(p => {
+                if (p.seller_sku1) skuMap.set(p.seller_sku1.toLowerCase(), p)
+                if (p.seller_sku2) skuMap.set(p.seller_sku2.toLowerCase(), p)
+                if (p.seller_sku3) skuMap.set(p.seller_sku3.toLowerCase(), p)
+                if (p.seller_sku4) skuMap.set(p.seller_sku4.toLowerCase(), p)
+                if (p.product_name) nameMap.set(p.product_name.toLowerCase().trim(), p)
+            })
 
-                // Filter items (Exclude Unpaid/Canceled if needed, but for manual refresh we generally trust the status)
-                // But typically we don't show unpaid in reports.
-                const itemsToSync = items.filter((item: any) => {
-                    const s = (item.status || '').toLowerCase()
-                    return !['unpaid', 'canceled', 'cancelled'].includes(s)
-                })
+            // Filter items (Exclude Unpaid/Canceled if needed, but for manual refresh we generally trust the status)
+            // But typically we don't show unpaid in reports.
+            const itemsToSync = items.filter((item: any) => {
+                const s = (item.status || '').toLowerCase()
+                return !['unpaid', 'canceled', 'cancelled'].includes(s)
+            })
 
-                if (itemsToSync.length > 0) {
-                    await supabase.from('daraz_order_items').delete().eq('order_id', existingOrder.id)
+            if (itemsToSync.length > 0) {
+                await supabase.from('daraz_order_items').delete().eq('order_id', savedOrder.id)
 
-                    const orderItemsPayload = []
-                    let sequence = 1
+                const orderItemsPayload = []
+                let sequence = 1
 
-                    for (const item of itemsToSync) {
-                        const shopSku = item.shop_sku || item.ShopSku || ''
-                        const sku = item.sku || item.Sku || ''
-                        const itemStatus = item.status || 'pending'
-                        const itemName = (item.name || '').toLowerCase().trim()
+                for (const item of itemsToSync) {
+                    const shopSku = item.shop_sku || item.ShopSku || ''
+                    const sku = item.sku || item.Sku || ''
+                    const itemStatus = item.status || 'pending'
+                    const itemName = (item.name || '').toLowerCase().trim()
 
-                        // Try Match: SKU -> Name
-                        let matchedProduct = skuMap.get(sku.toLowerCase()) || skuMap.get(shopSku.toLowerCase())
-                        if (!matchedProduct && itemName) {
-                            matchedProduct = nameMap.get(itemName)
-                        }
-
-                        if (matchedProduct) {
-                            console.log(`[DarazRefresh] Matched item ${item.name.slice(0, 20)}... -> ID ${matchedProduct.id}`)
-                        }
-
-                        orderItemsPayload.push({
-                            order_id: existingOrder.id,
-                            seller_sku: sku || shopSku,
-                            product_id: matchedProduct?.id || null,
-                            product_name: matchedProduct?.product_name || item.name || 'Unknown Product',
-                            seller_account: matchedProduct?.seller_account || 'Unknown',
-                            quantity: 1,
-                            amount: item.item_price || item.price || 0,
-                            status: itemStatus,
-                            item_sequence: sequence++
-                        })
+                    // Try Match: SKU -> Name
+                    let matchedProduct = skuMap.get(sku.toLowerCase()) || skuMap.get(shopSku.toLowerCase())
+                    if (!matchedProduct && itemName) {
+                        matchedProduct = nameMap.get(itemName)
                     }
 
-                    if (orderItemsPayload.length > 0) {
-                        // Aggregate Logic (Strict 1:1 or basic sum)
-                        const aggregatedItems = new Map<string, any>()
-                        orderItemsPayload.forEach(p => {
-                            const key = p.seller_sku + '_' + p.amount
-                            if (aggregatedItems.has(key)) {
-                                const existing = aggregatedItems.get(key)
-                                existing.quantity += 1
-                            } else {
-                                aggregatedItems.set(key, p)
-                            }
-                        })
-                        await supabase.from('daraz_order_items').insert(Array.from(aggregatedItems.values()))
+                    // Debug log match
+                    if (matchedProduct && !skuMap.get(sku.toLowerCase())) {
+                        // console.log(`Matched item via name`)
                     }
+
+                    orderItemsPayload.push({
+                        order_id: savedOrder.id,
+                        seller_sku: sku || shopSku,
+                        product_id: matchedProduct?.id || null,
+                        product_name: matchedProduct?.product_name || item.name || 'Unknown Product',
+                        seller_account: matchedProduct?.seller_account || 'Unknown',
+                        quantity: 1,
+                        amount: item.item_price || item.price || 0,
+                        status: itemStatus,
+                        item_sequence: sequence++
+                    })
+                }
+
+                if (orderItemsPayload.length > 0) {
+                    // Aggregate Logic (Strict 1:1 or basic sum)
+                    const aggregatedItems = new Map<string, any>()
+                    orderItemsPayload.forEach(p => {
+                        const key = p.seller_sku + '_' + p.amount
+                        if (aggregatedItems.has(key)) {
+                            const existing = aggregatedItems.get(key)
+                            existing.quantity += 1
+                        } else {
+                            aggregatedItems.set(key, p)
+                        }
+                    })
+                    await supabase.from('daraz_order_items').insert(Array.from(aggregatedItems.values()))
                 }
             }
-            // -----------------------------------------------------
-
-            return NextResponse.json({
-                success: true,
-                message: 'Order refreshed successfully',
-                newStatus: newStatus,
-                statuses: allStatuses
-            })
-        } else {
-            return NextResponse.json({ error: 'Order not found in database' }, { status: 404 })
         }
+        // -----------------------------------------------------
+
+        return NextResponse.json({
+            success: true,
+            message: 'Order refreshed successfully',
+            newStatus: newStatus,
+            statuses: allStatuses
+        })
 
     } catch (error: any) {
         console.error('Order Refresh Error:', error.response?.data || error.message)

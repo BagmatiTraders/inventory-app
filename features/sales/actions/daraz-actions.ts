@@ -1121,6 +1121,7 @@ export async function getDailySalesReport() {
                 order_date,
                 price,
                 updated_at,
+                shipped_at,
                 online_stores!inner(seller_account)
             `)
             .eq('deleted', false)
@@ -1141,12 +1142,7 @@ export async function getDailySalesReport() {
             customer_return_delivered_qty: number
         }>>()
 
-        orders?.forEach((order: any) => {
-            // Use updated_at as the status change date
-            const dateStr = new Date(order.updated_at).toISOString().split('T')[0]
-            const sellerAccount = order.online_stores?.seller_account || 'Unknown'
-            const price = parseFloat(order.price) || 0
-
+        const getStats = (dateStr: string, sellerAccount: string) => {
             if (!reportMap.has(dateStr)) {
                 reportMap.set(dateStr, new Map())
             }
@@ -1164,18 +1160,34 @@ export async function getDailySalesReport() {
                     customer_return_delivered_qty: 0
                 })
             }
+            return dateMap.get(sellerAccount)!
+        }
 
-            const stats = dateMap.get(sellerAccount)!
+        orders?.forEach((order: any) => {
+            const sellerAccount = order.online_stores?.seller_account || 'Unknown'
+            const price = parseFloat(order.price) || 0
 
-            // "Shipped" means "Dispatched" (Total of all these statuses)
-            // So we ALWAYS increment Shipped Qty/Amount for any of these statuses
-            stats.shipped_qty++
-            stats.shipped_amount += price
+            // 1. Handle Shipped Metric (independent check)
+            // Use shipped_at timestamp if available
+            if (order.shipped_at) {
+                const shippedDate = new Date(order.shipped_at).toISOString().split('T')[0]
+                const stats = getStats(shippedDate, sellerAccount)
+                stats.shipped_qty++
+                stats.shipped_amount += price
+            } else if (order.order_status === 'Shipped') {
+                // Fallback: If status is 'Shipped' but no shipped_at (legacy?), use updated_at
+                const dateStr = new Date(order.updated_at).toISOString().split('T')[0]
+                const stats = getStats(dateStr, sellerAccount)
+                stats.shipped_qty++
+                stats.shipped_amount += price
+            }
+
+            // 2. Handle Other Statuses (based on current status & updated_at)
+            const dateStr = new Date(order.updated_at).toISOString().split('T')[0]
+            const stats = getStats(dateStr, sellerAccount)
 
             switch (order.order_status) {
-                // 'Shipped' status is already counted in the total above
-                // We don't need a specific case for it unless we had a specific 'Currently Shipped' column
-                // But looking at the table, 'Shipped Qty' IS the total column.
+                // Note: We do NOT count 'Shipped' here via updated_at, handled above.
 
                 case 'Delivered':
                     stats.delivered_qty++
