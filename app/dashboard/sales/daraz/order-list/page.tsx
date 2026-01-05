@@ -2,10 +2,10 @@
 
 import { useState, useEffect, Suspense } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { getAllDarazOrders, deleteDarazOrder, updateDarazOrderStatus, getDarazOrderById, getAllFiscalYears, getActiveFiscalYear } from '@/features/sales/actions/daraz-actions'
+import { getAllDarazOrders, deleteDarazOrder, updateDarazOrderStatus, getDarazOrderById, getAllFiscalYears, getActiveFiscalYear, syncDarazOrderProducts } from '@/features/sales/actions/daraz-actions'
 import { getUserRole, getUserDeletionStats, createDeletionRequest, softDeleteOrder } from '@/features/sales/actions/daraz-deletion-actions'
 import { fixHistoricalProductLinks } from '@/features/sales/actions/migration-actions'
-import { Search, Printer, ArrowLeft, X, Trash2, Clock } from 'lucide-react'
+import { Search, Printer, ArrowLeft, X, Trash2, Clock, RefreshCw } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Card } from '@/components/ui-shim'
@@ -657,6 +657,7 @@ function DarazOrderListContent() {
                                                         >
                                                             View
                                                         </button>
+
                                                         <button
                                                             onClick={() => handleDelete(order.id, order.order_number)}
                                                             className="px-1 py-0.5 text-xs text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded"
@@ -670,6 +671,19 @@ function DarazOrderListContent() {
                                                             ) : (
                                                                 'Del'
                                                             )}
+                                                        </button>
+                                                        <button
+                                                            onClick={async () => {
+                                                                if (confirm('Sync products for this order?')) {
+                                                                    const res = await syncDarazOrderProducts(order.id)
+                                                                    if (res.success) toast.success(res.message)
+                                                                    else toast.error(res.message)
+                                                                }
+                                                            }}
+                                                            className="px-1 py-0.5 text-xs text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20 rounded"
+                                                            title="Sync products from inventory"
+                                                        >
+                                                            <RefreshCw size={12} />
                                                         </button>
                                                     </div>
                                                 </td>

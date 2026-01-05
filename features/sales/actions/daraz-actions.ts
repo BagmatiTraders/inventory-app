@@ -1390,7 +1390,7 @@ export async function syncProductInfoFromInventory() {
             if (batchProducts.length < pageSize) break
 
             page++
-            if (page >= 20) break
+            if (page >= 50) break
         }
 
         // Create a map of seller_sku -> { product_name, seller_account }
@@ -1461,30 +1461,37 @@ export async function syncProductInfoFromInventory() {
         let updatedCount = 0
         const updates: Array<{ id: string, product_name: string, seller_account: string }> = []
 
-        // Find items that need updating (only if product name is missing or "Product Not Found")
+        // Find items that need updating (Check all items against inventory map)
         orderItems?.forEach((item: any) => {
-            // Only process items where product_name is empty or "Product Not Found"
-            const needsSync = !item.product_name ||
-                item.product_name.trim() === '' ||
-                item.product_name === 'Product Not Found'
-
-            if (!needsSync) {
-                return // Skip items that already have valid product names
-            }
-
             const sellerSku = item.seller_sku?.trim().toLowerCase()
+
             if (sellerSku && skuMap.has(sellerSku)) {
                 const productInfo = skuMap.get(sellerSku)!
-                console.log(`Matching SKU: ${sellerSku} -> ${productInfo.product_name}`)
-                // Update with product info from inventory
-                updates.push({
-                    id: item.id,
-                    product_name: productInfo.product_name,
-                    seller_account: productInfo.seller_account
-                })
+
+                // Check if update is needed (if name or account differs)
+                // Normalize strings for comparison (handle nulls/undefined)
+                const currentName = (item.product_name || '').trim()
+                const newName = (productInfo.product_name || '').trim()
+
+                const currentAccount = (item.seller_account || '').trim()
+                const newAccount = (productInfo.seller_account || '').trim()
+
+                // If either Name OR Account is different, we sync it
+                // This covers: 1. Empty/Missing info, 2. "Product Not Found" placeholder, 3. "Unknown Product", 4. Outdated info
+                if (currentName !== newName || currentAccount !== newAccount) {
+                    console.log(`Syncing item ${item.id} (${sellerSku}):`)
+                    console.log(`  Name: ${currentName} -> ${newName}`)
+                    console.log(`  Account: ${currentAccount} -> ${newAccount}`)
+
+                    updates.push({
+                        id: item.id,
+                        product_name: productInfo.product_name,
+                        seller_account: productInfo.seller_account
+                    })
+                }
             } else {
                 if (sellerSku) {
-                    console.log(`No match for SKU: ${sellerSku}`)
+                    // console.log(`No match for SKU: ${sellerSku}`) // optional log
                 }
             }
         })
@@ -1494,9 +1501,11 @@ export async function syncProductInfoFromInventory() {
         // Log unmatched SKUs for user to fix
         const unmatchedSkus = new Set<string>()
         orderItems?.forEach((item: any) => {
-            const needsSync = !item.product_name ||
-                item.product_name.trim() === '' ||
-                item.product_name === 'Product Not Found'
+            const name = (item.product_name || '').trim()
+            const needsSync = !name ||
+                name === '' ||
+                name === 'Product Not Found' ||
+                name.startsWith('Unknown Product')
 
             if (needsSync) {
                 const sellerSku = item.seller_sku?.trim().toLowerCase()
@@ -1535,13 +1544,20 @@ export async function syncProductInfoFromInventory() {
             }
         }
 
+        const missingCount = unmatchedSkus.size
+        let returnMessage = updatedCount > 0
+            ? `Successfully synced ${updatedCount} product${updatedCount > 1 ? 's' : ''}.`
+            : 'No updates performed.'
+
+        if (missingCount > 0) {
+            returnMessage += ` Found ${missingCount} SKU${missingCount > 1 ? 's' : ''} not in inventory (check logs).`
+        }
+
         revalidatePath('/dashboard/sales/daraz/sales-entry')
         return {
             success: true,
             updated: updatedCount,
-            message: updatedCount > 0
-                ? `Successfully synced ${updatedCount} product${updatedCount > 1 ? 's' : ''}`
-                : 'No products needed syncing'
+            message: returnMessage
         }
     } catch (error) {
         console.error('Error syncing product info:', error)
@@ -1550,6 +1566,80 @@ export async function syncProductInfoFromInventory() {
             updated: 0,
             message: 'Failed to sync product information'
         }
+    }
+}
+// Sync a single order's products from inventory
+export async function syncDarazOrderProducts(orderId: string) {
+    const supabase = await createClient()
+
+    try {
+        // 1. Fetch items for this order
+        const { data: items, error: itemsError } = await supabase
+            .from('daraz_order_items')
+            .select('*')
+            .eq('order_id', orderId)
+
+        if (itemsError) throw itemsError
+        if (!items || items.length === 0) return { success: false, message: 'No items found in this order' }
+
+        let updatedCount = 0
+        const updates: string[] = []
+
+        // 2. Process each item (Parallelly)
+        await Promise.all(items.map(async (item) => {
+            const sellerSku = item.seller_sku?.trim()
+            if (!sellerSku) return
+
+            // Search in products table
+            // We search for exact match in any of the 4 SKU columns
+            // Optimized query: Use .or with simple equality
+            const { data: product } = await supabase
+                .from('products')
+                .select('product_name, seller_account1, seller_sku1, seller_account2, seller_sku2, seller_account3, seller_sku3, seller_account4, seller_sku4')
+                .or(`seller_sku1.eq."${sellerSku}",seller_sku2.eq."${sellerSku}",seller_sku3.eq."${sellerSku}",seller_sku4.eq."${sellerSku}"`)
+                .eq('is_deleted', false)
+                .maybeSingle() // Use maybeSingle to avoid error if not found
+
+            if (product) {
+                // Determine which account matches
+                let matchedAccount = ''
+                if (product.seller_sku1 === sellerSku) matchedAccount = product.seller_account1
+                else if (product.seller_sku2 === sellerSku) matchedAccount = product.seller_account2
+                else if (product.seller_sku3 === sellerSku) matchedAccount = product.seller_account3
+                else if (product.seller_sku4 === sellerSku) matchedAccount = product.seller_account4
+
+                // Update item
+                const { error: updateError } = await supabase
+                    .from('daraz_order_items')
+                    .update({
+                        product_name: product.product_name,
+                        seller_account: matchedAccount
+                    })
+                    .eq('id', item.id)
+
+                if (!updateError) {
+                    updatedCount++
+                    updates.push(`${sellerSku} -> ${product.product_name}`)
+                }
+            } else {
+                console.log(`Single Sync: SKU ${sellerSku} not found in inventory.`)
+            }
+        }))
+
+        revalidatePath('/dashboard/sales/daraz/sales-entry')
+        revalidatePath('/dashboard/sales/daraz/order-list')
+
+        return {
+            success: true,
+            updated: updatedCount,
+            message: updatedCount > 0
+                ? `Synced ${updatedCount} items: ${updates.join(', ')}`
+                : 'No matching products found in inventory for these SKUs.'
+        }
+
+    } catch (error: any) {
+        console.error('Error syncing order products:', error)
+        return { success: false, message: error.message || 'Failed to sync products' }
     }
 }
 

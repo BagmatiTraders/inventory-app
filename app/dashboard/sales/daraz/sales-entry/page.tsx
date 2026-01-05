@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useEffect } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { getDarazOrders, getDarazOrderById, deleteDarazOrder, updateDarazOrderStatus, getDarazOrderStats, syncProductInfoFromInventory } from '@/features/sales/actions/daraz-actions'
+import { getDarazOrders, getDarazOrderById, deleteDarazOrder, updateDarazOrderStatus, getDarazOrderStats, syncProductInfoFromInventory, syncDarazOrderProducts } from '@/features/sales/actions/daraz-actions'
 import { syncOrderStatusesFromDarazData } from '@/features/sales/actions/daraz-sync-status'
 import { getUserRole, getUserDeletionStats, createDeletionRequest, softDeleteOrder } from '@/features/sales/actions/daraz-deletion-actions'
 import { getOnlineStores } from '@/features/settings/actions/settingsActions'
@@ -959,6 +959,7 @@ export default function DarazSalesEntryPage() {
                                                             >
                                                                 View
                                                             </button>
+
                                                             <button
                                                                 onClick={() => handleDelete(order.id, order.order_number)}
                                                                 className="px-1 py-0.5 text-xs text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded"
@@ -972,6 +973,19 @@ export default function DarazSalesEntryPage() {
                                                                 ) : (
                                                                     'Del'
                                                                 )}
+                                                            </button>
+                                                            <button
+                                                                onClick={async () => {
+                                                                    if (confirm('Sync products for this order?')) {
+                                                                        const res = await syncDarazOrderProducts(order.id)
+                                                                        if (res.success) toast.success(res.message)
+                                                                        else toast.error(res.message)
+                                                                    }
+                                                                }}
+                                                                className="px-1 py-0.5 text-xs text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20 rounded"
+                                                                title="Sync products from inventory"
+                                                            >
+                                                                <RefreshCw size={12} />
                                                             </button>
                                                         </div>
                                                     </td>
