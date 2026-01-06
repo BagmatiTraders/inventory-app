@@ -583,7 +583,7 @@ export default function DarazSalesEntryPage() {
                         <button
                             onClick={handleSyncOrders}
                             disabled={isSyncingOrders}
-                            className="flex items-center gap-1 px-2 py-1 text-[11px] bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="flex items-center gap-1 px-2 py-1 text-[15px] bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
                             title="Refresh orders from Order Sync page data"
                         >
                             <RefreshCw size={11} className={isSyncingOrders ? 'animate-spin' : ''} />
@@ -591,7 +591,7 @@ export default function DarazSalesEntryPage() {
                         </button>
                         <button
                             onClick={handleSyncProductInfo}
-                            className="flex items-center gap-1 px-2 py-1 text-[11px] bg-green-600 hover:bg-green-700 text-white rounded transition-colors whitespace-nowrap"
+                            className="flex items-center gap-1 px-2 py-1 text-[15px] bg-green-600 hover:bg-green-700 text-white rounded transition-colors whitespace-nowrap"
                             title="Sync product names from inventory by matching seller SKUs"
                         >
                             <RefreshCw size={11} />
@@ -599,7 +599,7 @@ export default function DarazSalesEntryPage() {
                         </button>
                         <Link
                             href="/dashboard/sales/daraz"
-                            className="flex items-center gap-1 px-2 py-1 text-[11px] bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700 rounded transition-colors whitespace-nowrap"
+                            className="flex items-center gap-1 px-2 py-1 text-[15px] bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700 rounded transition-colors whitespace-nowrap"
                         >
                             <ArrowLeft size={11} />
                             Back
@@ -614,7 +614,7 @@ export default function DarazSalesEntryPage() {
                     {/* Order List Button */}
                     <Link
                         href="/dashboard/sales/daraz/order-list"
-                        className="flex items-center gap-1 px-2 py-1 text-[11px] bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors whitespace-nowrap"
+                        className="flex items-center gap-1 px-2 py-1 text-[15px] bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors whitespace-nowrap"
                     >
                         <List size={11} />
                         Order List
@@ -627,7 +627,7 @@ export default function DarazSalesEntryPage() {
                     <select
                         value={sellerAccountFilter}
                         onChange={(e) => setSellerAccountFilter(e.target.value)}
-                        className="px-2 py-1 text-[11px] border dark:border-zinc-700 rounded focus:ring-1 focus:ring-blue-500 dark:bg-zinc-800 dark:text-gray-200"
+                        className="px-2 py-1 text-[15px] border dark:border-zinc-700 rounded focus:ring-1 focus:ring-blue-500 dark:bg-zinc-800 dark:text-gray-200"
                         style={{ maxWidth: '120px' }}
                     >
                         <option value="all">All Sellers</option>
@@ -642,7 +642,7 @@ export default function DarazSalesEntryPage() {
                     <select
                         value={statusFilter}
                         onChange={(e) => setStatusFilter(e.target.value)}
-                        className="px-2 py-1 text-[11px] border dark:border-zinc-700 rounded focus:ring-1 focus:ring-blue-500 dark:bg-zinc-800 dark:text-gray-200"
+                        className="px-2 py-1 text-[15px] border dark:border-zinc-700 rounded focus:ring-1 focus:ring-blue-500 dark:bg-zinc-800 dark:text-gray-200"
                     >
                         <option value="all">All Status</option>
                         <option value="Unpaid">Unpaid</option>
@@ -661,7 +661,7 @@ export default function DarazSalesEntryPage() {
                     {/* Awb Unprint Button */}
                     <button
                         onClick={() => setUnprintedOnly(!unprintedOnly)}
-                        className={`flex items-center gap-1 px-2 py-1 text-[11px] border rounded transition-colors whitespace-nowrap ${unprintedOnly
+                        className={`flex items-center gap-1 px-2 py-1 text-[15px] border rounded transition-colors whitespace-nowrap ${unprintedOnly
                             ? 'bg-red-50 border-red-200 text-red-700 dark:bg-red-900/20 dark:border-red-800 dark:text-red-400 font-medium'
                             : 'hover:bg-gray-50 dark:border-zinc-700 dark:hover:bg-zinc-800 dark:text-gray-300'
                             }`}
@@ -683,7 +683,7 @@ export default function DarazSalesEntryPage() {
                             value={searchInput}
                             onChange={(e) => setSearchInput(e.target.value)}
                             onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-                            className="w-full pl-6 pr-6 py-1 text-[11px] border dark:border-zinc-700 rounded focus:ring-1 focus:ring-blue-500 dark:bg-zinc-800 dark:text-gray-50"
+                            className="w-full pl-6 pr-6 py-1 text-[15px] border dark:border-zinc-700 rounded focus:ring-1 focus:ring-blue-500 dark:bg-zinc-800 dark:text-gray-50"
                         />
                         {searchInput && (
                             <button
@@ -699,7 +699,7 @@ export default function DarazSalesEntryPage() {
                     {/* Action Buttons */}
                     <button
                         onClick={() => setIsAddModalOpen(true)}
-                        className="flex items-center gap-1 px-2 py-1 text-[11px] bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors whitespace-nowrap"
+                        className="flex items-center gap-1 px-2 py-1 text-[15px] bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors whitespace-nowrap"
                     >
                         <Plus size={11} />
                         Add
@@ -707,12 +707,12 @@ export default function DarazSalesEntryPage() {
 
                     <button
                         onClick={() => setIsImportModalOpen(true)}
-                        className="flex items-center gap-1 px-2 py-1 text-[11px] border dark:border-zinc-700 hover:bg-gray-50 dark:hover:bg-zinc-800 rounded transition-colors dark:text-gray-50 whitespace-nowrap hidden md:flex"
+                        className="flex items-center gap-2 px-3 py-1 text-[15px] border dark:border-zinc-700 hover:bg-gray-50 dark:hover:bg-zinc-800 rounded transition-colors dark:text-gray-50 whitespace-nowrap hidden md:flex"
                     >
                         <Upload size={11} />
                         Import
                     </button>
-                    <button className="flex items-center gap-1 px-2 py-1 text-[11px] border dark:border-zinc-700 hover:bg-gray-50 dark:hover:bg-zinc-800 rounded transition-colors dark:text-gray-50 whitespace-nowrap hidden md:flex">
+                    <button className="flex items-center gap-2 px-3 py-1 text-[15px] border dark:border-zinc-700 hover:bg-gray-50 dark:hover:bg-zinc-800 rounded transition-colors dark:text-gray-50 whitespace-nowrap hidden md:flex">
                         <Download size={11} />
                         Export
                     </button>
@@ -727,7 +727,7 @@ export default function DarazSalesEntryPage() {
                             setSearchInput('')
                             setBulkStatus('')
                         }}
-                        className="flex items-center gap-1 px-2 py-1 text-[11px] font-bold text-white bg-red-500 hover:bg-red-600 rounded transition-colors whitespace-nowrap"
+                        className="flex items-center gap-1 px-3 py-1 text-[15px] font-bold text-white bg-red-500 hover:bg-red-600 rounded transition-colors whitespace-nowrap"
                         title="Clear all filters"
                     >
                         <X size={10} strokeWidth={3} />
@@ -735,7 +735,7 @@ export default function DarazSalesEntryPage() {
                     </button>
 
                     {/* Total Count */}
-                    <div className="ml-auto text-[11px] font-black text-black dark:text-gray-100 whitespace-nowrap">
+                    <div className="ml-auto text-[15px] font-black text-black dark:text-gray-100 whitespace-nowrap">
                         Total: {pagination?.total || 0}
                     </div>
                 </div>
