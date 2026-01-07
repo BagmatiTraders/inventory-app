@@ -31,9 +31,9 @@ export default function DarazSalesEntryPage() {
     const [unprintedOnly, setUnprintedOnly] = useState(false) // New filter for 'Awb Unprint'
     const [bulkStatus, setBulkStatus] = useState('')
     const [page, setPage] = useState(1)
+    const [limit, setLimit] = useState(1000)
     const [isSyncingOrders, setIsSyncingOrders] = useState(false)
 
-    const [highlightedDuplicates, setHighlightedDuplicates] = useState<string[]>([])
     const [userRole, setUserRole] = useState<'admin' | 'user' | null>(null)
     const [deletionModal, setDeletionModal] = useState<{ isOpen: boolean, order: any | null }>({ isOpen: false, order: null })
     const [adminDeleteModal, setAdminDeleteModal] = useState<{ isOpen: boolean, order: any | null }>({ isOpen: false, order: null })
@@ -59,10 +59,10 @@ export default function DarazSalesEntryPage() {
 
     // Fetch orders (Pending or Today's date + Filters)
     const { data, isLoading, isFetching, refetch } = useQuery({
-        queryKey: ['daraz-orders', page, searchQuery, statusFilter, sellerAccountFilter, unprintedOnly],
+        queryKey: ['daraz-orders', page, limit, searchQuery, statusFilter, sellerAccountFilter, unprintedOnly],
         queryFn: () => getDarazOrders({
             page,
-            limit: 1000,
+            limit,
             status: statusFilter,
             todayOnly: true, // Show only Pending or today's orders
             sellerAccount: sellerAccountFilter,
@@ -120,15 +120,15 @@ export default function DarazSalesEntryPage() {
         return Object.keys(counts).filter(orderNumber => counts[orderNumber] > 1)
     }, [orders])
 
-    useEffect(() => {
-        // Update highlighted duplicates when orders or duplicateOrderNumbers change
-        const newHighlighted: string[] = []
+    // Memoize highlighted duplicate IDs
+    const highlightedDuplicates = useMemo(() => {
+        const ids: string[] = []
         orders.forEach(order => {
             if (duplicateOrderNumbers.includes(order.order_number)) {
-                newHighlighted.push(order.id)
+                ids.push(order.id)
             }
         })
-        setHighlightedDuplicates(newHighlighted)
+        return ids
     }, [orders, duplicateOrderNumbers])
 
     // Fetch user role on mount
@@ -321,7 +321,7 @@ export default function DarazSalesEntryPage() {
 
     // Render pagination
     const renderPagination = () => {
-        if (!pagination || pagination.totalPages <= 1) return null
+        if (!pagination) return null
 
         const pages = []
         const { page: currentPage, totalPages } = pagination
@@ -343,8 +343,28 @@ export default function DarazSalesEntryPage() {
 
         return (
             <div className="flex items-center justify-between px-4 py-3 border-t dark:border-zinc-700">
-                <div className="text-[17px] text-gray-600 dark:text-gray-400">
-                    Showing {((currentPage - 1) * pagination.limit) + 1} to {Math.min(currentPage * pagination.limit, pagination.total)} of {pagination.total} orders
+                <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-2">
+                        <span className="text-[14px] text-gray-600 dark:text-gray-400">Show:</span>
+                        <select
+                            value={limit === 1000 ? 'all' : limit}
+                            onChange={(e) => {
+                                const val = e.target.value
+                                setLimit(val === 'all' ? 1000 : Number(val))
+                                setPage(1)
+                            }}
+                            className="bg-zinc-50 border border-gray-300 text-gray-900 text-[13px] rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-1 dark:bg-zinc-700 dark:border-zinc-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
+                        >
+                            <option value="9">9</option>
+                            <option value="18">18</option>
+                            <option value="25">25</option>
+                            <option value="50">50</option>
+                            <option value="all">All</option>
+                        </select>
+                    </div>
+                    <div className="text-[15px] text-gray-600 dark:text-gray-400">
+                        Showing {((currentPage - 1) * pagination.limit) + 1} to {Math.min(currentPage * pagination.limit, pagination.total)} of {pagination.total} orders
+                    </div>
                 </div>
                 <div className="flex items-center gap-1">
                     {pages.map((p, idx) => (
@@ -1046,5 +1066,4 @@ export default function DarazSalesEntryPage() {
         </div >
     )
 }
-
 
