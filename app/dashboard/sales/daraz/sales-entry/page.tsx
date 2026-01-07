@@ -746,7 +746,8 @@ export default function DarazSalesEntryPage() {
                             Order List
                         </Link>
 
-                        <div className="text-[15px] font-black text-black dark:text-gray-100 whitespace-nowrap">
+                        <div className="text-[15px] font-black text-black dark:text-gray-100 whitespace-nowrap flex items-center gap-2">
+                            {isFetching && <RefreshCw className="animate-spin text-blue-600" size={12} />}
                             Total: {pagination?.total || 0}
                         </div>
                     </div>
@@ -756,6 +757,12 @@ export default function DarazSalesEntryPage() {
                 {selectedOrders.length > 0 && (
                     <div className="mt-1.5 pt-1.5 border-t dark:border-zinc-700 flex flex-wrap items-center gap-1.5">
                         <span className="text-[13px] font-medium text-gray-700 dark:text-gray-300">{selectedOrders.length} selected</span>
+                        <button
+                            onClick={() => setSelectedOrders([])}
+                            className="px-2 py-0.5 text-[11px] font-medium  text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 rounded dark:bg-red-900/20 dark:text-red-400 dark:border-red-900 transition-colors"
+                        >
+                            Unselect All
+                        </button>
                         <button
                             onClick={() => {
                                 const ids = selectedOrders.join(',')
@@ -796,7 +803,7 @@ export default function DarazSalesEntryPage() {
             </div>
 
             {/* Orders Area - Grouped by Seller */}
-            <div className="flex-1 overflow-y-auto p-2 pb-24">
+            <div className={`flex-1 overflow-y-auto p-2 pb-24 transition-opacity duration-200 ${isFetching ? 'opacity-50' : 'opacity-100'}`}>
                 {groupedOrders.map((group, groupIdx) => {
                     // Calculate stats for this group
                     const groupStats = group.orders.reduce((acc: any, order) => {
