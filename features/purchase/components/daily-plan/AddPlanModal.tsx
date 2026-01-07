@@ -4,9 +4,9 @@ import { useState, useEffect } from 'react'
 import { X, Plus, Loader2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { createPurchasePlan, getProductPurchaseStats, ProductPurchaseStats } from '@/features/purchase/actions/plan-actions'
-import { getProducts, Product, getProductBySku } from '@/features/inventory/actions/product-actions'
+import { getAllProductOptions, getProductBySku } from '@/features/inventory/actions/product-actions'
 import { toast } from 'sonner'
-import AsyncSelect from 'react-select/async'
+import Select from 'react-select'
 
 export function AddPlanModal({ onPlanAdded, trigger }: { onPlanAdded: () => void, trigger?: React.ReactNode }) {
     const router = useRouter()
@@ -26,6 +26,10 @@ export function AddPlanModal({ onPlanAdded, trigger }: { onPlanAdded: () => void
     const [stats, setStats] = useState<ProductPurchaseStats | null>(null)
     const [statsLoading, setStatsLoading] = useState(false)
 
+    // Product Options
+    const [productOptions, setProductOptions] = useState<any[]>([])
+    const [loadingProducts, setLoadingProducts] = useState(false)
+
     // Load stats when product changes
     useEffect(() => {
         if (productId) {
@@ -39,19 +43,21 @@ export function AddPlanModal({ onPlanAdded, trigger }: { onPlanAdded: () => void
         }
     }, [productId])
 
-    // Load Products for AsyncSelect
-    const loadProductOptions = async (inputValue: string) => {
-        const { products } = await getProducts({
-            search: inputValue,
-            limit: 50,
-            productType: 'all'
-        })
-        return products.map(p => ({
-            value: p.id,
-            label: `${p.product_name} ${p.seller_sku1 ? `(${p.seller_sku1})` : ''}`,
-            product: p
-        }))
-    }
+    // Load Products on Mount
+    useEffect(() => {
+        setLoadingProducts(true)
+        getAllProductOptions()
+            .then(products => {
+                const options = products.map((p: any) => ({
+                    value: p.id,
+                    label: `${p.product_name} ${p.seller_sku1 ? `(${p.seller_sku1})` : ''}`,
+                    product: p
+                }))
+                setProductOptions(options)
+            })
+            .catch(err => console.error("Failed to load products", err))
+            .finally(() => setLoadingProducts(false))
+    }, [])
 
     const handleProductChange = (option: any) => {
         if (option) {
@@ -209,14 +215,14 @@ export function AddPlanModal({ onPlanAdded, trigger }: { onPlanAdded: () => void
 
                             <div className="space-y-1">
                                 <label className="text-sm font-medium">Product Name <span className="text-red-500">*</span></label>
-                                <AsyncSelect
-                                    cacheOptions
-                                    defaultOptions
-                                    loadOptions={loadProductOptions}
+                                <Select
+                                    options={productOptions}
+                                    isLoading={loadingProducts}
                                     onChange={handleProductChange}
                                     value={productId ? { label: productName, value: productId } : null}
                                     className="text-sm"
-                                    placeholder="Search product..."
+                                    placeholder={loadingProducts ? "Loading products..." : "Search product..."}
+                                    isDisabled={loadingProducts}
                                     styles={{
                                         control: (base) => ({
                                             ...base,

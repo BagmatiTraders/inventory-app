@@ -167,6 +167,28 @@ export async function searchProducts(search: string) {
 }
 
 /**
+ * Get ALL products (lightweight) for client-side filtering
+ * Returns only id, name, and seller sku
+ */
+export async function getAllProductOptions() {
+    const supabase = await createClient()
+
+    const { data, error } = await supabase
+        .from('products')
+        .select('id, product_name, seller_sku1, seller_sku2')
+        .eq('is_deleted', false) // Only active products
+        .eq('status', 'Active')
+        .order('product_name', { ascending: true })
+
+    if (error) {
+        console.error('Get all products error:', error)
+        throw new Error(error.message)
+    }
+
+    return data || []
+}
+
+/**
  * Get single product by ID with combo items
  */
 export async function getProductById(productId: string) {
