@@ -2,7 +2,7 @@
 
 import { useState, useEffect, Suspense } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { getAllDarazOrders, deleteDarazOrder, updateDarazOrderStatus, getDarazOrderById, getAllFiscalYears, getActiveFiscalYear, syncDarazOrderProducts } from '@/features/sales/actions/daraz-actions'
+import { getAllDarazOrders, deleteDarazOrder, updateDarazOrderStatus, getDarazOrderById, getAllFiscalYears, getActiveFiscalYear, syncDarazOrderProducts, syncProductInfoFromInventory } from '@/features/sales/actions/daraz-actions'
 import { getUserRole, getUserDeletionStats, createDeletionRequest, softDeleteOrder } from '@/features/sales/actions/daraz-deletion-actions'
 import { fixHistoricalProductLinks } from '@/features/sales/actions/migration-actions'
 import { Search, Printer, ArrowLeft, X, Trash2, Clock, RefreshCw } from 'lucide-react'
@@ -433,6 +433,27 @@ function DarazOrderListContent() {
                         title="Fix mismatching Product IDs by re-linking SKUs"
                     >
                         {isSyncingLinks ? 'Syncing...' : 'Sync Links'}
+                    </button>
+
+                    {/* Sync Products Button (Moved from Sales Entry) */}
+                    <button
+                        onClick={async () => {
+                            if (!confirm('This will match seller SKUs from your orders with products in the inventory and update product names/accounts.\n\nContinue?')) return
+                            try {
+                                const result = await syncProductInfoFromInventory()
+                                alert(result.message)
+                                if (result.success && result.updated > 0) {
+                                    queryClient.invalidateQueries({ queryKey: ['all-daraz-orders'] })
+                                }
+                            } catch (error: any) {
+                                alert(`Sync error: ${error.message}`)
+                            }
+                        }}
+                        className="flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded transition-colors whitespace-nowrap shadow-sm"
+                        title="Sync product names from inventory by matching seller SKUs"
+                    >
+                        <RefreshCw size={12} />
+                        Sync Products
                     </button>
 
                     {/* Clear All Filters Button - Now next to Search */}

@@ -555,12 +555,13 @@ export default function DarazSalesEntryPage() {
             {/* Compact Header */}
             <div className="z-10 bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 px-3 py-1.5 shadow-sm">
                 <div className="flex items-center justify-between gap-2 flex-wrap">
+                    {/* Left: Title Group */}
+                    {/* Left: Title Group */}
                     <div className="hidden md:block">
-                        <h1 className="text-[17px] font-bold">Daraz Sales</h1>
-                        <p className="text-[13px] text-gray-500 dark:text-gray-400">Sales Entry</p>
+                        <h1 className="text-[18px] font-bold">Daraz Sales</h1>
+                        <p className="text-[14px] text-gray-500 dark:text-gray-400">Sales Entry</p>
                     </div>
 
-                    {/* Stats Badges */}
                     {stats && (
                         <div className="flex flex-wrap gap-1.5">
                             <span className={`text-[11px] font-medium px-1.5 py-0.5 rounded border border-yellow-200 bg-yellow-50 text-yellow-700 dark:bg-yellow-900/20 dark:border-yellow-900 dark:text-yellow-400 whitespace-nowrap`}>
@@ -578,31 +579,26 @@ export default function DarazSalesEntryPage() {
                         </div>
                     )}
 
-                    {/* Action Buttons */}
-                    <div className="flex items-center gap-1.5">
+                    {/* Right: Actions Group (Import/Export + Back) */}
+                    <div className="flex items-center gap-2">
                         <button
-                            onClick={handleSyncOrders}
-                            disabled={isSyncingOrders}
-                            className="flex items-center gap-1 px-2 py-1 text-[15px] bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
-                            title="Refresh orders from Order Sync page data"
+                            onClick={() => setIsImportModalOpen(true)}
+                            className="flex items-center gap-2 px-3 py-1 text-[15px] border dark:border-zinc-700 hover:bg-gray-50 dark:hover:bg-zinc-800 rounded transition-colors dark:text-gray-50 whitespace-nowrap hidden md:flex"
                         >
-                            <RefreshCw size={11} className={isSyncingOrders ? 'animate-spin' : ''} />
-                            {isSyncingOrders ? 'Syncing...' : 'Refresh Orders'}
+                            <Upload size={11} />
+                            Import
                         </button>
-                        <button
-                            onClick={handleSyncProductInfo}
-                            className="flex items-center gap-1 px-2 py-1 text-[15px] bg-green-600 hover:bg-green-700 text-white rounded transition-colors whitespace-nowrap"
-                            title="Sync product names from inventory by matching seller SKUs"
-                        >
-                            <RefreshCw size={11} />
-                            Sync Products
+                        <button className="flex items-center gap-2 px-3 py-1 text-[15px] border dark:border-zinc-700 hover:bg-gray-50 dark:hover:bg-zinc-800 rounded transition-colors dark:text-gray-50 whitespace-nowrap hidden md:flex">
+                            <Download size={11} />
+                            Export
                         </button>
+
                         <Link
                             href="/dashboard/sales/daraz"
                             className="flex items-center gap-1 px-2 py-1 text-[15px] bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700 rounded transition-colors whitespace-nowrap"
                         >
                             <ArrowLeft size={11} />
-                            Back
+                            Back to Sales
                         </Link>
                     </div>
                 </div>
@@ -611,17 +607,6 @@ export default function DarazSalesEntryPage() {
             {/* Compact Action Bar with Filters */}
             <div className="z-10 bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 px-3 py-1.5 shadow-sm">
                 <div className="flex flex-wrap items-center gap-1.5">
-                    {/* Order List Button */}
-                    <Link
-                        href="/dashboard/sales/daraz/order-list"
-                        className="flex items-center gap-1 px-2 py-1 text-[15px] bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors whitespace-nowrap"
-                    >
-                        <List size={11} />
-                        Order List
-                    </Link>
-
-                    {/* Separator */}
-                    <div className="h-4 w-px bg-gray-300 dark:bg-zinc-700"></div>
 
                     {/* Seller Account Dropdown */}
                     <select
@@ -705,17 +690,6 @@ export default function DarazSalesEntryPage() {
                         Add
                     </button>
 
-                    <button
-                        onClick={() => setIsImportModalOpen(true)}
-                        className="flex items-center gap-2 px-3 py-1 text-[15px] border dark:border-zinc-700 hover:bg-gray-50 dark:hover:bg-zinc-800 rounded transition-colors dark:text-gray-50 whitespace-nowrap hidden md:flex"
-                    >
-                        <Upload size={11} />
-                        Import
-                    </button>
-                    <button className="flex items-center gap-2 px-3 py-1 text-[15px] border dark:border-zinc-700 hover:bg-gray-50 dark:hover:bg-zinc-800 rounded transition-colors dark:text-gray-50 whitespace-nowrap hidden md:flex">
-                        <Download size={11} />
-                        Export
-                    </button>
 
                     {/* Clear Filters Button */}
                     <button
@@ -734,9 +708,27 @@ export default function DarazSalesEntryPage() {
                         Clear
                     </button>
 
-                    {/* Total Count */}
-                    <div className="ml-auto text-[15px] font-black text-black dark:text-gray-100 whitespace-nowrap">
-                        Total: {pagination?.total || 0}
+                    {/* Right Aligned Navigation Group */}
+                    <div className="ml-auto flex items-center gap-2">
+                        <Link
+                            href="/dashboard/sales/daraz/dashboard?from=sales-entry"
+                            className="flex items-center gap-1 px-2 py-1 text-[15px] bg-purple-600 hover:bg-purple-700 text-white rounded transition-colors whitespace-nowrap"
+                        >
+                            <List size={11} />
+                            Sales Dashboard
+                        </Link>
+
+                        <Link
+                            href="/dashboard/sales/daraz/order-list"
+                            className="flex items-center gap-1 px-2 py-1 text-[15px] bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors whitespace-nowrap"
+                        >
+                            <List size={11} />
+                            Order List
+                        </Link>
+
+                        <div className="text-[15px] font-black text-black dark:text-gray-100 whitespace-nowrap">
+                            Total: {pagination?.total || 0}
+                        </div>
                     </div>
                 </div>
 
@@ -847,17 +839,17 @@ export default function DarazSalesEntryPage() {
                                                         title="Select Group"
                                                     />
                                                 </th>
-                                                <th className="px-1.5 py-1 text-left text-xs font-bold uppercase text-gray-900 dark:text-gray-100 w-10">SN</th>
-                                                <th className="px-1.5 py-1 text-left text-xs font-bold uppercase text-gray-900 dark:text-gray-100 w-14 md:w-22">Date</th>
-                                                <th className="px-1.5 py-1 text-left text-xs font-bold uppercase text-gray-900 dark:text-gray-100 w-auto md:w-28">Invoice</th>
-                                                <th className="px-1.5 py-1 text-left text-xs font-bold uppercase text-gray-900 dark:text-gray-100 w-auto md:w-32">Order</th>
-                                                <th className="hidden md:table-cell px-1.5 py-1 text-left text-xs font-bold uppercase text-gray-900 dark:text-gray-100 w-45">Customer</th>
-                                                <th className="hidden md:table-cell px-1.5 py-1 text-left text-xs font-bold uppercase text-gray-900 dark:text-gray-100 w-48">Product</th>
-                                                <th className="hidden md:table-cell px-1.5 py-1 text-left text-xs font-bold uppercase text-gray-900 dark:text-gray-100 w-20">Product ID</th>
-                                                <th className="hidden md:table-cell px-1.5 py-1 text-right text-xs font-bold uppercase text-gray-900 dark:text-gray-100 w-16">Qty</th>
-                                                <th className="hidden md:table-cell px-1.5 py-1 text-right text-xs font-bold uppercase text-gray-900 dark:text-gray-100 w-24">Amount</th>
-                                                <th className="hidden md:table-cell px-1.5 py-1 text-left text-xs font-bold uppercase text-gray-900 dark:text-gray-100 w-24">Status</th>
-                                                <th className="hidden md:table-cell px-1.5 py-1 text-center text-xs font-bold uppercase text-gray-900 dark:text-gray-100 w-29">Actions</th>
+                                                <th className="px-1.5 py-1 text-left text-[13px] font-bold uppercase text-gray-900 dark:text-gray-100 w-10">SN</th>
+                                                <th className="px-1.5 py-1 text-left text-[13px] font-bold uppercase text-gray-900 dark:text-gray-100 w-14 md:w-22">Date</th>
+                                                <th className="px-1.5 py-1 text-left text-[13px] font-bold uppercase text-gray-900 dark:text-gray-100 w-auto md:w-28">Invoice</th>
+                                                <th className="px-1.5 py-1 text-left text-[13px] font-bold uppercase text-gray-900 dark:text-gray-100 w-auto md:w-32">Order</th>
+                                                <th className="hidden md:table-cell px-1.5 py-1 text-left text-[13px] font-bold uppercase text-gray-900 dark:text-gray-100 w-45">Customer</th>
+                                                <th className="hidden md:table-cell px-1.5 py-1 text-left text-[13px] font-bold uppercase text-gray-900 dark:text-gray-100 w-48">Product</th>
+                                                {/* <th className="hidden md:table-cell px-1.5 py-1 text-left text-[13px] font-bold uppercase text-gray-900 dark:text-gray-100 w-20">Product ID</th> */}
+                                                <th className="hidden md:table-cell px-1.5 py-1 text-right text-[13px] font-bold uppercase text-gray-900 dark:text-gray-100 w-16">Qty</th>
+                                                <th className="hidden md:table-cell px-1.5 py-1 text-right text-[13px] font-bold uppercase text-gray-900 dark:text-gray-100 w-24">Amount</th>
+                                                <th className="hidden md:table-cell px-1.5 py-1 text-left text-[13px] font-bold uppercase text-gray-900 dark:text-gray-100 w-24">Status</th>
+                                                <th className="hidden md:table-cell px-1.5 py-1 text-center text-[13px] font-bold uppercase text-gray-900 dark:text-gray-100 w-29">Actions</th>
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-gray-200 dark:divide-zinc-700">
@@ -875,7 +867,7 @@ export default function DarazSalesEntryPage() {
                                                         />
                                                     </td>
                                                     <td className="px-1.5 py-0.5 text-sm text-gray-700 dark:text-gray-300 align-top md:align-middle">{idx + 1}</td>
-                                                    <td className="px-1.5 py-0.5 text-sm text-gray-700 dark:text-gray-300 align-top md:align-middle">
+                                                    <td className="px-1.5 py-0.5 text-[15px] text-gray-700 dark:text-gray-300 align-top md:align-middle">
                                                         <span className="md:hidden font-medium">{new Date(order.order_date).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit' })}</span>
                                                         <span className="hidden md:inline">{new Date(order.order_date).toLocaleDateString('en-GB')}</span>
                                                     </td>
@@ -886,7 +878,7 @@ export default function DarazSalesEntryPage() {
                                                                 queryKey: ['daraz-order', order.id],
                                                                 queryFn: () => getDarazOrderById(order.id)
                                                             })}
-                                                            className="text-[13px] font-mono text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 hover:underline cursor-pointer"
+                                                            className="text-[14px] font-mono text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 hover:underline cursor-pointer"
                                                         >
                                                             <span className="md:hidden">{order.invoice_number?.slice(-5)}</span>
                                                             <span className="hidden md:inline">{order.invoice_number}</span>
@@ -921,16 +913,16 @@ export default function DarazSalesEntryPage() {
                                                             </div>
                                                         </div>
                                                     </td>
-                                                    <td className={`hidden md:table-cell px-1.5 py-0.5 text-sm truncate ${getCustomerClass(order.customer_name, order.order_date)}`} title={order.customer_name}>{order.customer_name}</td>
-                                                    <td className={`hidden md:table-cell px-1.5 py-0.5 text-sm truncate ${order.first_product_name === 'Product Not Found' ? 'text-red-600 dark:text-red-400 font-bold' : 'text-gray-700 dark:text-gray-300'}`} title={order.first_product_name}>
+                                                    <td className={`hidden md:table-cell px-1.5 py-0.5 text-[15px] truncate ${getCustomerClass(order.customer_name, order.order_date)}`} title={order.customer_name}>{order.customer_name}</td>
+                                                    <td className={`hidden md:table-cell px-1.5 py-0.5 text-[15px] truncate ${order.first_product_name === 'Product Not Found' ? 'text-red-600 dark:text-red-400 font-bold' : 'text-gray-700 dark:text-gray-300'}`} title={order.first_product_name}>
                                                         {order.first_product_name}
                                                         {order.item_count > 1 && <span className="text-gray-500 dark:text-gray-400 text-xs"> +{order.item_count - 1} Product{order.item_count - 1 > 1 ? 's' : ''}</span>}
                                                     </td>
-                                                    <td className="hidden md:table-cell px-1.5 py-0.5 text-sm text-gray-600 dark:text-gray-400">
+                                                    {/* <td className="hidden md:table-cell px-1.5 py-0.5 text-sm text-gray-600 dark:text-gray-400">
                                                         {order.first_product_code ? `#${order.first_product_code}` : '-'}
-                                                    </td>
-                                                    <td className="hidden md:table-cell px-1.5 py-0.5 text-sm text-right text-gray-700 dark:text-gray-300">{order.total_quantity}</td>
-                                                    <td className="hidden md:table-cell px-1.5 py-0.5 text-sm text-right font-medium text-gray-700 dark:text-gray-300">
+                                                    </td> */}
+                                                    <td className="hidden md:table-cell px-1.5 py-0.5 text-[15px] text-right text-gray-700 dark:text-gray-300">{order.total_quantity}</td>
+                                                    <td className="hidden md:table-cell px-1.5 py-0.5 text-[15px] text-right font-medium text-gray-700 dark:text-gray-300">
                                                         <span>Rs. {order.grand_total?.toLocaleString()}</span>
                                                     </td>
                                                     <td className="hidden md:table-cell px-1.5 py-0.5">
@@ -947,7 +939,7 @@ export default function DarazSalesEntryPage() {
                                                                 className={`p-0.5 hover:bg-gray-100 dark:hover:bg-zinc-700 rounded ${order.is_printed ? 'text-green-600 dark:text-green-400' : 'text-gray-600 dark:text-gray-400'}`}
                                                                 title={order.is_printed ? "Printed" : "Print"}
                                                             >
-                                                                <Printer size={12} />
+                                                                <Printer size={13} />
                                                             </button>
                                                             <button
                                                                 onClick={() => router.push(`/dashboard/sales/daraz/order/${order.id}`)}
@@ -955,19 +947,19 @@ export default function DarazSalesEntryPage() {
                                                                     queryKey: ['daraz-order', order.id],
                                                                     queryFn: () => getDarazOrderById(order.id)
                                                                 })}
-                                                                className="px-1 py-0.5 text-xs text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded"
+                                                                className="px-1 py-0.5 text-[13px] text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded"
                                                             >
                                                                 View
                                                             </button>
 
                                                             <button
                                                                 onClick={() => handleDelete(order.id, order.order_number)}
-                                                                className="px-1 py-0.5 text-xs text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded"
+                                                                className="px-1 py-0.5 text-[13px] text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded"
                                                                 disabled={order.pending_deletion}
                                                             >
                                                                 {order.pending_deletion ? (
                                                                     <span className="flex items-center gap-0.5 text-yellow-600">
-                                                                        <Clock size={9} />
+                                                                        <Clock size={10} />
                                                                         Pending
                                                                     </span>
                                                                 ) : (
@@ -982,10 +974,10 @@ export default function DarazSalesEntryPage() {
                                                                         else toast.error(res.message)
                                                                     }
                                                                 }}
-                                                                className="px-1 py-0.5 text-xs text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20 rounded"
+                                                                className="px-1 py-0.5 text-[13px] text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20 rounded"
                                                                 title="Sync products from inventory"
                                                             >
-                                                                <RefreshCw size={12} />
+                                                                <RefreshCw size={13} />
                                                             </button>
                                                         </div>
                                                     </td>

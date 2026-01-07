@@ -7,6 +7,7 @@ import { getUserRole } from '@/features/sales/actions/daraz-deletion-actions'
 import { ArrowLeft, BarChart2, FileText, AlertCircle, PieChart, RefreshCw } from 'lucide-react'
 import Link from 'next/link'
 import { Card } from '@/components/ui-shim'
+import { useSearchParams } from 'next/navigation'
 
 import { OrderStatusSyncTable } from '@/features/sales/components/OrderStatusSyncTable'
 
@@ -16,6 +17,12 @@ export default function DarazSalesDashboardPage() {
     const [activeTab, setActiveTab] = useState<ReportTab>('daily')
     const [userRole, setUserRole] = useState<'admin' | 'user' | null>(null)
     const [isCheckingRole, setIsCheckingRole] = useState(true)
+    const searchParams = useSearchParams()
+    const fromPage = searchParams.get('from')
+
+    const backLink = fromPage === 'sales-entry'
+        ? { href: '/dashboard/sales/daraz/sales-entry', label: 'Back to Sales Entry' }
+        : { href: '/dashboard/sales/daraz', label: 'Back to Dashboard' }
 
     // Check user role
     useEffect(() => {
@@ -130,11 +137,11 @@ export default function DarazSalesDashboardPage() {
                         <p className="text-[13px] text-gray-500 dark:text-gray-400">Access Denied</p>
                     </div>
                     <Link
-                        href="/dashboard/sales/daraz"
+                        href={backLink.href}
                         className="flex items-center gap-1 px-2 py-1 text-[13px] bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700 rounded transition-colors"
                     >
                         <ArrowLeft size={12} />
-                        Back to Dashboard
+                        {backLink.label}
                     </Link>
                 </div>
                 <div className="flex-1 flex items-center justify-center p-8">
@@ -169,11 +176,11 @@ export default function DarazSalesDashboardPage() {
                         Profit Tracker
                     </Link>
                     <Link
-                        href="/dashboard/sales/daraz"
+                        href={backLink.href}
                         className="flex items-center gap-1 px-2 py-1 text-[13px] bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700 rounded transition-colors"
                     >
                         <ArrowLeft size={12} />
-                        Back to Dashboard
+                        {backLink.label}
                     </Link>
                 </div>
             </div>
