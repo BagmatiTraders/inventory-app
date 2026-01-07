@@ -11,9 +11,11 @@ import { useSearchParams } from 'next/navigation'
 
 import { OrderStatusSyncTable } from '@/features/sales/components/OrderStatusSyncTable'
 
+import { Suspense } from 'react'
+
 type ReportTab = 'daily' | 'summary' | 'status-sync'
 
-export default function DarazSalesDashboardPage() {
+function DashboardContent() {
     const [activeTab, setActiveTab] = useState<ReportTab>('daily')
     const [userRole, setUserRole] = useState<'admin' | 'user' | null>(null)
     const [isCheckingRole, setIsCheckingRole] = useState(true)
@@ -585,6 +587,18 @@ export default function DarazSalesDashboardPage() {
                 </div>
             </div>
         </div>
+    )
+}
+
+export default function DarazSalesDashboardPage() {
+    return (
+        <Suspense fallback={
+            <div className="flex items-center justify-center h-screen">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            </div>
+        }>
+            <DashboardContent />
+        </Suspense>
     )
 }
 
