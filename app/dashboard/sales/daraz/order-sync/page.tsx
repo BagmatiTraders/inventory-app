@@ -15,7 +15,7 @@ export const dynamic = 'force-dynamic'
 
 // Helper: Same logic as backend to keep consistency
 // Helper: Same logic as backend to keep consistency
-function getProminentStatus(statuses: string[], currentStatus: string = ''): string {
+export function getProminentStatus(statuses: string[], currentStatus: string = ''): string {
     const rawStatuses = statuses || (currentStatus ? [currentStatus] : [])
     if (!rawStatuses || rawStatuses.length === 0) return 'pending'
 
@@ -42,7 +42,7 @@ function getProminentStatus(statuses: string[], currentStatus: string = ''): str
     return 'Pending'
 }
 
-function OrderSyncPageContent() {
+export function OrderSyncPageContent({ isEmbedded = false }: { isEmbedded?: boolean }) {
     const { data: stores, isLoading } = useOnlineStores()
     const searchParams = useSearchParams()
     const router = useRouter()
@@ -218,22 +218,24 @@ function OrderSyncPageContent() {
         <div className="space-y-6 pt-16 md:pt-0">
             {/* Compact Header */}
             <div className="sticky top-16 md:top-0 z-10 bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 px-3 py-1.5 shadow-sm space-y-2">
-                <div className="flex items-center justify-between">
-                    <div className="hidden md:block">
-                        <h1 className="text-[17px] font-bold">Daraz Order sync</h1>
-                        <p className="text-[13px] text-gray-500 dark:text-gray-400">Sync orders from your connected Daraz stores</p>
+                {!isEmbedded && (
+                    <div className="flex items-center justify-between">
+                        <div className="hidden md:block">
+                            <h1 className="text-[17px] font-bold">Daraz Order sync</h1>
+                            <p className="text-[13px] text-gray-500 dark:text-gray-400">Sync orders from your connected Daraz stores</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            {/* Auto Sync Removed */}
+                            <Link
+                                href="/dashboard/sales/daraz"
+                                className="hidden md:flex items-center gap-1 px-2 py-1 text-[13px] bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700 rounded transition-colors"
+                            >
+                                <ArrowLeft size={12} />
+                                Back to Menu
+                            </Link>
+                        </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                        {/* Auto Sync Removed */}
-                        <Link
-                            href="/dashboard/sales/daraz"
-                            className="hidden md:flex items-center gap-1 px-2 py-1 text-[13px] bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700 rounded transition-colors"
-                        >
-                            <ArrowLeft size={12} />
-                            Back to Menu
-                        </Link>
-                    </div>
-                </div>
+                )}
 
                 {/* Status Summary Bar */}
                 {Object.keys(statusSummary.byStore).length > 0 && (
