@@ -11,10 +11,11 @@ import { useSearchParams } from 'next/navigation'
 
 import { OrderStatusSyncTable } from '@/features/sales/components/OrderStatusSyncTable'
 import { OrderSyncPageContent } from '../order-sync/page'
+import ProfitTrackerPage from '../profit-tracker/page'
 
 import { Suspense } from 'react'
 
-type ReportTab = 'daily' | 'summary' | 'status-sync' | 'order-sync'
+type ReportTab = 'daily' | 'summary' | 'status-sync' | 'order-sync' | 'profit-tracker'
 
 function DashboardContent() {
     const [activeTab, setActiveTab] = useState<ReportTab>('daily')
@@ -232,6 +233,16 @@ function DashboardContent() {
                         >
                             <Download size={12} />
                             Order Sync
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('profit-tracker')}
+                            className={`flex items-center gap-1 px-2 py-1 text-sm rounded transition-colors ${activeTab === 'profit-tracker'
+                                ? 'bg-blue-600 text-white'
+                                : 'bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700'
+                                }`}
+                        >
+                            <BarChart2 size={12} />
+                            Profit Tracker
                         </button>
                     </div>
                 </div>
@@ -567,6 +578,10 @@ function DashboardContent() {
                 {activeTab === 'order-sync' && (
                     <OrderSyncPageContent isEmbedded={true} />
                 )}
+
+                {activeTab === 'profit-tracker' && (
+                    <ProfitTrackerPage isEmbedded={true} />
+                )}        
 
             </div >
 

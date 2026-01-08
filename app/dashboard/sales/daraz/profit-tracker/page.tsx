@@ -1,4 +1,6 @@
-import { Fragment } from 'react'
+'use client'
+
+import { Fragment, useState, useEffect } from 'react'
 import {
     Card,
     Table,
@@ -14,50 +16,108 @@ import Link from 'next/link'
 import { getProfitTrackerData, getDailyProfitStats } from '@/features/sales/actions/report-actions'
 import { format } from 'date-fns'
 import { BulkSyncButton } from './bulk-sync-button'
-import { LimitSelector } from './limit-selector'
 import { MobileHeaderAction } from '@/components/MobileHeaderAction'
+import { useQuery } from '@tanstack/react-query'
+import { useSearchParams, useRouter } from 'next/navigation'
 
-// Force dynamic rendering (no caching)
-export const dynamic = 'force-dynamic'
-export const revalidate = 0
+// Helper component for Limit Selector using props
+function LimitSelector({ currentLimit, onLimitChange }: { currentLimit: number, onLimitChange: (limit: number) => void }) {
+    return (
+        <div className="flex items-center gap-2">
+            <span className="text-sm text-gray-500">Rows per page</span>
+            <select
+                value={currentLimit}
+                onChange={(e) => onLimitChange(Number(e.target.value))}
+                className="h-8 w-16 rounded-md border border-gray-300 bg-white px-2 py-1 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-gray-100"
+            >
+                {[10, 20, 50, 100].map((size) => (
+                    <option key={size} value={size}>
+                        {size}
+                    </option>
+                ))}
+            </select>
+        </div>
+    )
+}
 
-export default async function ProfitTrackerPage({
-    searchParams
-}: {
-    searchParams: Promise<{ page?: string, search?: string, syncStatus?: string, limit?: string }>
-}) {
-    const params = await searchParams
-    const page = Number(params.page) || 1
-    const limit = Number(params.limit) || 50
-    const search = params.search || ''
-    // Default to 'all' if not specified
-    const syncStatus = (params.syncStatus as 'all' | 'synced' | 'not_synced') || 'all'
+export default function ProfitTrackerPage({ isEmbedded = false }: { isEmbedded?: boolean }) {
+    const searchParams = useSearchParams()
+    const router = useRouter()
 
-    // Fetch Delivered Orders from Profit Tracker Action
-    const { data: orders, totalCount, totalPages } = await getProfitTrackerData({
-        page,
-        limit, // Use dynamic limit
-        search,
-        syncStatus,
-        startDate: undefined,
-        endDate: undefined
+    // State
+    const [page, setPage] = useState(1)
+    const [limit, setLimit] = useState(50)
+    const [search, setSearch] = useState('')
+    const [syncStatus, setSyncStatus] = useState<'all' | 'synced' | 'not_synced'>('all')
+
+    // Initialize from URL on mount only
+    useEffect(() => {
+        const p = Number(searchParams.get('page')) || 1
+        const l = Number(searchParams.get('limit')) || 50
+        const s = searchParams.get('search') || ''
+        const ss = (searchParams.get('syncStatus') as any) || 'all'
+
+        setPage(p)
+        setLimit(l)
+        setSearch(s)
+        setSyncStatus(ss)
+    }, []) // Empty dependency to run only once on mount
+
+    // Update URL when state changes (only if NOT embedded)
+    useEffect(() => {
+        if (!isEmbedded) {
+            const params = new URLSearchParams()
+            if (page > 1) params.set('page', String(page))
+            if (limit !== 50) params.set('limit', String(limit))
+            if (search) params.set('search', search)
+            if (syncStatus !== 'all') params.set('syncStatus', syncStatus)
+
+            const str = params.toString()
+            const url = str ? `?${str}` : window.location.pathname
+            router.replace(url, { scroll: false })
+        }
+    }, [page, limit, search, syncStatus, isEmbedded, router])
+
+    // Data Fetching
+    const { data: profitData, isLoading: isOrdersLoading } = useQuery({
+        queryKey: ['profit-tracker', page, limit, search, syncStatus],
+        queryFn: async () => {
+            // Wrap the server action call
+            return getProfitTrackerData({
+                page,
+                limit,
+                search,
+                syncStatus,
+                startDate: undefined,
+                endDate: undefined
+            })
+        }
     })
 
-    // Fetch Global Daily Stats (Ignoring Pagination)
-    const dailyStats = await getDailyProfitStats({
-        search,
-        syncStatus,
-        startDate: undefined,
-        endDate: undefined
+    const { data: dailyStats, isLoading: isStatsLoading } = useQuery({
+        queryKey: ['daily-profit-stats', search, syncStatus],
+        queryFn: async () => {
+            return getDailyProfitStats({
+                search,
+                syncStatus,
+                startDate: undefined,
+                endDate: undefined
+            })
+        },
+        staleTime: 5 * 60 * 1000 // Cache stats for 5 mins
     })
 
-    // Group orders by Delivered Date
+    const orders = profitData?.data || []
+    const totalCount = profitData?.totalCount || 0
+    const totalPages = profitData?.totalPages || 0
+    const stats = dailyStats || {}
+    const isLoading = isOrdersLoading || isStatsLoading
+
+    // Grouping Logic
     const groupedOrders = orders.reduce((groups: any, order: any) => {
         const dateKey = order.delivered_at ? format(new Date(order.delivered_at), 'yyyy-MM-dd') : 'Unknown Date'
         if (!groups[dateKey]) {
-            // Retrieve Global Stats for this Date
-            const globalDayStats = dailyStats[dateKey] || { statsBySeller: {}, totalProfit: 0 }
-
+            const globalDayStats = stats[dateKey] || { statsBySeller: {}, totalProfit: 0 }
             groups[dateKey] = {
                 orders: [],
                 totalProfit: globalDayStats.totalProfit || 0,
@@ -66,12 +126,9 @@ export default async function ProfitTrackerPage({
             }
         }
         groups[dateKey].orders.push(order)
-        // No local accumulation. We use Pre-calculated Global Stats.
-
         return groups
     }, {})
 
-    // Sort dates descending
     const sortedDateKeys = Object.keys(groupedOrders).sort((a, b) => {
         if (a === 'Unknown Date') return 1
         if (b === 'Unknown Date') return -1
@@ -79,85 +136,67 @@ export default async function ProfitTrackerPage({
     })
 
     let globalIndex = 0
-
-    // Always pass visible orders to Bulk Sync to allow re-syncing/fixing of any list
     const visibleOrderNumbers = orders.map((o: any) => o.order_number)
 
     return (
         <div className="flex flex-col h-full bg-gray-50 dark:bg-zinc-950">
-            {/* Header - Desktop Only */}
-            <div className="hidden md:flex bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 px-6 py-4 flex-col gap-4">
-                <div className="flex items-center justify-between">
-                    <div>
-                        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Profit Tracker</h1>
-                        <p className="text-sm text-gray-500 dark:text-gray-400">
-                            Financial analysis of delivered orders | Total: {totalCount}
-                        </p>
-                    </div>
-
-                    {/* Bulk Sync Button (Top Right) */}
-                    <div>
-                        <BulkSyncButton orderNumbers={visibleOrderNumbers} />
+            {/* Header - Conditional */}
+            {!isEmbedded && (
+                <div className="hidden md:flex bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 px-6 py-4 flex-col gap-4">
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Profit Tracker</h1>
+                            <p className="text-sm text-gray-500 dark:text-gray-400">
+                                Financial analysis of delivered orders | Total: {totalCount}
+                            </p>
+                        </div>
+                        <div>
+                            <BulkSyncButton orderNumbers={visibleOrderNumbers} />
+                        </div>
                     </div>
                 </div>
-            </div>
+            )}
 
-            {/* Mobile Actions Portal */}
+            {/* Mobile Actions Portal - Only if standalone? User didn't specify, keeping safe */}
             <div className="md:hidden">
                 <MobileHeaderAction>
                     <BulkSyncButton orderNumbers={visibleOrderNumbers} />
                 </MobileHeaderAction>
             </div>
 
-            {/* Controls Bar: Tabs & Search - Sticky on Mobile */}
-            <div className="sticky top-0 z-20 bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 px-4 py-3 md:px-6 md:py-4 shadow-sm">
+
+            {/* Controls Bar: Tabs & Search */}
+            <div className={`sticky ${isEmbedded ? 'top-0' : 'top-0'} z-20 bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 px-4 py-3 md:px-6 md:py-4 shadow-sm`}>
                 <div className="flex flex-col md:flex-row items-center justify-between gap-4">
                     {/* Search Box */}
-                    <form className="w-full md:flex-1 md:max-w-sm">
-                        <div className="relative">
-                            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-400" />
-                            <input
-                                name="search"
-                                defaultValue={search}
-                                type="text"
-                                placeholder="Search Order / Invoice..."
-                                className="w-full pl-9 h-9 text-sm rounded-md border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                            />
-                            {/* Keep filters */}
-                            <input type="hidden" name="syncStatus" value={syncStatus} />
-                            <input type="hidden" name="limit" value={limit} />
-                        </div>
-                    </form>
+                    <div className="w-full md:flex-1 md:max-w-sm relative">
+                        <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-400" />
+                        <input
+                            value={search}
+                            onChange={(e) => {
+                                setSearch(e.target.value)
+                                setPage(1)
+                            }}
+                            type="text"
+                            placeholder="Search Order / Invoice..."
+                            className="w-full pl-9 h-9 text-sm rounded-md border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        />
+                    </div>
 
                     {/* Status Tabs */}
                     <div className="flex w-full md:w-auto p-1 bg-gray-100 dark:bg-zinc-800 rounded-lg overflow-x-auto no-scrollbar">
-                        <Link
-                            href={`?page=1&limit=${limit}&search=${search}&syncStatus=all`}
-                            className={`flex-1 md:flex-none text-center px-4 py-1.5 text-sm font-medium rounded-md transition-all whitespace-nowrap ${syncStatus === 'all'
-                                ? 'bg-white dark:bg-zinc-900 text-gray-900 dark:text-gray-100 shadow-sm'
-                                : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
-                                }`}
-                        >
-                            All
-                        </Link>
-                        <Link
-                            href={`?page=1&limit=${limit}&search=${search}&syncStatus=synced`}
-                            className={`flex-1 md:flex-none text-center px-4 py-1.5 text-sm font-medium rounded-md transition-all whitespace-nowrap ${syncStatus === 'synced'
-                                ? 'bg-white dark:bg-zinc-900 text-green-700 dark:text-green-400 shadow-sm'
-                                : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
-                                }`}
-                        >
-                            Synced
-                        </Link>
-                        <Link
-                            href={`?page=1&limit=${limit}&search=${search}&syncStatus=not_synced`}
-                            className={`flex-1 md:flex-none text-center px-4 py-1.5 text-sm font-medium rounded-md transition-all whitespace-nowrap ${syncStatus === 'not_synced'
-                                ? 'bg-white dark:bg-zinc-900 text-red-700 dark:text-red-400 shadow-sm'
-                                : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
-                                }`}
-                        >
-                            Not Synced
-                        </Link>
+                        {(['all', 'synced', 'not_synced'] as const).map(status => (
+                            <button
+                                key={status}
+                                onClick={() => { setSyncStatus(status); setPage(1); }}
+                                className={`flex-1 md:flex-none text-center px-4 py-1.5 text-sm font-medium rounded-md transition-all whitespace-nowrap ${syncStatus === status
+                                    ? 'bg-white dark:bg-zinc-900 text-gray-900 dark:text-gray-100 shadow-sm'
+                                    : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+                                    }`}
+                            >
+                                {status === 'all' ? 'All' : status === 'synced' ? 'Synced' : 'Not Synced'}
+                            </button>
+                        ))}
                     </div>
                 </div>
             </div>
@@ -165,8 +204,8 @@ export default async function ProfitTrackerPage({
             <div className="p-2 md:p-6 space-y-4">
                 {/* Table */}
                 <Card className="overflow-hidden border-none shadow-md bg-white dark:bg-zinc-900">
-                    <div className="overflow-x-auto"> {/* Added wrapper for scroll */}
-                        <Table className="min-w-[800px]"> {/* Ensure min-width for mobile scroll */}
+                    <div className="overflow-x-auto">
+                        <Table className="min-w-[800px]">
                             <TableHeader className="bg-gray-50 dark:bg-zinc-800">
                                 <TableRow>
                                     <TableHead className="w-16">S.N</TableHead>
@@ -182,7 +221,13 @@ export default async function ProfitTrackerPage({
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
-                                {orders.length === 0 ? (
+                                {isLoading ? (
+                                    <TableRow>
+                                        <TableCell colSpan={10} className="h-48 text-center text-gray-500">
+                                            Loading data...
+                                        </TableCell>
+                                    </TableRow>
+                                ) : orders.length === 0 ? (
                                     <TableRow>
                                         <TableCell colSpan={10} className="h-24 text-center text-gray-500">
                                             No delivered orders found
@@ -197,12 +242,9 @@ export default async function ProfitTrackerPage({
                                                 <TableRow className="bg-gray-100 dark:bg-zinc-800/80 border-b border-gray-200 dark:border-zinc-700">
                                                     <TableCell colSpan={8} className="py-3 pl-4 align-top">
                                                         <div className="relative min-h-[28px]">
-                                                            {/* Date Label - Positioned Absolute Left */}
                                                             <span className="absolute left-0 top-1 font-bold text-gray-700 dark:text-gray-200 text-sm whitespace-nowrap">
                                                                 {group.dateLabel}
                                                             </span>
-
-                                                            {/* Stats by Seller (Vertical Rows) - Centered Block, Left Aligned Items */}
                                                             <div className="w-full flex justify-center">
                                                                 <div className="flex flex-col gap-1.5">
                                                                     {Object.entries(group.statsBySeller).map(([seller, stats]: [string, any]) => (
@@ -250,7 +292,7 @@ export default async function ProfitTrackerPage({
                                                     return (
                                                         <TableRow key={order.order_primary_id} className="hover:bg-gray-50 dark:hover:bg-zinc-800/50">
                                                             <TableCell className="text-gray-500">
-                                                                {((page - 1) * 50) + currentRowIndex + 1}
+                                                                {((page - 1) * limit) + currentRowIndex + 1}
                                                             </TableCell>
                                                             <TableCell>
                                                                 <div className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${isSynced
@@ -289,7 +331,6 @@ export default async function ProfitTrackerPage({
                                                                 </span>
                                                             </TableCell>
                                                             <TableCell children={
-                                                                /* Product Name with Tooltip */
                                                                 <div
                                                                     className="max-w-[300px] cursor-help"
                                                                     title={order.products?.map((p: any) => `${p.product_name} (ID: ${p.product_id || 'N/A'})`).join('\n')}
@@ -314,7 +355,6 @@ export default async function ProfitTrackerPage({
                                                                     Rs. {order.total_revenue?.toLocaleString() || '0'}
                                                                 </span>
                                                             </TableCell>
-
                                                             <TableCell className="text-right">
                                                                 {order.total_purchase_cost > 0 ? (
                                                                     <span
@@ -358,65 +398,57 @@ export default async function ProfitTrackerPage({
                     </div>
                 </Card>
 
-                {/* Footer Controls: Limit - Pagination - Info */}
+                {/* Footer Controls */}
                 <div className="grid grid-cols-1 md:grid-cols-3 items-center py-4 gap-4 relative">
-                    {/* Left: Limit Selector */}
                     <div className="justify-self-start">
-                        <LimitSelector currentLimit={limit} />
+                        <LimitSelector currentLimit={limit} onLimitChange={(val) => { setLimit(val); setPage(1); }} />
                     </div>
 
-                    {/* Center: Smart Pagination */}
                     <div className="justify-self-center flex items-center gap-1.5">
-                        {/* Previous Button */}
-                        <Link
-                            href={page > 1 ? `?page=${page - 1}&limit=${limit}&search=${search}&syncStatus=${syncStatus}` : '#'}
+                        <button
+                            onClick={() => setPage(p => Math.max(1, p - 1))}
+                            disabled={page <= 1}
                             className={`px-2 py-0.5 text-[13px] border dark:border-zinc-700 rounded transition-colors ${page > 1
                                 ? 'hover:bg-gray-50 dark:hover:bg-zinc-800'
-                                : 'opacity-50 cursor-not-allowed pointer-events-none'
+                                : 'opacity-50 cursor-not-allowed'
                                 }`}
-                            aria-disabled={page <= 1}
                         >
                             Previous
-                        </Link>
+                        </button>
 
-                        {/* Page Numbers */}
                         {totalPages > 1 && Array.from({ length: totalPages }, (_, i) => i + 1)
                             .filter(p => p === 1 || p === totalPages || Math.abs(p - page) <= 1)
                             .map((p, i, arr) => {
                                 const showEllipsis = i > 0 && arr[i - 1] !== p - 1
                                 return (
                                     <Fragment key={p}>
-                                        {showEllipsis && (
-                                            <span className="px-1 text-[13px] text-gray-400">...</span>
-                                        )}
-                                        <Link
-                                            href={`?page=${p}&limit=${limit}&search=${search}&syncStatus=${syncStatus}`}
+                                        {showEllipsis && <span className="px-1 text-[13px] text-gray-400">...</span>}
+                                        <button
+                                            onClick={() => setPage(p)}
                                             className={`px-2 py-0.5 text-[13px] rounded transition-colors ${p === page
                                                 ? 'bg-blue-600 text-white'
                                                 : 'border dark:border-zinc-700 hover:bg-gray-50 dark:hover:bg-zinc-800'
                                                 }`}
                                         >
                                             {p}
-                                        </Link>
+                                        </button>
                                     </Fragment>
                                 )
                             })
                         }
 
-                        {/* Next Button */}
-                        <Link
-                            href={page < totalPages ? `?page=${page + 1}&limit=${limit}&search=${search}&syncStatus=${syncStatus}` : '#'}
+                        <button
+                            onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                            disabled={page >= totalPages}
                             className={`px-2 py-0.5 text-[13px] border dark:border-zinc-700 rounded transition-colors ${page < totalPages
                                 ? 'hover:bg-gray-50 dark:hover:bg-zinc-800'
-                                : 'opacity-50 cursor-not-allowed pointer-events-none'
+                                : 'opacity-50 cursor-not-allowed'
                                 }`}
-                            aria-disabled={page >= totalPages}
                         >
                             Next
-                        </Link>
+                        </button>
                     </div>
 
-                    {/* Right: Info */}
                     <div className="justify-self-end text-sm text-gray-500">
                         Page {page} of {totalPages} ({totalCount} items)
                     </div>
