@@ -1,6 +1,6 @@
 'use client'
 
-import { Fragment, useState, useEffect } from 'react'
+import { Fragment, useState, useEffect, Suspense } from 'react'
 import {
     Card,
     Table,
@@ -40,7 +40,7 @@ function LimitSelector({ currentLimit, onLimitChange }: { currentLimit: number, 
     )
 }
 
-export default function ProfitTrackerPage({ isEmbedded = false }: { isEmbedded?: boolean }) {
+function ProfitTrackerContent({ isEmbedded = false }: { isEmbedded?: boolean }) {
     const searchParams = useSearchParams()
     const router = useRouter()
 
@@ -455,5 +455,13 @@ export default function ProfitTrackerPage({ isEmbedded = false }: { isEmbedded?:
                 </div>
             </div>
         </div>
+    )
+}
+
+export default function ProfitTrackerPage(props: { isEmbedded?: boolean }) {
+    return (
+        <Suspense fallback={<div className="p-4 text-center">Loading profit tracker...</div>}>
+            <ProfitTrackerContent {...props} />
+        </Suspense>
     )
 }
