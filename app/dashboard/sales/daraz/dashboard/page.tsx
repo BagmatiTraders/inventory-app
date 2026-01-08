@@ -172,13 +172,7 @@ function DashboardContent() {
                     <p className="text-[13px] text-gray-500 dark:text-gray-400">Performance Reports</p>
                 </div>
                 <div className="flex gap-2">
-                    <Link
-                        href="/dashboard/sales/daraz/profit-tracker"
-                        className="flex items-center gap-1 px-2 py-1 text-[13px] bg-green-100 dark:bg-green-900/30 hover:bg-green-200 dark:hover:bg-green-800 text-green-700 dark:text-green-400 rounded transition-colors"
-                    >
-                        <BarChart2 size={12} />
-                        Profit Tracker
-                    </Link>
+
                     <Link
                         href={backLink.href}
                         className="flex items-center gap-1 px-2 py-1 text-[13px] bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700 rounded transition-colors"
@@ -581,7 +575,7 @@ function DashboardContent() {
 
                 {activeTab === 'profit-tracker' && (
                     <ProfitTrackerPage isEmbedded={true} />
-                )}        
+                )}
 
             </div >
 
