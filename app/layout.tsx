@@ -36,7 +36,9 @@ export default function RootLayout({
                     <ReactQueryProvider>
                         <ToastProvider>
                             <CapacitorAppListener />
-                            {children}
+                            <main id="app-content" className="min-h-screen bg-background text-foreground">
+                                {children}
+                            </main>
                         </ToastProvider>
                     </ReactQueryProvider>
                 </ThemeProvider>

@@ -9,6 +9,7 @@ import { toast } from 'sonner'
 import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import { defineCustomElements } from '@ionic/pwa-elements/loader'
+import { createPortal } from 'react-dom'
 
 export default function CaptureInterface({ trigger }: { trigger?: React.ReactNode }) {
     const [isOpen, setIsOpen] = useState(false)
@@ -20,24 +21,35 @@ export default function CaptureInterface({ trigger }: { trigger?: React.ReactNod
     const [groupId, setGroupId] = useState('')
     const [flashMode, setFlashMode] = useState<'off' | 'on'>('off')
     const [cameraActive, setCameraActive] = useState(false)
+    const [mounted, setMounted] = useState(false)
 
     const router = useRouter()
 
     useEffect(() => {
         setGroupId(crypto.randomUUID())
         defineCustomElements(window)
+        setMounted(true)
 
         return () => {
             stopCamera() // Cleanup on unmount
+            restoreBackground()
         }
     }, [])
+
+    const toggleAppVisibility = (hide: boolean) => {
+        const appContent = document.getElementById('app-content')
+        if (appContent) {
+            appContent.style.visibility = hide ? 'hidden' : 'visible'
+        }
+    }
 
     const startCamera = async () => {
         try {
             setIsOpen(true)
             setCameraActive(true)
 
-            // Make background transparent for camera visibility
+            // Hide App Content to reveal camera behind
+            toggleAppVisibility(true)
             document.body.style.backgroundColor = 'transparent'
             document.documentElement.style.backgroundColor = 'transparent'
 
@@ -45,30 +57,33 @@ export default function CaptureInterface({ trigger }: { trigger?: React.ReactNod
                 toBack: true, // Camera goes behind WebView
                 position: 'rear',
                 parent: 'cameraPreview',
-                className: 'cameraPreview'
+                className: 'cameraPreview',
+                width: window.screen.width,
+                height: window.screen.height
             })
         } catch (error) {
             console.error('Failed to start camera:', error)
             toast.error("Failed to start camera")
-            setIsOpen(false)
-            setCameraActive(false)
-            restoreBackground()
+            handleClose()
         }
     }
 
     const stopCamera = async () => {
         try {
             await CameraPreview.stop()
-            setCameraActive(false)
-            restoreBackground()
         } catch (error) {
             console.error('Error stopping camera:', error)
+        } finally {
+            setCameraActive(false)
+            // Do NOT restore background yet if we have an image, 
+            // but usually we might want to keep the UI
         }
     }
 
     const restoreBackground = () => {
         document.body.style.backgroundColor = ''
         document.documentElement.style.backgroundColor = ''
+        toggleAppVisibility(false)
     }
 
     const capturePhoto = async () => {
@@ -79,13 +94,21 @@ export default function CaptureInterface({ trigger }: { trigger?: React.ReactNod
 
             // Result is base64 string
             const base64Data = result.value
+
+            // Create Blob
             const base64Response = await fetch(`data:image/jpeg;base64,${base64Data}`)
             const blob = await base64Response.blob()
 
             setImage(`data:image/jpeg;base64,${base64Data}`)
             setImageBlob(blob)
 
-            stopCamera() // Stop text preview to show the captured image overlay
+            stopCamera() // Stop camera preview
+
+            // Note: We keep isOpen=true and cameraActive=false? 
+            // Or we keep transparent background?
+            // Since we display the captured image as an opaque overlay, 
+            // we can arguably restore background, BUT the Portal sits on top anyway.
+            // Let's keep background transparent until full close to avoid flashing.
 
         } catch (error) {
             console.error('Capture failed:', error)
@@ -107,6 +130,7 @@ export default function CaptureInterface({ trigger }: { trigger?: React.ReactNod
         await stopCamera()
         clearForm()
         setIsOpen(false)
+        restoreBackground()
     }
 
     const clearForm = () => {
@@ -170,6 +194,9 @@ export default function CaptureInterface({ trigger }: { trigger?: React.ReactNod
         }
     }
 
+    if (!mounted) return null
+
+    // Render Trigger normally
     if (!isOpen) {
         if (trigger) {
             return <div onClick={startCamera}>{trigger}</div>
@@ -177,9 +204,10 @@ export default function CaptureInterface({ trigger }: { trigger?: React.ReactNod
         return null
     }
 
-    return (
-        <div className="fixed inset-0 z-50 flex flex-col bg-transparent">
-            {/* CAMERA VIEW LAYER - Transparent when camera active */}
+    // Portal for Full Screen UI
+    return createPortal(
+        <div className="fixed inset-0 z-[9999] flex flex-col bg-transparent">
+            {/* CAMERA VIEW LAYER */}
             {cameraActive && !image && (
                 <div id="cameraPreview" className="absolute inset-0 bg-transparent flex flex-col justify-between p-6">
                     {/* Top Controls */}
@@ -209,9 +237,9 @@ export default function CaptureInterface({ trigger }: { trigger?: React.ReactNod
                 </div>
             )}
 
-            {/* REVIEW / INPUT LAYER - Shown only when image acts as overlay */}
+            {/* REVIEW / INPUT LAYER */}
             {image && (
-                <div className="fixed inset-0 bg-black z-50 flex flex-col">
+                <div className="fixed inset-0 bg-black z-50 flex flex-col animate-in fade-in duration-200">
                     {/* Image Preview */}
                     <div className="absolute inset-0 z-0 bg-black">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -274,6 +302,7 @@ export default function CaptureInterface({ trigger }: { trigger?: React.ReactNod
                     </div>
                 </div>
             )}
-        </div>
+        </div>,
+        document.body
     )
 }
