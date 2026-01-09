@@ -18,6 +18,7 @@ export default function CaptureInterface({ trigger }: { trigger?: React.ReactNod
     const [remarks, setRemarks] = useState('')
     const [saving, setSaving] = useState(false)
     const [groupId, setGroupId] = useState('')
+    const [groupPrice, setGroupPrice] = useState('') // Track price for current group
     const [flashMode, setFlashMode] = useState<'off' | 'on'>('off')
     const [cameraActive, setCameraActive] = useState(false)
     const [mounted, setMounted] = useState(false)
@@ -169,6 +170,9 @@ export default function CaptureInterface({ trigger }: { trigger?: React.ReactNod
             console.log('[Save] Current groupId:', groupId)
             console.log('[Save] Continue group?', continueGroup)
 
+            // Use group price if available and current price is empty
+            const finalPrice = price || groupPrice
+
             const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.jpg`
             const { error: uploadError } = await supabase.storage
                 .from('mobile-captures')
@@ -186,7 +190,7 @@ export default function CaptureInterface({ trigger }: { trigger?: React.ReactNod
             await saveMobileCapture({
                 image_path: fileName,
                 image_url: publicUrl,
-                price: price ? parseFloat(price) : undefined,
+                price: finalPrice ? parseFloat(finalPrice) : undefined,
                 remarks: remarks || undefined,
                 group_id: groupId
             })
@@ -194,13 +198,21 @@ export default function CaptureInterface({ trigger }: { trigger?: React.ReactNod
             console.log('[Save] Photo saved with groupId:', groupId)
 
             if (continueGroup) {
+                // Save the price for this group if one was entered
+                if (finalPrice && !groupPrice) {
+                    setGroupPrice(finalPrice)
+                    console.log('[Save] Set group price:', finalPrice)
+                }
                 toast.success("Added to group! Opening camera...", { id: toastId, duration: 1500 })
-                console.log('[Save] Keeping same groupId for next photo:', groupId)
+                console.log('[Save] Keeping same groupId and price for next photo:', groupId)
+                // Pre-fill price for next photo in group
+                setPrice(finalPrice)
             } else {
                 toast.success("Saved! Starting new group...", { id: toastId, duration: 1500 })
                 const newGroupId = crypto.randomUUID()
                 console.log('[Save] Creating new groupId:', newGroupId)
                 setGroupId(newGroupId)
+                setGroupPrice('') // Reset group price for new group
             }
 
             clearForm()
