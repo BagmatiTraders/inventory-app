@@ -35,6 +35,10 @@ const nextConfig: NextConfig = {
         protocol: 'https',
         hostname: '*.slatic.net',
       },
+      {
+        protocol: 'https',
+        hostname: 'shblzjrzulnrsarfxptv.supabase.co',
+      },
     ],
   },
 };

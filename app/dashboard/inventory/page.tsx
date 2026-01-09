@@ -1,7 +1,7 @@
 ﻿'use client'
 
 import Link from 'next/link'
-import { Package, FileText, History, AlertTriangle, BarChart2, Menu } from 'lucide-react'
+import { Package, FileText, History, AlertTriangle, BarChart2, Menu, Camera } from 'lucide-react'
 import { Card } from '@/components/ui-shim'
 import { useDashboard } from '../layout'
 
@@ -37,6 +37,12 @@ export default function InventoryPage() {
             icon: BarChart2,
             href: '/dashboard/inventory/stock-reports',
             color: 'bg-orange-500'
+        },
+        {
+            name: 'Mobile Uploads',
+            icon: Camera,
+            href: '/dashboard/mobile-uploads',
+            color: 'bg-teal-500'
         }
     ]
 

@@ -19,7 +19,8 @@ import {
     TrendingUp,
     Store,
     User,
-    ArrowLeftRight
+    ArrowLeftRight,
+    Camera
 } from "lucide-react"
 
 export function MobileDashboard() {
@@ -100,9 +101,9 @@ export function MobileDashboard() {
             color: "bg-cyan-50"
         },
         {
-            title: "Daraz Sales",
-            href: "/dashboard/sales/daraz/sales-entry",
-            icon: <Truck className="h-8 w-8 text-orange-600" />,
+            title: "Mobile Capture",
+            href: "/mobile/quick-capture",
+            icon: <Camera className="h-8 w-8 text-orange-600" />,
             color: "bg-orange-50"
         },
         {

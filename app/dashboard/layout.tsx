@@ -4,7 +4,7 @@ import { LocationGuard } from "@/features/security/components/LocationGuard"
 import { useSecurityCheck } from "@/features/security/hooks/useSecurityCheck"
 import { useTheme } from "@/lib/theme/ThemeProvider"
 import Link from "next/link"
-import { LogOut, LayoutDashboard, Settings, ShoppingCart, Calculator, Shield, Menu, MoreVertical, Moon, Sun, ChevronDown, ChevronRight, FileText, AlertTriangle, History, BarChart2, Package, ShoppingBag, User, Plus } from "lucide-react"
+import { LogOut, LayoutDashboard, Settings, ShoppingCart, Calculator, Shield, Menu, MoreVertical, Moon, Sun, ChevronDown, ChevronRight, FileText, AlertTriangle, History, BarChart2, Package, ShoppingBag, User, Plus, Camera as CameraIcon } from "lucide-react"
 import { logout } from "@/features/auth/actions/auth-actions"
 import { useRouter, usePathname } from "next/navigation"
 import { useState, useEffect } from "react"
@@ -143,6 +143,9 @@ function DashboardLayout({
                                 {pathname === '/dashboard/sales/daraz/profit-tracker' && (
                                     <span className="font-bold text-lg whitespace-nowrap">Profit Tracker</span>
                                 )}
+                                {pathname === '/dashboard/mobile-uploads' && (
+                                    <span className="font-bold text-lg whitespace-nowrap">Mobile Uploads</span>
+                                )}
 
                                 {/* Default Title */}
                                 {pathname !== '/dashboard/sales/daraz' &&
@@ -164,7 +167,8 @@ function DashboardLayout({
                                     pathname !== '/dashboard/sales/daraz/status-sync' &&
                                     pathname !== '/dashboard/sales/daraz/order-sync' &&
                                     pathname !== '/dashboard/profile' &&
-                                    pathname !== '/dashboard/sales/daraz/profit-tracker' && (
+                                    pathname !== '/dashboard/sales/daraz/profit-tracker' &&
+                                    pathname !== '/dashboard/mobile-uploads' && (
                                         <span className="font-bold text-lg text-black dark:text-white whitespace-nowrap">BAGMATI TRADERS</span>
                                     )}
                             </div>
@@ -254,6 +258,8 @@ function DashboardLayout({
                                         Dashboard
                                     </NavItem>
                                 </div>
+
+
 
                                 {/* Inventory with Sub-menu */}
                                 <div onClick={closeMobileMenu}>
