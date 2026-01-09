@@ -42,6 +42,38 @@ export default function CaptureInterface({ trigger }: { trigger?: React.ReactNod
         console.log('[Camera] ===== cameraActive changed to:', cameraActive, '=====')
     }, [cameraActive])
 
+    // Handle Android back button when viewing captured image (review screen)
+    useEffect(() => {
+        if (!image || !isOpen) return
+
+        console.log('[Review] Setting up back button handler for image review')
+        window.history.pushState({ reviewingImage: true }, '')
+
+        const handlePopState = (e: PopStateEvent) => {
+            console.log('[Review] Back button pressed, state:', e.state)
+            if (e.state?.reviewingImage || image) {
+                console.log('[Review] Closing review and returning to /mobile/quick-capture')
+                handleClose()
+                // Push state again to stay on page
+                window.history.pushState({ reviewingImage: true }, '')
+            }
+        }
+
+        window.addEventListener('popstate', handlePopState)
+
+        return () => {
+            console.log('[Review] Cleaning up review back button handler')
+            window.removeEventListener('popstate', handlePopState)
+            try {
+                if (window.history.state?.reviewingImage) {
+                    window.history.back()
+                }
+            } catch (e) {
+                console.log('[Review] History cleanup skipped')
+            }
+        }
+    }, [image, isOpen])
+
     // Handle Android back button when camera is active using history API
     useEffect(() => {
         if (!cameraActive) return
