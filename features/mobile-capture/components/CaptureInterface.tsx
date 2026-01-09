@@ -132,6 +132,50 @@ export default function CaptureInterface({ trigger }: { trigger?: React.ReactNod
         }
     }
 
+    // Compress image to reduce file size while maintaining quality
+    const compressImage = async (blob: Blob): Promise<Blob> => {
+        return new Promise((resolve) => {
+            const img = new Image()
+            const url = URL.createObjectURL(blob)
+
+            img.onload = () => {
+                const canvas = document.createElement('canvas')
+                let width = img.width
+                let height = img.height
+
+                // Resize if image is too large (e.g., > 2048px)
+                const maxDimension = 2048
+                if (width > maxDimension || height > maxDimension) {
+                    if (width > height) {
+                        height = (height / width) * maxDimension
+                        width = maxDimension
+                    } else {
+                        width = (width / height) * maxDimension
+                        height = maxDimension
+                    }
+                }
+
+                canvas.width = width
+                canvas.height = height
+
+                const ctx = canvas.getContext('2d')!
+                ctx.drawImage(img, 0, 0, width, height)
+
+                // Convert to blob with 85% quality (good balance)
+                canvas.toBlob(
+                    (compressedBlob) => {
+                        URL.revokeObjectURL(url)
+                        resolve(compressedBlob || blob)
+                    },
+                    'image/jpeg',
+                    0.85
+                )
+            }
+
+            img.src = url
+        })
+    }
+
     const flipCamera = async () => {
         await CameraPreview.flip()
     }
@@ -162,72 +206,79 @@ export default function CaptureInterface({ trigger }: { trigger?: React.ReactNod
             return
         }
 
-        setSaving(true)
-        const saveMessage = continueGroup ? "Adding to group..." : "Saving..."
-        const toastId = toast.loading(saveMessage)
+        // Store values before clearing
+        const capturedImage = imageBlob
+        const capturedPrice = price
+        const capturedRemarks = remarks
+        const capturedGroupId = groupId
+        const finalPrice = price || groupPrice
 
-        try {
-            console.log('[Save] Current groupId:', groupId)
-            console.log('[Save] Continue group?', continueGroup)
+        console.log('[Save] Current groupId:', groupId)
+        console.log('[Save] Continue group?', continueGroup)
 
-            // Use group price if available and current price is empty
-            const finalPrice = price || groupPrice
-
-            const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.jpg`
-            const { error: uploadError } = await supabase.storage
-                .from('mobile-captures')
-                .upload(fileName, imageBlob, {
-                    contentType: 'image/jpeg',
-                    upsert: false
-                })
-
-            if (uploadError) throw new Error('Upload failed: ' + uploadError.message)
-
-            const { data: { publicUrl } } = supabase.storage
-                .from('mobile-captures')
-                .getPublicUrl(fileName)
-
-            await saveMobileCapture({
-                image_path: fileName,
-                image_url: publicUrl,
-                price: finalPrice ? parseFloat(finalPrice) : undefined,
-                remarks: remarks || undefined,
-                group_id: groupId
-            })
-
-            console.log('[Save] Photo saved with groupId:', groupId)
-
-            if (continueGroup) {
-                // Save the price for this group if one was entered
-                if (finalPrice && !groupPrice) {
-                    setGroupPrice(finalPrice)
-                    console.log('[Save] Set group price:', finalPrice)
-                }
-                toast.success("Added to group! Opening camera...", { id: toastId, duration: 1500 })
-                console.log('[Save] Keeping same groupId and price for next photo:', groupId)
-                // Pre-fill price for next photo in group
-                setPrice(finalPrice)
-            } else {
-                toast.success("Saved! Starting new group...", { id: toastId, duration: 1500 })
-                const newGroupId = crypto.randomUUID()
-                console.log('[Save] Creating new groupId:', newGroupId)
-                setGroupId(newGroupId)
-                setGroupPrice('') // Reset group price for new group
+        // Update group price tracking
+        if (continueGroup) {
+            if (finalPrice && !groupPrice) {
+                setGroupPrice(finalPrice)
+                console.log('[Save] Set group price:', finalPrice)
             }
-
-            clearForm()
-            router.refresh()
-
-            setTimeout(() => {
-                startCamera()
-            }, 400)
-
-        } catch (error: any) {
-            console.error('[Save] Save error:', error)
-            toast.error(error.message || "Failed to save", { id: toastId })
-        } finally {
-            setSaving(false)
+            // Pre-fill price for next photo in group
+            setPrice(finalPrice)
+        } else {
+            const newGroupId = crypto.randomUUID()
+            console.log('[Save] Creating new groupId:', newGroupId)
+            setGroupId(newGroupId)
+            setGroupPrice('') // Reset group price for new group
         }
+
+        // Clear form and reopen camera IMMEDIATELY
+        clearForm()
+        toast.success(continueGroup ? "Opening camera..." : "Saving...", { duration: 1000 })
+
+        setTimeout(() => {
+            startCamera()
+        }, 200)
+
+            // Process upload in background
+            ; (async () => {
+                const toastId = toast.loading("Uploading...")
+                try {
+                    // Compress image before upload
+                    console.log('[Save] Original size:', (capturedImage.size / 1024 / 1024).toFixed(2), 'MB')
+                    const compressedImage = await compressImage(capturedImage)
+                    console.log('[Save] Compressed size:', (compressedImage.size / 1024 / 1024).toFixed(2), 'MB')
+
+                    const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.jpg`
+                    const { error: uploadError } = await supabase.storage
+                        .from('mobile-captures')
+                        .upload(fileName, compressedImage, {
+                            contentType: 'image/jpeg',
+                            upsert: false
+                        })
+
+                    if (uploadError) throw new Error('Upload failed: ' + uploadError.message)
+
+                    const { data: { publicUrl } } = supabase.storage
+                        .from('mobile-captures')
+                        .getPublicUrl(fileName)
+
+                    await saveMobileCapture({
+                        image_path: fileName,
+                        image_url: publicUrl,
+                        price: finalPrice ? parseFloat(finalPrice) : undefined,
+                        remarks: capturedRemarks || undefined,
+                        group_id: capturedGroupId
+                    })
+
+                    console.log('[Save] Photo uploaded successfully')
+                    toast.success("Uploaded!", { id: toastId, duration: 2000 })
+                    router.refresh()
+
+                } catch (error: any) {
+                    console.error('[Save] Upload error:', error)
+                    toast.error(error.message || "Upload failed", { id: toastId, duration: 3000 })
+                }
+            })()
     }
 
     if (!mounted) return null
