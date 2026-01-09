@@ -58,19 +58,18 @@ export default function CaptureInterface({ trigger }: { trigger?: React.ReactNod
             toggleAppVisibility(true)
             document.body.classList.add('camera-active')
 
-            console.log('[Camera] Attempting CameraPreview.start() with toBack:false')
+            console.log('[Camera] Attempting CameraPreview.start() with toBack:TRUE')
             await CameraPreview.start({
-                toBack: false,
-                parent: 'cameraPreview',
-                className: 'cameraPreview',
+                toBack: true,
                 position: 'rear',
-                width: window.innerWidth,
-                height: window.innerHeight,
+                x: 0,
+                y: 0,
+                width: window.screen.width,
+                height: window.screen.height,
                 rotateWhenOrientationChanged: false,
                 disableAudio: true
             })
-            console.log('[Camera] Camera started successfully! cameraActive should stay TRUE')
-            console.log('[Camera] Current cameraActive after start:', cameraActive)
+            console.log('[Camera] Camera started successfully with toBack:true!')
         } catch (error: any) {
             console.error('[Camera] Failed to start camera:', error)
             console.error('[Camera] Error details:', JSON.stringify(error))
@@ -219,51 +218,45 @@ export default function CaptureInterface({ trigger }: { trigger?: React.ReactNod
     }
 
     return createPortal(
-        <div className="fixed inset-0 z-[9999] flex flex-col bg-black">
-            {/* CAMERA VIEW LAYER */}
+        <div className="fixed inset-0 z-[9999] bg-transparent">
+            {/* CAMERA CONTROLS OVERLAY - camera renders behind via toBack:true */}
             {cameraActive && !image && (
-                <>
-                    {/* Camera Preview Container - SEPARATE from controls */}
-                    <div id="cameraPreview" className="absolute inset-0 w-full h-full z-0 bg-black" />
-
-                    {/* Camera Controls - SIBLING not child, with VERY high z-index */}
-                    <div className="absolute inset-0 z-[100] pointer-events-none">
-                        {/* Top Controls */}
-                        <div className="absolute top-0 left-0 right-0 flex justify-between items-start p-6 pt-12 pointer-events-auto">
-                            <button
-                                onClick={handleClose}
-                                className="p-5 bg-red-600 rounded-full text-white shadow-2xl border-4 border-white hover:bg-red-700 active:scale-95"
-                            >
-                                <X size={36} strokeWidth={3} />
-                            </button>
-                            <button
-                                onClick={toggleFlash}
-                                className="p-5 bg-blue-600 rounded-full text-white shadow-2xl border-4 border-white hover:bg-blue-700 active:scale-95"
-                            >
-                                {flashMode === 'on' ? <Zap size={36} strokeWidth={3} /> : <ZapOff size={36} strokeWidth={3} />}
-                            </button>
-                        </div>
-
-                        {/* Bottom Controls - Capture and Flip */}
-                        <div className="absolute bottom-0 left-0 right-0 flex justify-center items-center gap-6 px-8 pb-20 pointer-events-auto">
-                            <button
-                                onClick={flipCamera}
-                                className="p-5 bg-green-600 rounded-full text-white shadow-2xl border-4 border-white hover:bg-green-700 active:scale-95"
-                            >
-                                <RefreshCcw size={36} strokeWidth={3} />
-                            </button>
-
-                            <button
-                                onClick={capturePhoto}
-                                className="w-32 h-32 rounded-full border-[8px] border-white bg-blue-600 hover:bg-blue-700 active:scale-95 transition-transform flex items-center justify-center shadow-2xl"
-                            >
-                                <div className="w-28 h-28 bg-white rounded-full shadow-lg" />
-                            </button>
-
-                            <div className="w-20" />
-                        </div>
+                <div className="absolute inset-0 z-50 pointer-events-none">
+                    {/* Top Controls */}
+                    <div className="absolute top-0 left-0 right-0 flex justify-between items-start p-6 pt-12 pointer-events-auto">
+                        <button
+                            onClick={handleClose}
+                            className="p-5 bg-red-600 rounded-full text-white shadow-2xl border-4 border-white hover:bg-red-700 active:scale-95"
+                        >
+                            <X size={36} strokeWidth={3} />
+                        </button>
+                        <button
+                            onClick={toggleFlash}
+                            className="p-5 bg-blue-600 rounded-full text-white shadow-2xl border-4 border-white hover:bg-blue-700 active:scale-95"
+                        >
+                            {flashMode === 'on' ? <Zap size={36} strokeWidth={3} /> : <ZapOff size={36} strokeWidth={3} />}
+                        </button>
                     </div>
-                </>
+
+                    {/* Bottom Controls - Capture and Flip */}
+                    <div className="absolute bottom-0 left-0 right-0 flex justify-center items-center gap-6 px-8 pb-20 pointer-events-auto">
+                        <button
+                            onClick={flipCamera}
+                            className="p-5 bg-green-600 rounded-full text-white shadow-2xl border-4 border-white hover:bg-green-700 active:scale-95"
+                        >
+                            <RefreshCcw size={36} strokeWidth={3} />
+                        </button>
+
+                        <button
+                            onClick={capturePhoto}
+                            className="w-32 h-32 rounded-full border-[8px] border-white bg-blue-600 hover:bg-blue-700 active:scale-95 transition-transform flex items-center justify-center shadow-2xl"
+                        >
+                            <div className="w-28 h-28 bg-white rounded-full shadow-lg" />
+                        </button>
+
+                        <div className="w-20" />
+                    </div>
+                </div>
             )}
 
             {/* REVIEW / INPUT LAYER */}
