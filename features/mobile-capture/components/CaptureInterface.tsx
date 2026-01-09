@@ -50,8 +50,7 @@ export default function CaptureInterface({ trigger }: { trigger?: React.ReactNod
 
             // Hide App Content to reveal camera behind
             toggleAppVisibility(true)
-            document.body.style.setProperty('background-color', 'transparent', 'important')
-            document.documentElement.style.setProperty('background-color', 'transparent', 'important')
+            document.body.classList.add('camera-active')
 
             await CameraPreview.start({
                 toBack: true,
@@ -81,8 +80,7 @@ export default function CaptureInterface({ trigger }: { trigger?: React.ReactNod
     }
 
     const restoreBackground = () => {
-        document.body.style.backgroundColor = ''
-        document.documentElement.style.backgroundColor = ''
+        document.body.classList.remove('camera-active')
         toggleAppVisibility(false)
     }
 

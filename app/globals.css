@@ -30,3 +30,13 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Force transparency when camera is active */
+body.camera-active,
+body.camera-active #app-content,
+body.camera-active main,
+body.camera-active #__next,
+html:has(body.camera-active) {
+  background: transparent !important;
+  background-color: transparent !important;
+}
