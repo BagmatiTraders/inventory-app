@@ -1,6 +1,6 @@
 import CaptureInterface from '@/features/mobile-capture/components/CaptureInterface'
 import { getMobileCaptures } from '@/features/mobile-capture/actions'
-import Image from 'next/image'
+import { MobileGallery } from '@/features/mobile-capture/components/MobileGallery'
 import { Camera } from 'lucide-react'
 
 export default async function MobileCapturePage() {
@@ -12,33 +12,17 @@ export default async function MobileCapturePage() {
                 <h1 className="text-xl font-bold">Product Photo Capture</h1>
             </div>
 
-            {/* Gallery Grid - Now the main view */}
+            {/* Gallery Grid with Grouping */}
             <div className="px-4 pb-24">
-                <div className="grid grid-cols-3 gap-2">
-                    {captures.map((capture) => (
-                        <div key={capture.id} className="relative aspect-[3/4] bg-white dark:bg-zinc-800 rounded-lg overflow-hidden border dark:border-zinc-800 shadow-sm">
-                            <Image
-                                src={capture.image_url}
-                                alt="Capture"
-                                fill
-                                className="object-cover"
-                            />
-                            {capture.price && (
-                                <div className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-[10px] p-1 truncate text-center font-medium backdrop-blur-sm">
-                                    {capture.price}
-                                </div>
-                            )}
-                        </div>
-                    ))}
-
-                    {captures.length === 0 && (
-                        <div className="col-span-3 py-12 text-center text-gray-400 border-2 border-dashed rounded-lg bg-white dark:bg-zinc-900">
-                            <Camera className="mx-auto mb-2 opacity-50" size={32} />
-                            <p className="text-sm">No photos yet</p>
-                            <p className="text-xs mt-1">Tap the camera button to start</p>
-                        </div>
-                    )}
-                </div>
+                {captures.length === 0 ? (
+                    <div className="col-span-3 py-12 text-center text-gray-400 border-2 border-dashed rounded-lg bg-white dark:bg-zinc-900">
+                        <Camera className="mx-auto mb-2 opacity-50" size={32} />
+                        <p className="text-sm">No photos yet</p>
+                        <p className="text-xs mt-1">Tap the camera button to start</p>
+                    </div>
+                ) : (
+                    <MobileGallery captures={captures} />
+                )}
             </div>
 
             {/* Floating Action Button for Camera */}
