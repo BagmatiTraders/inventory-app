@@ -9,6 +9,8 @@ import { toast } from 'sonner'
 import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 
+import { defineCustomElements } from '@ionic/pwa-elements/loader'
+
 export default function CaptureInterface({ trigger }: { trigger?: React.ReactNode }) {
     const [isOpen, setIsOpen] = useState(false)
     const [image, setImage] = useState<string | null>(null)
@@ -19,9 +21,10 @@ export default function CaptureInterface({ trigger }: { trigger?: React.ReactNod
     const [groupId, setGroupId] = useState('')
     const router = useRouter()
 
-    // Initialize group ID on mount
+    // Initialize group ID and PWA elements on mount
     useEffect(() => {
         setGroupId(crypto.randomUUID())
+        defineCustomElements(window)
     }, [])
 
     const openCamera = async () => {
@@ -45,9 +48,9 @@ export default function CaptureInterface({ trigger }: { trigger?: React.ReactNod
                 // If cancelled and no image, maybe close if it was just opened?
                 // But usually we just stay on the previous state.
             }
-        } catch (error) {
+        } catch (error: any) {
             console.error('Camera error:', error)
-            // If we closed the camera without taking a photo, do nothing
+            toast.error("Camera Error: " + (error?.message || "Unknown error"))
         }
     }
 
