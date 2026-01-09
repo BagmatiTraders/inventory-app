@@ -198,43 +198,51 @@ export default function CaptureInterface({ trigger }: { trigger?: React.ReactNod
     }
 
     return createPortal(
-        <div className="fixed inset-0 z-[9999] flex flex-col bg-transparent">
+        <div className="fixed inset-0 z-[9999] flex flex-col bg-black">
             {/* CAMERA VIEW LAYER */}
             {cameraActive && !image && (
-                <div className="absolute inset-0 bg-black flex flex-col">
-                    {/* Camera Preview Container - z-index 0 */}
-                    <div id="cameraPreview" className="absolute inset-0 w-full h-full z-0" />
+                <>
+                    {/* Camera Preview Container - SEPARATE from controls */}
+                    <div id="cameraPreview" className="absolute inset-0 w-full h-full z-0 bg-black" />
 
-                    {/* Camera Controls Overlay - z-index 10 to ensure it's above camera */}
-                    <div className="absolute inset-0 z-10">
+                    {/* Camera Controls - SIBLING not child, with VERY high z-index */}
+                    <div className="absolute inset-0 z-[100] pointer-events-none">
                         {/* Top Controls */}
-                        <div className="absolute top-0 left-0 right-0 flex justify-between items-start p-6 pt-8">
-                            <button onClick={handleClose} className="p-4 bg-black/60 backdrop-blur rounded-full text-white shadow-lg">
-                                <X size={28} />
+                        <div className="absolute top-0 left-0 right-0 flex justify-between items-start p-6 pt-12 pointer-events-auto">
+                            <button
+                                onClick={handleClose}
+                                className="p-5 bg-red-600 rounded-full text-white shadow-2xl border-4 border-white hover:bg-red-700 active:scale-95"
+                            >
+                                <X size={36} strokeWidth={3} />
                             </button>
-                            <button onClick={toggleFlash} className="p-4 bg-black/60 backdrop-blur rounded-full text-white shadow-lg">
-                                {flashMode === 'on' ? <Zap size={28} /> : <ZapOff size={28} />}
+                            <button
+                                onClick={toggleFlash}
+                                className="p-5 bg-blue-600 rounded-full text-white shadow-2xl border-4 border-white hover:bg-blue-700 active:scale-95"
+                            >
+                                {flashMode === 'on' ? <Zap size={36} strokeWidth={3} /> : <ZapOff size={36} strokeWidth={3} />}
                             </button>
                         </div>
 
                         {/* Bottom Controls - Capture and Flip */}
-                        <div className="absolute bottom-0 left-0 right-0 flex justify-between items-center px-8 pb-16">
-                            {/* Empty spacer to balance layout */}
-                            <div className="w-16"></div>
+                        <div className="absolute bottom-0 left-0 right-0 flex justify-center items-center gap-6 px-8 pb-20 pointer-events-auto">
+                            <button
+                                onClick={flipCamera}
+                                className="p-5 bg-green-600 rounded-full text-white shadow-2xl border-4 border-white hover:bg-green-700 active:scale-95"
+                            >
+                                <RefreshCcw size={36} strokeWidth={3} />
+                            </button>
 
                             <button
                                 onClick={capturePhoto}
-                                className="w-24 h-24 rounded-full border-4 border-white bg-white/30 active:scale-95 transition-transform flex items-center justify-center backdrop-blur-sm shadow-2xl"
+                                className="w-32 h-32 rounded-full border-[8px] border-white bg-blue-600 hover:bg-blue-700 active:scale-95 transition-transform flex items-center justify-center shadow-2xl"
                             >
-                                <div className="w-20 h-20 bg-white rounded-full shadow-lg" />
+                                <div className="w-28 h-28 bg-white rounded-full shadow-lg" />
                             </button>
 
-                            <button onClick={flipCamera} className="p-4 bg-black/60 backdrop-blur rounded-full text-white shadow-lg">
-                                <RefreshCcw size={28} />
-                            </button>
+                            <div className="w-20" />
                         </div>
                     </div>
-                </div>
+                </>
             )}
 
             {/* REVIEW / INPUT LAYER */}
