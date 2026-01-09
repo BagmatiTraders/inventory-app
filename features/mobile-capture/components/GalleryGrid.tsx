@@ -1,9 +1,10 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import Image from "next/image"
 import { formatDistanceToNow } from "date-fns"
-import { Download, X, ZoomIn } from "lucide-react"
+import { Download, X, ZoomIn, ChevronLeft, ChevronRight, Images } from "lucide-react"
+import { groupCapturesByGroupId, type MobileCapture } from '../actions'
 
 type Capture = {
     id: string
@@ -19,7 +20,62 @@ interface GalleryGridProps {
 }
 
 export function GalleryGrid({ captures }: GalleryGridProps) {
-    const [selectedImage, setSelectedImage] = useState<Capture | null>(null)
+    const [selectedGroupIndex, setSelectedGroupIndex] = useState<number | null>(null)
+    const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0)
+
+    // Group photos
+    const photoGroups = groupCapturesByGroupId(captures as MobileCapture[])
+
+    // Keyboard navigation
+    useEffect(() => {
+        if (selectedGroupIndex === null) return
+
+        const handleKeyDown = (e: KeyboardEvent) => {
+            const currentGroup = photoGroups[selectedGroupIndex]
+
+            if (e.key === 'ArrowLeft') {
+                e.preventDefault()
+                setCurrentPhotoIndex(prev =>
+                    prev > 0 ? prev - 1 : currentGroup.captures.length - 1
+                )
+            } else if (e.key === 'ArrowRight') {
+                e.preventDefault()
+                setCurrentPhotoIndex(prev =>
+                    prev < currentGroup.captures.length - 1 ? prev + 1 : 0
+                )
+            } else if (e.key === 'Escape') {
+                closeModal()
+            }
+        }
+
+        window.addEventListener('keydown', handleKeyDown)
+        return () => window.removeEventListener('keydown', handleKeyDown)
+    }, [selectedGroupIndex, photoGroups])
+
+    const openModal = (groupIndex: number) => {
+        setSelectedGroupIndex(groupIndex)
+        setCurrentPhotoIndex(0)
+    }
+
+    const closeModal = () => {
+        setSelectedGroupIndex(null)
+        setCurrentPhotoIndex(0)
+    }
+
+    const navigatePhoto = (direction: 'left' | 'right') => {
+        if (selectedGroupIndex === null) return
+        const currentGroup = photoGroups[selectedGroupIndex]
+
+        if (direction === 'left') {
+            setCurrentPhotoIndex(prev =>
+                prev > 0 ? prev - 1 : currentGroup.captures.length - 1
+            )
+        } else {
+            setCurrentPhotoIndex(prev =>
+                prev < currentGroup.captures.length - 1 ? prev + 1 : 0
+            )
+        }
+    }
 
     const handleDownload = async (url: string, filename: string) => {
         try {
@@ -36,65 +92,86 @@ export function GalleryGrid({ captures }: GalleryGridProps) {
         }
     }
 
+    const selectedGroup = selectedGroupIndex !== null ? photoGroups[selectedGroupIndex] : null
+    const currentCapture = selectedGroup ? selectedGroup.captures[currentPhotoIndex] : null
+
     return (
         <>
             <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
-                {captures.map((capture) => (
-                    <div
-                        key={capture.id}
-                        className="group relative aspect-[3/4] bg-gray-100 dark:bg-zinc-800 rounded-lg overflow-hidden border dark:border-zinc-800 cursor-pointer hover:shadow-md transition-all"
-                        onClick={() => setSelectedImage(capture)}
-                    >
-                        <Image
-                            src={capture.image_url}
-                            alt={capture.remarks || "Capture"}
-                            fill
-                            className="object-cover group-hover:scale-105 transition-transform duration-300"
-                        />
+                {photoGroups.map((group, groupIndex) => {
+                    const firstCapture = group.captures[0]
+                    const isGroup = group.captures.length > 1
 
-                        {/* Hover Overlay */}
-                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
-                            <ZoomIn className="text-white drop-shadow-md" />
-                        </div>
+                    return (
+                        <div
+                            key={group.id}
+                            className="group relative aspect-[3/4] bg-gray-100 dark:bg-zinc-800 rounded-lg overflow-hidden border dark:border-zinc-800 cursor-pointer hover:shadow-md transition-all"
+                            onClick={() => openModal(groupIndex)}
+                        >
+                            <Image
+                                src={firstCapture.image_url}
+                                alt={firstCapture.remarks || "Capture"}
+                                fill
+                                className="object-cover group-hover:scale-105 transition-transform duration-300"
+                            />
 
-                        {/* Info Bar */}
-                        <div className="absolute bottom-0 left-0 right-0 bg-white/95 dark:bg-zinc-900/95 p-2 border-t dark:border-zinc-800 backdrop-blur-sm">
-                            <div className="flex justify-between items-center text-xs">
-                                <span className="font-bold truncate">
-                                    {capture.price ? `Rs. ${capture.price}` : '-'}
-                                </span>
-                                <span className="text-gray-500 text-[10px]">
-                                    {formatDistanceToNow(new Date(capture.created_at), { addSuffix: true })}
-                                </span>
+                            {/* Group Count Badge */}
+                            {isGroup && (
+                                <div className="absolute top-2 right-2 bg-blue-600 text-white px-2 py-1 rounded-full text-xs font-bold flex items-center gap-1 shadow-lg">
+                                    <Images size={14} />
+                                    {group.captures.length}
+                                </div>
+                            )}
+
+                            {/* Hover Overlay */}
+                            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
+                                <ZoomIn className="text-white drop-shadow-md" />
+                            </div>
+
+                            {/* Info Bar */}
+                            <div className="absolute bottom-0 left-0 right-0 bg-white/95 dark:bg-zinc-900/95 p-2 border-t dark:border-zinc-800 backdrop-blur-sm">
+                                <div className="flex justify-between items-center text-xs">
+                                    <span className="font-bold truncate">
+                                        {firstCapture.price ? `Rs. ${firstCapture.price}` : '-'}
+                                    </span>
+                                    <span className="text-gray-500 text-[10px]">
+                                        {formatDistanceToNow(new Date(firstCapture.created_at), { addSuffix: true })}
+                                    </span>
+                                </div>
                             </div>
                         </div>
-                    </div>
-                ))}
+                    )
+                })}
             </div>
 
-            {/* Lightbox Modal */}
-            {selectedImage && (
+            {/* Lightbox Modal with Carousel */}
+            {currentCapture && selectedGroup && (
                 <div className="fixed inset-0 z-50 bg-black/95 flex flex-col items-center justify-center p-4 animate-in fade-in duration-200">
 
                     {/* Top Bar */}
                     <div className="absolute top-0 left-0 right-0 p-4 flex justify-between items-start z-50">
                         <div className="text-white">
                             <h2 className="font-bold text-lg">
-                                {selectedImage.price ? `Rs. ${selectedImage.price}` : 'No Price'}
+                                {currentCapture.price ? `Rs. ${currentCapture.price}` : 'No Price'}
                             </h2>
                             <p className="text-sm text-gray-400">
-                                {selectedImage.remarks || 'No remarks'}
+                                {currentCapture.remarks || 'No remarks'}
                             </p>
                             <p className="text-xs text-gray-500 font-mono mt-1">
-                                {new Date(selectedImage.created_at).toLocaleString()}
+                                {new Date(currentCapture.created_at).toLocaleString()}
                             </p>
+                            {selectedGroup.captures.length > 1 && (
+                                <p className="text-sm text-blue-400 mt-2 font-semibold">
+                                    Photo {currentPhotoIndex + 1} of {selectedGroup.captures.length}
+                                </p>
+                            )}
                         </div>
 
                         <div className="flex gap-3">
                             <button
                                 onClick={(e) => {
                                     e.stopPropagation()
-                                    handleDownload(selectedImage.image_url, `capture-${selectedImage.id}.jpg`)
+                                    handleDownload(currentCapture.image_url, `capture-${currentCapture.id}.jpg`)
                                 }}
                                 className="p-3 bg-white/10 hover:bg-white/20 rounded-full text-white backdrop-blur-md transition-colors"
                                 title="Download Image"
@@ -102,7 +179,7 @@ export function GalleryGrid({ captures }: GalleryGridProps) {
                                 <Download size={24} />
                             </button>
                             <button
-                                onClick={() => setSelectedImage(null)}
+                                onClick={closeModal}
                                 className="p-3 bg-white/10 hover:bg-white/20 rounded-full text-white backdrop-blur-md transition-colors"
                                 title="Close"
                             >
@@ -111,13 +188,40 @@ export function GalleryGrid({ captures }: GalleryGridProps) {
                         </div>
                     </div>
 
+                    {/* Navigation Arrows */}
+                    {selectedGroup.captures.length > 1 && (
+                        <>
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation()
+                                    navigatePhoto('left')
+                                }}
+                                className="absolute left-4 top-1/2 -translate-y-1/2 p-4 bg-white/10 hover:bg-white/20 rounded-full text-white backdrop-blur-md transition-colors z-50"
+                                title="Previous photo (←)"
+                            >
+                                <ChevronLeft size={32} strokeWidth={3} />
+                            </button>
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation()
+                                    navigatePhoto('right')
+                                }}
+                                className="absolute right-4 top-1/2 -translate-y-1/2 p-4 bg-white/10 hover:bg-white/20 rounded-full text-white backdrop-blur-md transition-colors z-50"
+                                title="Next photo (→)"
+                            >
+                                <ChevronRight size={32} strokeWidth={3} />
+                            </button>
+                        </>
+                    )}
+
                     {/* Image Container */}
                     <div
                         className="relative w-full h-full max-w-5xl max-h-[85vh]"
                         onClick={(e) => e.stopPropagation()}
                     >
                         <Image
-                            src={selectedImage.image_url}
+                            key={currentCapture.id}
+                            src={currentCapture.image_url}
                             alt="Full view"
                             fill
                             className="object-contain"
