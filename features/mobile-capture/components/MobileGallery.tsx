@@ -72,18 +72,30 @@ export function MobileGallery({ captures }: MobileGalleryProps) {
         setCurrentPhotoIndex(0)
     }
 
-    // Handle Android back button for modal
+    // Handle Android back button for modal using history API
     useEffect(() => {
         if (selectedGroupIndex === null) return
 
-        const backHandler = App.addListener('backButton', (event) => {
-            // Prevent default back navigation - just close modal
-            event.canGoBack = false
-            closeModal()
-        })
+        // Push a fake history entry when modal opens
+        window.history.pushState({ modalOpen: true }, '')
+
+        const handlePopState = (e: PopStateEvent) => {
+            if (e.state?.modalOpen) {
+                console.log('[Modal] Back button pressed via popstate, closing modal')
+                closeModal()
+                // Push state again to prevent actual navigation
+                window.history.pushState({ modalOpen: true }, '')
+            }
+        }
+
+        window.addEventListener('popstate', handlePopState)
 
         return () => {
-            backHandler.then(listener => listener.remove())
+            window.removeEventListener('popstate', handlePopState)
+            // Clean up: go back if we added a history entry
+            if (window.history.state?.modalOpen) {
+                window.history.back()
+            }
         }
     }, [selectedGroupIndex])
 

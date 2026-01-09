@@ -42,19 +42,30 @@ export default function CaptureInterface({ trigger }: { trigger?: React.ReactNod
         console.log('[Camera] ===== cameraActive changed to:', cameraActive, '=====')
     }, [cameraActive])
 
-    // Handle Android back button when camera is active
+    // Handle Android back button when camera is active using history API
     useEffect(() => {
         if (!cameraActive) return
 
-        const backHandler = App.addListener('backButton', (event) => {
-            console.log('[Camera] Back button pressed, closing camera')
-            // Prevent default back navigation
-            event.canGoBack = false
-            handleClose()
-        })
+        // Push a fake history entry when camera opens
+        window.history.pushState({ cameraOpen: true }, '')
+
+        const handlePopState = (e: PopStateEvent) => {
+            if (e.state?.cameraOpen) {
+                console.log('[Camera] Back button pressed via popstate, closing camera')
+                handleClose()
+                // Push state again to prevent actual navigation
+                window.history.pushState({ cameraOpen: true }, '')
+            }
+        }
+
+        window.addEventListener('popstate', handlePopState)
 
         return () => {
-            backHandler.then(listener => listener.remove())
+            window.removeEventListener('popstate', handlePopState)
+            // Clean up: go back if we added a history entry
+            if (window.history.state?.cameraOpen) {
+                window.history.back()
+            }
         }
     }, [cameraActive])
 
