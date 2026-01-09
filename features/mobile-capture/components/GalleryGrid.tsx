@@ -1,10 +1,9 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import Image from "next/image"
 import { formatDistanceToNow } from "date-fns"
 import { Download, X, ZoomIn, ChevronLeft, ChevronRight, Images } from "lucide-react"
-import { groupCapturesByGroupId, type MobileCapture } from '../actions'
 
 type Capture = {
     id: string
@@ -15,16 +14,51 @@ type Capture = {
     group_id?: string | null
 }
 
+type PhotoGroup = {
+    id: string
+    captures: Capture[]
+    created_at: string
+}
+
 interface GalleryGridProps {
     captures: Capture[]
+}
+
+// Client-side grouping function
+function groupCaptures(captures: Capture[]): PhotoGroup[] {
+    const grouped = new Map<string, Capture[]>()
+
+    captures.forEach(capture => {
+        const key = capture.group_id || `single-${capture.id}`
+        if (!grouped.has(key)) {
+            grouped.set(key, [])
+        }
+        grouped.get(key)!.push(capture)
+    })
+
+    const groups: PhotoGroup[] = Array.from(grouped.entries()).map(([id, groupCaptures]) => {
+        const sortedCaptures = groupCaptures.sort((a, b) =>
+            new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+        )
+
+        return {
+            id,
+            captures: sortedCaptures,
+            created_at: sortedCaptures[0].created_at
+        }
+    })
+
+    return groups.sort((a, b) =>
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    )
 }
 
 export function GalleryGrid({ captures }: GalleryGridProps) {
     const [selectedGroupIndex, setSelectedGroupIndex] = useState<number | null>(null)
     const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0)
 
-    // Group photos
-    const photoGroups = groupCapturesByGroupId(captures as MobileCapture[])
+    // Group photos with useMemo for performance
+    const photoGroups = useMemo(() => groupCaptures(captures), [captures])
 
     // Keyboard navigation
     useEffect(() => {
