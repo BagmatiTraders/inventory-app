@@ -159,12 +159,12 @@ export default function CaptureInterface({ trigger }: { trigger?: React.ReactNod
             ) : (
                 <>
                     {/* Image Preview Background */}
-                    <div className="absolute inset-0 z-0">
-                        <Image
+                    <div className="absolute inset-0 z-0 bg-black">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
                             src={image}
                             alt="Preview"
-                            fill
-                            className="object-contain"
+                            className="w-full h-full object-contain"
                         />
                     </div>
 
