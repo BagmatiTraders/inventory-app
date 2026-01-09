@@ -1,14 +1,13 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Camera, CameraResultType, CameraSource } from '@capacitor/camera'
+import { CameraPreview, CameraPreviewPictureOptions } from '@capacitor-community/camera-preview'
 import { supabase } from '@/lib/supabase/client'
 import { saveMobileCapture } from '../actions'
-import { Loader2, Camera as CameraIcon, Save, Plus, X } from 'lucide-react'
+import { Loader2, Camera as CameraIcon, Save, Plus, X, Zap, ZapOff, RefreshCcw } from 'lucide-react'
 import { toast } from 'sonner'
 import Image from 'next/image'
 import { useRouter } from 'next/navigation'
-
 import { defineCustomElements } from '@ionic/pwa-elements/loader'
 
 export default function CaptureInterface({ trigger }: { trigger?: React.ReactNode }) {
@@ -19,45 +18,95 @@ export default function CaptureInterface({ trigger }: { trigger?: React.ReactNod
     const [remarks, setRemarks] = useState('')
     const [saving, setSaving] = useState(false)
     const [groupId, setGroupId] = useState('')
+    const [flashMode, setFlashMode] = useState<'off' | 'on'>('off')
+    const [cameraActive, setCameraActive] = useState(false)
+
     const router = useRouter()
 
-    // Initialize group ID and PWA elements on mount
     useEffect(() => {
         setGroupId(crypto.randomUUID())
         defineCustomElements(window)
+
+        return () => {
+            stopCamera() // Cleanup on unmount
+        }
     }, [])
 
-    const openCamera = async () => {
+    const startCamera = async () => {
         try {
-            const photo = await Camera.getPhoto({
-                quality: 60,
-                allowEditing: false,
-                resultType: CameraResultType.Uri,
-                source: CameraSource.Camera,
-                webUseInput: true,
-            })
+            setIsOpen(true)
+            setCameraActive(true)
 
-            if (photo.webPath) {
-                // If we get a photo, ensure interface is open/visible
-                setIsOpen(true)
-                setImage(photo.webPath)
-                const response = await fetch(photo.webPath)
-                const blob = await response.blob()
-                setImageBlob(blob)
-            } else {
-                // If cancelled and no image, maybe close if it was just opened?
-                // But usually we just stay on the previous state.
-            }
-        } catch (error: any) {
-            console.error('Camera error:', error)
-            toast.error("Camera Error: " + (error?.message || "Unknown error"))
+            // Make background transparent for camera visibility
+            document.body.style.backgroundColor = 'transparent'
+            document.documentElement.style.backgroundColor = 'transparent'
+
+            await CameraPreview.start({
+                toBack: true, // Camera goes behind WebView
+                position: 'rear',
+                parent: 'cameraPreview',
+                className: 'cameraPreview'
+            })
+        } catch (error) {
+            console.error('Failed to start camera:', error)
+            toast.error("Failed to start camera")
+            setIsOpen(false)
+            setCameraActive(false)
+            restoreBackground()
         }
     }
 
-    // Trigger camera on open if triggered via button
-    const handleTriggerClick = () => {
-        setIsOpen(true) // Show the modal/overlay container
-        openCamera()    // Immediately invoke camera
+    const stopCamera = async () => {
+        try {
+            await CameraPreview.stop()
+            setCameraActive(false)
+            restoreBackground()
+        } catch (error) {
+            console.error('Error stopping camera:', error)
+        }
+    }
+
+    const restoreBackground = () => {
+        document.body.style.backgroundColor = ''
+        document.documentElement.style.backgroundColor = ''
+    }
+
+    const capturePhoto = async () => {
+        try {
+            const result = await CameraPreview.capture({
+                quality: 85
+            })
+
+            // Result is base64 string
+            const base64Data = result.value
+            const base64Response = await fetch(`data:image/jpeg;base64,${base64Data}`)
+            const blob = await base64Response.blob()
+
+            setImage(`data:image/jpeg;base64,${base64Data}`)
+            setImageBlob(blob)
+
+            stopCamera() // Stop text preview to show the captured image overlay
+
+        } catch (error) {
+            console.error('Capture failed:', error)
+            toast.error("Capture failed")
+        }
+    }
+
+    const flipCamera = async () => {
+        await CameraPreview.flip()
+    }
+
+    const toggleFlash = async () => {
+        const nextMode = flashMode === 'off' ? 'on' : 'off'
+        await CameraPreview.setFlashMode({ flashMode: nextMode })
+        setFlashMode(nextMode)
+    }
+
+    const handleClose = async () => {
+        await stopCamera()
+        clearForm()
+        setIsOpen(false)
     }
 
     const clearForm = () => {
@@ -65,11 +114,6 @@ export default function CaptureInterface({ trigger }: { trigger?: React.ReactNod
         setImageBlob(null)
         setPrice('')
         setRemarks('')
-    }
-
-    const handleClose = () => {
-        clearForm()
-        setIsOpen(false)
     }
 
     const handleSave = async (continueGroup: boolean) => {
@@ -82,7 +126,6 @@ export default function CaptureInterface({ trigger }: { trigger?: React.ReactNod
         const toastId = toast.loading(continueGroup ? "Adding to group..." : "Saving...")
 
         try {
-            // 1. Upload
             const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.jpg`
             const { error: uploadError } = await supabase.storage
                 .from('mobile-captures')
@@ -93,12 +136,10 @@ export default function CaptureInterface({ trigger }: { trigger?: React.ReactNod
 
             if (uploadError) throw new Error('Upload failed: ' + uploadError.message)
 
-            // 2. Public URL
             const { data: { publicUrl } } = supabase.storage
                 .from('mobile-captures')
                 .getPublicUrl(fileName)
 
-            // 3. Save DB
             await saveMobileCapture({
                 image_path: fileName,
                 image_url: publicUrl,
@@ -109,7 +150,6 @@ export default function CaptureInterface({ trigger }: { trigger?: React.ReactNod
 
             toast.success("Saved!", { id: toastId, duration: 1000 })
 
-            // 4. Reset Logic
             clearForm()
             router.refresh()
 
@@ -117,9 +157,9 @@ export default function CaptureInterface({ trigger }: { trigger?: React.ReactNod
                 setGroupId(crypto.randomUUID())
             }
 
-            // 5. Auto Re-open Camera
+            // Auto Re-open Camera
             setTimeout(() => {
-                openCamera()
+                startCamera()
             }, 300)
 
         } catch (error: any) {
@@ -131,34 +171,48 @@ export default function CaptureInterface({ trigger }: { trigger?: React.ReactNod
     }
 
     if (!isOpen) {
-        // If provided a trigger, render it with click handler
         if (trigger) {
-            return <div onClick={handleTriggerClick}>{trigger}</div>
+            return <div onClick={startCamera}>{trigger}</div>
         }
-        // Fallback or hidden state
         return null
     }
 
-    // Modal / Fullscreen Overlay
     return (
-        <div className="fixed inset-0 z-50 bg-black flex flex-col">
-            {/* If no image yet (e.g. cancelled camera but modal open), show placeholder or close */}
-            {!image ? (
-                <div className="flex-1 flex flex-col items-center justify-center p-4">
-                    <button onClick={handleClose} className="absolute top-4 right-4 text-white p-2">
-                        <X size={32} />
-                    </button>
-                    <button
-                        onClick={openCamera}
-                        className="p-8 rounded-full bg-gray-800 text-white mb-4"
-                    >
-                        <CameraIcon size={48} />
-                    </button>
-                    <p className="text-gray-400">Tap to open camera</p>
+        <div className="fixed inset-0 z-50 flex flex-col bg-transparent">
+            {/* CAMERA VIEW LAYER - Transparent when camera active */}
+            {cameraActive && !image && (
+                <div id="cameraPreview" className="absolute inset-0 bg-transparent flex flex-col justify-between p-6">
+                    {/* Top Controls */}
+                    <div className="flex justify-between items-start pt-8">
+                        <button onClick={handleClose} className="p-3 bg-black/40 backdrop-blur rounded-full text-white">
+                            <X size={24} />
+                        </button>
+                        <div className="flex gap-4">
+                            <button onClick={toggleFlash} className="p-3 bg-black/40 backdrop-blur rounded-full text-white">
+                                {flashMode === 'on' ? <Zap size={24} /> : <ZapOff size={24} />}
+                            </button>
+                            <button onClick={flipCamera} className="p-3 bg-black/40 backdrop-blur rounded-full text-white">
+                                <RefreshCcw size={24} />
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Bottom Controls - Capture Button */}
+                    <div className="flex justify-center pb-12">
+                        <button
+                            onClick={capturePhoto}
+                            className="w-20 h-20 rounded-full border-4 border-white bg-white/20 active:scale-95 transition-transform flex items-center justify-center backdrop-blur-sm"
+                        >
+                            <div className="w-16 h-16 bg-white rounded-full shadow-lg" />
+                        </button>
+                    </div>
                 </div>
-            ) : (
-                <>
-                    {/* Image Preview Background */}
+            )}
+
+            {/* REVIEW / INPUT LAYER - Shown only when image acts as overlay */}
+            {image && (
+                <div className="fixed inset-0 bg-black z-50 flex flex-col">
+                    {/* Image Preview */}
                     <div className="absolute inset-0 z-0 bg-black">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
@@ -202,7 +256,7 @@ export default function CaptureInterface({ trigger }: { trigger?: React.ReactNod
                             <div className="flex-[1.5]">
                                 <input
                                     value={remarks}
-                                    placeholder="Remarks / Variation"
+                                    placeholder="Rmks"
                                     onChange={(e) => setRemarks(e.target.value)}
                                     className="w-full bg-white/90 backdrop-blur text-black p-3 rounded-lg font-medium text-sm placeholder:text-gray-500 shadow-lg focus:ring-2 focus:ring-blue-500 outline-none"
                                 />
@@ -218,7 +272,7 @@ export default function CaptureInterface({ trigger }: { trigger?: React.ReactNod
                             SAVE & NEXT
                         </button>
                     </div>
-                </>
+                </div>
             )}
         </div>
     )
