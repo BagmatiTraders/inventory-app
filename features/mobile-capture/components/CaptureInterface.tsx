@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { CameraPreview } from '@capacitor-community/camera-preview'
-import { App } from '@capacitor/app'
+import { registerBackHandler, unregisterBackHandler } from '@/components/CapacitorAppListener'
 import { supabase } from '@/lib/supabase/client'
 import { saveMobileCapture } from '../actions'
 import { Loader2, Save, Plus, X, Zap, ZapOff, RefreshCcw } from 'lucide-react'
@@ -39,66 +39,26 @@ export default function CaptureInterface({ trigger }: { trigger?: React.ReactNod
 
     // Debug: Log whenever cameraActive changes
     useEffect(() => {
-        console.log('[Camera] ===== cameraActive changed to:', cameraActive, '=====')
-    }, [cameraActive])
-
-    // Handle Android back button when viewing captured image (review screen)
-    useEffect(() => {
         if (!image || !isOpen) return
 
-        console.log('[Review] Setting up back button handler for image review')
-        window.history.pushState({ reviewingImage: true }, '')
+        registerBackHandler(() => {
+            handleClose()
+            return true
+        })
 
-        const handlePopState = (e: PopStateEvent) => {
-            console.log('[Review] Back button pressed, state:', e.state)
-            if (e.state?.reviewingImage || image) {
-                console.log('[Review] Closing review and returning to /mobile/quick-capture')
-                handleClose()
-                // Push state again to stay on page
-                window.history.pushState({ reviewingImage: true }, '')
-            }
-        }
-
-        window.addEventListener('popstate', handlePopState)
-
-        return () => {
-            console.log('[Review] Cleaning up review back button handler')
-            window.removeEventListener('popstate', handlePopState)
-            try {
-                if (window.history.state?.reviewingImage) {
-                    window.history.back()
-                }
-            } catch (e) {
-                console.log('[Review] History cleanup skipped')
-            }
-        }
+        return () => unregisterBackHandler()
     }, [image, isOpen])
 
     // Handle Android back button when camera is active using history API
     useEffect(() => {
         if (!cameraActive) return
 
-        // Push a fake history entry when camera opens
-        window.history.pushState({ cameraOpen: true }, '')
+        registerBackHandler(() => {
+            handleClose()
+            return true
+        })
 
-        const handlePopState = (e: PopStateEvent) => {
-            if (e.state?.cameraOpen) {
-                console.log('[Camera] Back button pressed via popstate, closing camera')
-                handleClose()
-                // Push state again to prevent actual navigation
-                window.history.pushState({ cameraOpen: true }, '')
-            }
-        }
-
-        window.addEventListener('popstate', handlePopState)
-
-        return () => {
-            window.removeEventListener('popstate', handlePopState)
-            // Clean up: go back if we added a history entry
-            if (window.history.state?.cameraOpen) {
-                window.history.back()
-            }
-        }
+        return () => unregisterBackHandler()
     }, [cameraActive])
 
     const toggleAppVisibility = (hide: boolean) => {
