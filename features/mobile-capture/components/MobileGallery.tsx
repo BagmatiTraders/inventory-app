@@ -3,7 +3,7 @@
 import { useState, useMemo, useEffect } from "react"
 import Image from "next/image"
 import { Images, X, ChevronLeft, ChevronRight } from "lucide-react"
-import { App } from '@capacitor/app'
+import { registerBackHandler, unregisterBackHandler } from "@/components/CapacitorAppListener"
 
 type Capture = {
     id: string
