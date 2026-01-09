@@ -50,16 +50,16 @@ export default function CaptureInterface({ trigger }: { trigger?: React.ReactNod
 
             // Hide App Content to reveal camera behind
             toggleAppVisibility(true)
-            document.body.style.backgroundColor = 'transparent'
-            document.documentElement.style.backgroundColor = 'transparent'
+            document.body.style.setProperty('background-color', 'transparent', 'important')
+            document.documentElement.style.setProperty('background-color', 'transparent', 'important')
 
             await CameraPreview.start({
-                toBack: true, // Camera goes behind WebView
+                toBack: true,
                 position: 'rear',
                 x: 0,
                 y: 0,
-                width: window.innerWidth,
-                height: window.innerHeight,
+                width: window.screen.width,
+                height: window.screen.height,
                 paddingBottom: 0,
                 rotateWhenOrientationChanged: false
             })
@@ -77,8 +77,6 @@ export default function CaptureInterface({ trigger }: { trigger?: React.ReactNod
             console.error('Error stopping camera:', error)
         } finally {
             setCameraActive(false)
-            // Do NOT restore background yet if we have an image, 
-            // but usually we might want to keep the UI
         }
     }
 
@@ -94,23 +92,14 @@ export default function CaptureInterface({ trigger }: { trigger?: React.ReactNod
                 quality: 85
             })
 
-            // Result is base64 string
             const base64Data = result.value
-
-            // Create Blob
             const base64Response = await fetch(`data:image/jpeg;base64,${base64Data}`)
             const blob = await base64Response.blob()
 
             setImage(`data:image/jpeg;base64,${base64Data}`)
             setImageBlob(blob)
 
-            stopCamera() // Stop camera preview
-
-            // Note: We keep isOpen=true and cameraActive=false? 
-            // Or we keep transparent background?
-            // Since we display the captured image as an opaque overlay, 
-            // we can arguably restore background, BUT the Portal sits on top anyway.
-            // Let's keep background transparent until full close to avoid flashing.
+            stopCamera()
 
         } catch (error) {
             console.error('Capture failed:', error)
@@ -183,7 +172,6 @@ export default function CaptureInterface({ trigger }: { trigger?: React.ReactNod
                 setGroupId(crypto.randomUUID())
             }
 
-            // Auto Re-open Camera
             setTimeout(() => {
                 startCamera()
             }, 300)
@@ -198,7 +186,6 @@ export default function CaptureInterface({ trigger }: { trigger?: React.ReactNod
 
     if (!mounted) return null
 
-    // Render Trigger normally
     if (!isOpen) {
         if (trigger) {
             return <div onClick={startCamera}>{trigger}</div>
@@ -206,7 +193,6 @@ export default function CaptureInterface({ trigger }: { trigger?: React.ReactNod
         return null
     }
 
-    // Portal for Full Screen UI
     return createPortal(
         <div className="fixed inset-0 z-[9999] flex flex-col bg-transparent">
             {/* CAMERA VIEW LAYER */}
@@ -217,23 +203,25 @@ export default function CaptureInterface({ trigger }: { trigger?: React.ReactNod
                         <button onClick={handleClose} className="p-3 bg-black/40 backdrop-blur rounded-full text-white">
                             <X size={24} />
                         </button>
-                        <div className="flex gap-4">
-                            <button onClick={toggleFlash} className="p-3 bg-black/40 backdrop-blur rounded-full text-white">
-                                {flashMode === 'on' ? <Zap size={24} /> : <ZapOff size={24} />}
-                            </button>
-                            <button onClick={flipCamera} className="p-3 bg-black/40 backdrop-blur rounded-full text-white">
-                                <RefreshCcw size={24} />
-                            </button>
-                        </div>
+                        <button onClick={toggleFlash} className="p-3 bg-black/40 backdrop-blur rounded-full text-white">
+                            {flashMode === 'on' ? <Zap size={24} /> : <ZapOff size={24} />}
+                        </button>
                     </div>
 
-                    {/* Bottom Controls - Capture Button */}
-                    <div className="flex justify-center pb-12">
+                    {/* Bottom Controls - Capture and Flip */}
+                    <div className="flex justify-between items-center px-8 pb-12 w-full mt-auto">
+                        {/* Empty spacer spacer to balance layout */}
+                        <div className="w-12"></div>
+
                         <button
                             onClick={capturePhoto}
                             className="w-20 h-20 rounded-full border-4 border-white bg-white/20 active:scale-95 transition-transform flex items-center justify-center backdrop-blur-sm"
                         >
                             <div className="w-16 h-16 bg-white rounded-full shadow-lg" />
+                        </button>
+
+                        <button onClick={flipCamera} className="p-3 bg-black/40 backdrop-blur rounded-full text-white">
+                            <RefreshCcw size={24} />
                         </button>
                     </div>
                 </div>
