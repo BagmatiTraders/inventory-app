@@ -7,7 +7,8 @@ const config: CapacitorConfig = {
   server: {
     url: 'https://inventory-app-beta-coral.vercel.app',
     cleartext: true
-  }
+  },
+  backgroundColor: '#00000000'
 };
 
 export default config;

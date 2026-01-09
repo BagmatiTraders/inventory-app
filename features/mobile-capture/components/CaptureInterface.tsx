@@ -55,11 +55,6 @@ export default function CaptureInterface({ trigger }: { trigger?: React.ReactNod
             await CameraPreview.start({
                 toBack: true,
                 position: 'rear',
-                x: 0,
-                y: 0,
-                width: window.screen.width,
-                height: window.screen.height,
-                paddingBottom: 0,
                 rotateWhenOrientationChanged: false
             })
         } catch (error) {
