@@ -76,7 +76,9 @@ export function MobileGallery({ captures }: MobileGalleryProps) {
     useEffect(() => {
         if (selectedGroupIndex === null) return
 
-        const backHandler = App.addListener('backButton', () => {
+        const backHandler = App.addListener('backButton', (event) => {
+            // Prevent default back navigation - just close modal
+            event.canGoBack = false
             closeModal()
         })
 

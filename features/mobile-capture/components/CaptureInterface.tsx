@@ -46,8 +46,10 @@ export default function CaptureInterface({ trigger }: { trigger?: React.ReactNod
     useEffect(() => {
         if (!cameraActive) return
 
-        const backHandler = App.addListener('backButton', () => {
+        const backHandler = App.addListener('backButton', (event) => {
             console.log('[Camera] Back button pressed, closing camera')
+            // Prevent default back navigation
+            event.canGoBack = false
             handleClose()
         })
 
