@@ -56,10 +56,12 @@ export default function CaptureInterface({ trigger }: { trigger?: React.ReactNod
             await CameraPreview.start({
                 toBack: true, // Camera goes behind WebView
                 position: 'rear',
-                parent: 'cameraPreview',
-                className: 'cameraPreview',
-                width: window.screen.width,
-                height: window.screen.height
+                x: 0,
+                y: 0,
+                width: window.innerWidth,
+                height: window.innerHeight,
+                paddingBottom: 0,
+                rotateWhenOrientationChanged: false
             })
         } catch (error) {
             console.error('Failed to start camera:', error)
