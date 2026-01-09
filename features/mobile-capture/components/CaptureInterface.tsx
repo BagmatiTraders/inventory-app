@@ -1,12 +1,11 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { CameraPreview, CameraPreviewPictureOptions } from '@capacitor-community/camera-preview'
+import { CameraPreview } from '@capacitor-community/camera-preview'
 import { supabase } from '@/lib/supabase/client'
 import { saveMobileCapture } from '../actions'
-import { Loader2, Camera as CameraIcon, Save, Plus, X, Zap, ZapOff, RefreshCcw } from 'lucide-react'
+import { Loader2, Save, Plus, X, Zap, ZapOff, RefreshCcw } from 'lucide-react'
 import { toast } from 'sonner'
-import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import { defineCustomElements } from '@ionic/pwa-elements/loader'
 import { createPortal } from 'react-dom'
@@ -31,7 +30,7 @@ export default function CaptureInterface({ trigger }: { trigger?: React.ReactNod
         setMounted(true)
 
         return () => {
-            stopCamera() // Cleanup on unmount
+            stopCamera()
             restoreBackground()
         }
     }, [])
@@ -49,7 +48,6 @@ export default function CaptureInterface({ trigger }: { trigger?: React.ReactNod
             setIsOpen(true)
             setCameraActive(true)
 
-            // Hide App Content to reveal camera behind
             toggleAppVisibility(true)
             document.body.classList.add('camera-active')
 
@@ -204,107 +202,107 @@ export default function CaptureInterface({ trigger }: { trigger?: React.ReactNod
             {/* CAMERA VIEW LAYER */}
             {cameraActive && !image && (
                 <div className="absolute inset-0 bg-black flex flex-col">
-                    {/* Camera Preview Container */}
+                    {/* Camera Preview Container - toBack:false renders camera here */}
                     <div id="cameraPreview" className="absolute inset-0 w-full h-full" />
 
                     {/* Camera Controls Overlay */}
                     <div className="absolute inset-0 flex flex-col justify-between p-6 pointer-events-none">
-                        <div className="pointer-events-auto">
-                            {/* Top Controls */}
-                            <div className="flex justify-between items-start pt-8">
-                                <button onClick={handleClose} className="p-3 bg-black/40 backdrop-blur rounded-full text-white">
-                                    <X size={24} />
-                                </button>
-                                <button onClick={toggleFlash} className="p-3 bg-black/40 backdrop-blur rounded-full text-white">
-                                    {flashMode === 'on' ? <Zap size={24} /> : <ZapOff size={24} />}
-                                </button>
-                            </div>
-
-                            {/* Bottom Controls - Capture and Flip */}
-                            <div className="flex justify-between items-center px-8 pb-12 w-full mt-auto">
-                                {/* Empty spacer spacer to balance layout */}
-                                <div className="w-12"></div>
-
-                                <button
-                                    onClick={capturePhoto}
-                                    className="w-20 h-20 rounded-full border-4 border-white bg-white/20 active:scale-95 transition-transform flex items-center justify-center backdrop-blur-sm"
-                                >
-                                    <div className="w-16 h-16 bg-white rounded-full shadow-lg" />
-                                </button>
-
-                                <button onClick={flipCamera} className="p-3 bg-black/40 backdrop-blur rounded-full text-white">
-                                    <RefreshCcw size={24} />
-                                </button>
-                            </div>
+                        {/* Top Controls */}
+                        <div className="flex justify-between items-start pt-8 pointer-events-auto">
+                            <button onClick={handleClose} className="p-3 bg-black/40 backdrop-blur rounded-full text-white">
+                                <X size={24} />
+                            </button>
+                            <button onClick={toggleFlash} className="p-3 bg-black/40 backdrop-blur rounded-full text-white">
+                                {flashMode === 'on' ? <Zap size={24} /> : <ZapOff size={24} />}
+                            </button>
                         </div>
+
+                        {/* Bottom Controls - Capture and Flip */}
+                        <div className="flex justify-between items-center px-2 pb-12 pointer-events-auto">
+                            {/* Empty spacer to balance layout */}
+                            <div className="w-12"></div>
+
+                            <button
+                                onClick={capturePhoto}
+                                className="w-20 h-20 rounded-full border-4 border-white bg-white/20 active:scale-95 transition-transform flex items-center justify-center backdrop-blur-sm"
+                            >
+                                <div className="w-16 h-16 bg-white rounded-full shadow-lg" />
+                            </button>
+
+                            <button onClick={flipCamera} className="p-3 bg-black/40 backdrop-blur rounded-full text-white">
+                                <RefreshCcw size={24} />
+                            </button>
+                        </div>
+                    </div>
+                </div>
             )}
 
-                        {/* REVIEW / INPUT LAYER */}
-                        {image && (
-                            <div className="fixed inset-0 bg-black z-50 flex flex-col animate-in fade-in duration-200">
-                                {/* Image Preview */}
-                                <div className="absolute inset-0 z-0 bg-black">
-                                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                                    <img
-                                        src={image}
-                                        alt="Preview"
-                                        className="w-full h-full object-contain"
-                                    />
-                                </div>
+            {/* REVIEW / INPUT LAYER */}
+            {image && (
+                <div className="fixed inset-0 bg-black z-50 flex flex-col animate-in fade-in duration-200">
+                    {/* Image Preview */}
+                    <div className="absolute inset-0 z-0 bg-black">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                            src={image}
+                            alt="Preview"
+                            className="w-full h-full object-contain"
+                        />
+                    </div>
 
-                                {/* Overlay: Top Actions */}
-                                <div className="absolute top-0 left-0 right-0 p-4 flex justify-between items-start z-10 bg-gradient-to-b from-black/60 to-transparent">
-                                    <button
-                                        onClick={handleClose}
-                                        className="p-2 bg-white/20 backdrop-blur-md rounded-full text-white hover:bg-white/30"
-                                    >
-                                        <X size={20} />
-                                    </button>
+                    {/* Overlay: Top Actions */}
+                    <div className="absolute top-0 left-0 right-0 p-4 flex justify-between items-start z-10 bg-gradient-to-b from-black/60 to-transparent">
+                        <button
+                            onClick={handleClose}
+                            className="p-2 bg-white/20 backdrop-blur-md rounded-full text-white hover:bg-white/30"
+                        >
+                            <X size={20} />
+                        </button>
 
-                                    <button
-                                        onClick={() => handleSave(true)}
-                                        disabled={saving}
-                                        className="flex flex-col items-center gap-1 p-2 bg-blue-600/90 backdrop-blur-md rounded-lg text-white font-medium hover:bg-blue-600 shadow-lg active:scale-95 transition-all"
-                                    >
-                                        <Plus size={24} />
-                                        <span className="text-[10px] font-bold uppercase">Add More</span>
-                                    </button>
-                                </div>
+                        <button
+                            onClick={() => handleSave(true)}
+                            disabled={saving}
+                            className="flex flex-col items-center gap-1 p-2 bg-blue-600/90 backdrop-blur-md rounded-lg text-white font-medium hover:bg-blue-600 shadow-lg active:scale-95 transition-all"
+                        >
+                            <Plus size={24} />
+                            <span className="text-[10px] font-bold uppercase">Add More</span>
+                        </button>
+                    </div>
 
-                                {/* Overlay: Bottom Inputs */}
-                                <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/90 via-black/60 to-transparent z-10 space-y-4">
-                                    <div className="flex gap-3">
-                                        <div className="flex-1">
-                                            <input
-                                                type="number"
-                                                value={price}
-                                                placeholder="Price"
-                                                onChange={(e) => setPrice(e.target.value)}
-                                                className="w-full bg-white/90 backdrop-blur text-black p-3 rounded-lg font-bold text-center placeholder:text-gray-500 shadow-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                                            />
-                                        </div>
-                                        <div className="flex-[1.5]">
-                                            <input
-                                                value={remarks}
-                                                placeholder="Rmks"
-                                                onChange={(e) => setRemarks(e.target.value)}
-                                                className="w-full bg-white/90 backdrop-blur text-black p-3 rounded-lg font-medium text-sm placeholder:text-gray-500 shadow-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                                            />
-                                        </div>
-                                    </div>
-
-                                    <button
-                                        onClick={() => handleSave(false)}
-                                        disabled={saving}
-                                        className="w-full py-4 bg-green-600 hover:bg-green-500 text-white rounded-xl font-bold text-lg shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2"
-                                    >
-                                        {saving ? <Loader2 className="animate-spin" /> : <Save size={20} />}
-                                        SAVE & NEXT
-                                    </button>
-                                </div>
+                    {/* Overlay: Bottom Inputs */}
+                    <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/90 via-black/60 to-transparent z-10 space-y-4">
+                        <div className="flex gap-3">
+                            <div className="flex-1">
+                                <input
+                                    type="number"
+                                    value={price}
+                                    placeholder="Price"
+                                    onChange={(e) => setPrice(e.target.value)}
+                                    className="w-full bg-white/90 backdrop-blur text-black p-3 rounded-lg font-bold text-center placeholder:text-gray-500 shadow-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                                />
                             </div>
-                        )}
-                    </div>,
-                    document.body
-                    )
+                            <div className="flex-[1.5]">
+                                <input
+                                    value={remarks}
+                                    placeholder="Rmks"
+                                    onChange={(e) => setRemarks(e.target.value)}
+                                    className="w-full bg-white/90 backdrop-blur text-black p-3 rounded-lg font-medium text-sm placeholder:text-gray-500 shadow-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                                />
+                            </div>
+                        </div>
+
+                        <button
+                            onClick={() => handleSave(false)}
+                            disabled={saving}
+                            className="w-full py-4 bg-green-600 hover:bg-green-500 text-white rounded-xl font-bold text-lg shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2"
+                        >
+                            {saving ? <Loader2 className="animate-spin" /> : <Save size={20} />}
+                            SAVE & NEXT
+                        </button>
+                    </div>
+                </div>
+            )}
+        </div>,
+        document.body
+    )
 }
