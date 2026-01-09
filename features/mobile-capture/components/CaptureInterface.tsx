@@ -162,9 +162,13 @@ export default function CaptureInterface({ trigger }: { trigger?: React.ReactNod
         }
 
         setSaving(true)
-        const toastId = toast.loading(continueGroup ? "Adding to group..." : "Saving...")
+        const saveMessage = continueGroup ? "Adding to group..." : "Saving..."
+        const toastId = toast.loading(saveMessage)
 
         try {
+            console.log('[Save] Current groupId:', groupId)
+            console.log('[Save] Continue group?', continueGroup)
+
             const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.jpg`
             const { error: uploadError } = await supabase.storage
                 .from('mobile-captures')
@@ -187,21 +191,27 @@ export default function CaptureInterface({ trigger }: { trigger?: React.ReactNod
                 group_id: groupId
             })
 
-            toast.success("Saved!", { id: toastId, duration: 1000 })
+            console.log('[Save] Photo saved with groupId:', groupId)
+
+            if (continueGroup) {
+                toast.success("Added to group! Opening camera...", { id: toastId, duration: 1500 })
+                console.log('[Save] Keeping same groupId for next photo:', groupId)
+            } else {
+                toast.success("Saved! Starting new group...", { id: toastId, duration: 1500 })
+                const newGroupId = crypto.randomUUID()
+                console.log('[Save] Creating new groupId:', newGroupId)
+                setGroupId(newGroupId)
+            }
 
             clearForm()
             router.refresh()
 
-            if (!continueGroup) {
-                setGroupId(crypto.randomUUID())
-            }
-
             setTimeout(() => {
                 startCamera()
-            }, 300)
+            }, 400)
 
         } catch (error: any) {
-            console.error('Save error:', error)
+            console.error('[Save] Save error:', error)
             toast.error(error.message || "Failed to save", { id: toastId })
         } finally {
             setSaving(false)
