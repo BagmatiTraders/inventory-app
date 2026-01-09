@@ -202,35 +202,35 @@ export default function CaptureInterface({ trigger }: { trigger?: React.ReactNod
             {/* CAMERA VIEW LAYER */}
             {cameraActive && !image && (
                 <div className="absolute inset-0 bg-black flex flex-col">
-                    {/* Camera Preview Container - toBack:false renders camera here */}
-                    <div id="cameraPreview" className="absolute inset-0 w-full h-full" />
+                    {/* Camera Preview Container - z-index 0 */}
+                    <div id="cameraPreview" className="absolute inset-0 w-full h-full z-0" />
 
-                    {/* Camera Controls Overlay */}
-                    <div className="absolute inset-0 flex flex-col justify-between p-6 pointer-events-none">
+                    {/* Camera Controls Overlay - z-index 10 to ensure it's above camera */}
+                    <div className="absolute inset-0 z-10">
                         {/* Top Controls */}
-                        <div className="flex justify-between items-start pt-8 pointer-events-auto">
-                            <button onClick={handleClose} className="p-3 bg-black/40 backdrop-blur rounded-full text-white">
-                                <X size={24} />
+                        <div className="absolute top-0 left-0 right-0 flex justify-between items-start p-6 pt-8">
+                            <button onClick={handleClose} className="p-4 bg-black/60 backdrop-blur rounded-full text-white shadow-lg">
+                                <X size={28} />
                             </button>
-                            <button onClick={toggleFlash} className="p-3 bg-black/40 backdrop-blur rounded-full text-white">
-                                {flashMode === 'on' ? <Zap size={24} /> : <ZapOff size={24} />}
+                            <button onClick={toggleFlash} className="p-4 bg-black/60 backdrop-blur rounded-full text-white shadow-lg">
+                                {flashMode === 'on' ? <Zap size={28} /> : <ZapOff size={28} />}
                             </button>
                         </div>
 
                         {/* Bottom Controls - Capture and Flip */}
-                        <div className="flex justify-between items-center px-2 pb-12 pointer-events-auto">
+                        <div className="absolute bottom-0 left-0 right-0 flex justify-between items-center px-8 pb-16">
                             {/* Empty spacer to balance layout */}
-                            <div className="w-12"></div>
+                            <div className="w-16"></div>
 
                             <button
                                 onClick={capturePhoto}
-                                className="w-20 h-20 rounded-full border-4 border-white bg-white/20 active:scale-95 transition-transform flex items-center justify-center backdrop-blur-sm"
+                                className="w-24 h-24 rounded-full border-4 border-white bg-white/30 active:scale-95 transition-transform flex items-center justify-center backdrop-blur-sm shadow-2xl"
                             >
-                                <div className="w-16 h-16 bg-white rounded-full shadow-lg" />
+                                <div className="w-20 h-20 bg-white rounded-full shadow-lg" />
                             </button>
 
-                            <button onClick={flipCamera} className="p-3 bg-black/40 backdrop-blur rounded-full text-white">
-                                <RefreshCcw size={24} />
+                            <button onClick={flipCamera} className="p-4 bg-black/60 backdrop-blur rounded-full text-white shadow-lg">
+                                <RefreshCcw size={28} />
                             </button>
                         </div>
                     </div>
