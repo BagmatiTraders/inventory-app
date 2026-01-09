@@ -167,9 +167,13 @@ export function MobileGallery({ captures }: MobileGalleryProps) {
                     {/* Top Bar */}
                     <div className="absolute top-0 left-0 right-0 p-4 flex justify-between items-start z-10 bg-gradient-to-b from-black/80 to-transparent">
                         <div className="text-white">
-                            {currentCapture.price && (
-                                <p className="font-bold text-lg">Rs. {currentCapture.price}</p>
-                            )}
+                            {/* Show group price if any photo has it */}
+                            {(() => {
+                                const groupPrice = selectedGroup.captures.find(c => c.price)?.price
+                                return groupPrice && (
+                                    <p className="font-bold text-lg">Rs. {groupPrice}</p>
+                                )
+                            })()}
                             {currentCapture.remarks && (
                                 <p className="text-sm text-gray-300">{currentCapture.remarks}</p>
                             )}

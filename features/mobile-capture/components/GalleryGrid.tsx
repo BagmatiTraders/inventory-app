@@ -135,6 +135,8 @@ export function GalleryGrid({ captures }: GalleryGridProps) {
                 {photoGroups.map((group, groupIndex) => {
                     const firstCapture = group.captures[0]
                     const isGroup = group.captures.length > 1
+                    // Find first non-null price in group
+                    const groupPrice = group.captures.find(c => c.price)?.price
 
                     return (
                         <div
@@ -162,11 +164,11 @@ export function GalleryGrid({ captures }: GalleryGridProps) {
                                 <ZoomIn className="text-white drop-shadow-md" />
                             </div>
 
-                            {/* Info Bar */}
+                            {/* Info Bar - Show group price if any photo has it */}
                             <div className="absolute bottom-0 left-0 right-0 bg-white/95 dark:bg-zinc-900/95 p-2 border-t dark:border-zinc-800 backdrop-blur-sm">
                                 <div className="flex justify-between items-center text-xs">
                                     <span className="font-bold truncate">
-                                        {firstCapture.price ? `Rs. ${firstCapture.price}` : '-'}
+                                        {groupPrice ? `Rs. ${groupPrice}` : '-'}
                                     </span>
                                     <span className="text-gray-500 text-[10px]">
                                         {formatDistanceToNow(new Date(firstCapture.created_at), { addSuffix: true })}
@@ -185,9 +187,15 @@ export function GalleryGrid({ captures }: GalleryGridProps) {
                     {/* Top Bar */}
                     <div className="absolute top-0 left-0 right-0 p-4 flex justify-between items-start z-50">
                         <div className="text-white">
-                            <h2 className="font-bold text-lg">
-                                {currentCapture.price ? `Rs. ${currentCapture.price}` : 'No Price'}
-                            </h2>
+                            {/* Show group price if any photo has it */}
+                            {(() => {
+                                const groupPrice = selectedGroup.captures.find(c => c.price)?.price
+                                return groupPrice ? (
+                                    <h2 className="font-bold text-lg">Rs. {groupPrice}</h2>
+                                ) : (
+                                    currentCapture.price && <h2 className="font-bold text-lg">Rs. {currentCapture.price}</h2>
+                                )
+                            })()}
                             <p className="text-sm text-gray-400">
                                 {currentCapture.remarks || 'No remarks'}
                             </p>
