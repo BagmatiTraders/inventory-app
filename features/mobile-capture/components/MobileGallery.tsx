@@ -1,8 +1,9 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect } from "react"
 import Image from "next/image"
 import { Images, X, ChevronLeft, ChevronRight } from "lucide-react"
+import { App } from '@capacitor/app'
 
 type Capture = {
     id: string
@@ -70,6 +71,19 @@ export function MobileGallery({ captures }: MobileGalleryProps) {
         setSelectedGroupIndex(null)
         setCurrentPhotoIndex(0)
     }
+
+    // Handle Android back button for modal
+    useEffect(() => {
+        if (selectedGroupIndex === null) return
+
+        const backHandler = App.addListener('backButton', () => {
+            closeModal()
+        })
+
+        return () => {
+            backHandler.then(listener => listener.remove())
+        }
+    }, [selectedGroupIndex])
 
     const navigatePhoto = (direction: 'left' | 'right') => {
         if (selectedGroupIndex === null) return

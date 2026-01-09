@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { CameraPreview } from '@capacitor-community/camera-preview'
+import { App } from '@capacitor/app'
 import { supabase } from '@/lib/supabase/client'
 import { saveMobileCapture } from '../actions'
 import { Loader2, Save, Plus, X, Zap, ZapOff, RefreshCcw } from 'lucide-react'
@@ -39,6 +40,20 @@ export default function CaptureInterface({ trigger }: { trigger?: React.ReactNod
     // Debug: Log whenever cameraActive changes
     useEffect(() => {
         console.log('[Camera] ===== cameraActive changed to:', cameraActive, '=====')
+    }, [cameraActive])
+
+    // Handle Android back button when camera is active
+    useEffect(() => {
+        if (!cameraActive) return
+
+        const backHandler = App.addListener('backButton', () => {
+            console.log('[Camera] Back button pressed, closing camera')
+            handleClose()
+        })
+
+        return () => {
+            backHandler.then(listener => listener.remove())
+        }
     }, [cameraActive])
 
     const toggleAppVisibility = (hide: boolean) => {
