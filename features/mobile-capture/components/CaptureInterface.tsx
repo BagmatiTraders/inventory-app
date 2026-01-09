@@ -45,6 +45,7 @@ export default function CaptureInterface({ trigger }: { trigger?: React.ReactNod
 
     const startCamera = async () => {
         try {
+            console.log('[Camera] Starting camera...')
             setIsOpen(true)
             setCameraActive(true)
 
@@ -52,14 +53,22 @@ export default function CaptureInterface({ trigger }: { trigger?: React.ReactNod
             toggleAppVisibility(true)
             document.body.classList.add('camera-active')
 
+            console.log('[Camera] Attempting CameraPreview.start() with toBack:false')
             await CameraPreview.start({
-                toBack: true,
+                toBack: false,
+                parent: 'cameraPreview',
+                className: 'cameraPreview',
                 position: 'rear',
-                rotateWhenOrientationChanged: false
+                width: window.innerWidth,
+                height: window.innerHeight,
+                rotateWhenOrientationChanged: false,
+                disableAudio: true
             })
-        } catch (error) {
-            console.error('Failed to start camera:', error)
-            toast.error("Failed to start camera")
+            console.log('[Camera] Camera started successfully!')
+        } catch (error: any) {
+            console.error('[Camera] Failed to start camera:', error)
+            console.error('[Camera] Error details:', JSON.stringify(error))
+            toast.error(`Camera error: ${error?.message || 'Unknown error'}`)
             handleClose()
         }
     }
@@ -81,9 +90,11 @@ export default function CaptureInterface({ trigger }: { trigger?: React.ReactNod
 
     const capturePhoto = async () => {
         try {
+            console.log('[Camera] Attempting to capture photo...')
             const result = await CameraPreview.capture({
                 quality: 85
             })
+            console.log('[Camera] Capture successful, processing image...')
 
             const base64Data = result.value
             const base64Response = await fetch(`data:image/jpeg;base64,${base64Data}`)
@@ -92,11 +103,13 @@ export default function CaptureInterface({ trigger }: { trigger?: React.ReactNod
             setImage(`data:image/jpeg;base64,${base64Data}`)
             setImageBlob(blob)
 
+            console.log('[Camera] Image processed, stopping camera')
             stopCamera()
 
-        } catch (error) {
-            console.error('Capture failed:', error)
-            toast.error("Capture failed")
+        } catch (error: any) {
+            console.error('[Camera] Capture failed:', error)
+            console.error('[Camera] Capture error details:', JSON.stringify(error))
+            toast.error(`Capture failed: ${error?.message || 'Unknown error'}`)
         }
     }
 
@@ -190,102 +203,108 @@ export default function CaptureInterface({ trigger }: { trigger?: React.ReactNod
         <div className="fixed inset-0 z-[9999] flex flex-col bg-transparent">
             {/* CAMERA VIEW LAYER */}
             {cameraActive && !image && (
-                <div id="cameraPreview" className="absolute inset-0 bg-transparent flex flex-col justify-between p-6">
-                    {/* Top Controls */}
-                    <div className="flex justify-between items-start pt-8">
-                        <button onClick={handleClose} className="p-3 bg-black/40 backdrop-blur rounded-full text-white">
-                            <X size={24} />
-                        </button>
-                        <button onClick={toggleFlash} className="p-3 bg-black/40 backdrop-blur rounded-full text-white">
-                            {flashMode === 'on' ? <Zap size={24} /> : <ZapOff size={24} />}
-                        </button>
-                    </div>
+                <div className="absolute inset-0 bg-black flex flex-col">
+                    {/* Camera Preview Container */}
+                    <div id="cameraPreview" className="absolute inset-0 w-full h-full" />
 
-                    {/* Bottom Controls - Capture and Flip */}
-                    <div className="flex justify-between items-center px-8 pb-12 w-full mt-auto">
-                        {/* Empty spacer spacer to balance layout */}
-                        <div className="w-12"></div>
-
-                        <button
-                            onClick={capturePhoto}
-                            className="w-20 h-20 rounded-full border-4 border-white bg-white/20 active:scale-95 transition-transform flex items-center justify-center backdrop-blur-sm"
-                        >
-                            <div className="w-16 h-16 bg-white rounded-full shadow-lg" />
-                        </button>
-
-                        <button onClick={flipCamera} className="p-3 bg-black/40 backdrop-blur rounded-full text-white">
-                            <RefreshCcw size={24} />
-                        </button>
-                    </div>
-                </div>
-            )}
-
-            {/* REVIEW / INPUT LAYER */}
-            {image && (
-                <div className="fixed inset-0 bg-black z-50 flex flex-col animate-in fade-in duration-200">
-                    {/* Image Preview */}
-                    <div className="absolute inset-0 z-0 bg-black">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                            src={image}
-                            alt="Preview"
-                            className="w-full h-full object-contain"
-                        />
-                    </div>
-
-                    {/* Overlay: Top Actions */}
-                    <div className="absolute top-0 left-0 right-0 p-4 flex justify-between items-start z-10 bg-gradient-to-b from-black/60 to-transparent">
-                        <button
-                            onClick={handleClose}
-                            className="p-2 bg-white/20 backdrop-blur-md rounded-full text-white hover:bg-white/30"
-                        >
-                            <X size={20} />
-                        </button>
-
-                        <button
-                            onClick={() => handleSave(true)}
-                            disabled={saving}
-                            className="flex flex-col items-center gap-1 p-2 bg-blue-600/90 backdrop-blur-md rounded-lg text-white font-medium hover:bg-blue-600 shadow-lg active:scale-95 transition-all"
-                        >
-                            <Plus size={24} />
-                            <span className="text-[10px] font-bold uppercase">Add More</span>
-                        </button>
-                    </div>
-
-                    {/* Overlay: Bottom Inputs */}
-                    <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/90 via-black/60 to-transparent z-10 space-y-4">
-                        <div className="flex gap-3">
-                            <div className="flex-1">
-                                <input
-                                    type="number"
-                                    value={price}
-                                    placeholder="Price"
-                                    onChange={(e) => setPrice(e.target.value)}
-                                    className="w-full bg-white/90 backdrop-blur text-black p-3 rounded-lg font-bold text-center placeholder:text-gray-500 shadow-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                                />
+                    {/* Camera Controls Overlay */}
+                    <div className="absolute inset-0 flex flex-col justify-between p-6 pointer-events-none">
+                        <div className="pointer-events-auto">
+                            {/* Top Controls */}
+                            <div className="flex justify-between items-start pt-8">
+                                <button onClick={handleClose} className="p-3 bg-black/40 backdrop-blur rounded-full text-white">
+                                    <X size={24} />
+                                </button>
+                                <button onClick={toggleFlash} className="p-3 bg-black/40 backdrop-blur rounded-full text-white">
+                                    {flashMode === 'on' ? <Zap size={24} /> : <ZapOff size={24} />}
+                                </button>
                             </div>
-                            <div className="flex-[1.5]">
-                                <input
-                                    value={remarks}
-                                    placeholder="Rmks"
-                                    onChange={(e) => setRemarks(e.target.value)}
-                                    className="w-full bg-white/90 backdrop-blur text-black p-3 rounded-lg font-medium text-sm placeholder:text-gray-500 shadow-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                                />
+
+                            {/* Bottom Controls - Capture and Flip */}
+                            <div className="flex justify-between items-center px-8 pb-12 w-full mt-auto">
+                                {/* Empty spacer spacer to balance layout */}
+                                <div className="w-12"></div>
+
+                                <button
+                                    onClick={capturePhoto}
+                                    className="w-20 h-20 rounded-full border-4 border-white bg-white/20 active:scale-95 transition-transform flex items-center justify-center backdrop-blur-sm"
+                                >
+                                    <div className="w-16 h-16 bg-white rounded-full shadow-lg" />
+                                </button>
+
+                                <button onClick={flipCamera} className="p-3 bg-black/40 backdrop-blur rounded-full text-white">
+                                    <RefreshCcw size={24} />
+                                </button>
                             </div>
                         </div>
-
-                        <button
-                            onClick={() => handleSave(false)}
-                            disabled={saving}
-                            className="w-full py-4 bg-green-600 hover:bg-green-500 text-white rounded-xl font-bold text-lg shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2"
-                        >
-                            {saving ? <Loader2 className="animate-spin" /> : <Save size={20} />}
-                            SAVE & NEXT
-                        </button>
-                    </div>
-                </div>
             )}
-        </div>,
-        document.body
-    )
+
+                        {/* REVIEW / INPUT LAYER */}
+                        {image && (
+                            <div className="fixed inset-0 bg-black z-50 flex flex-col animate-in fade-in duration-200">
+                                {/* Image Preview */}
+                                <div className="absolute inset-0 z-0 bg-black">
+                                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                                    <img
+                                        src={image}
+                                        alt="Preview"
+                                        className="w-full h-full object-contain"
+                                    />
+                                </div>
+
+                                {/* Overlay: Top Actions */}
+                                <div className="absolute top-0 left-0 right-0 p-4 flex justify-between items-start z-10 bg-gradient-to-b from-black/60 to-transparent">
+                                    <button
+                                        onClick={handleClose}
+                                        className="p-2 bg-white/20 backdrop-blur-md rounded-full text-white hover:bg-white/30"
+                                    >
+                                        <X size={20} />
+                                    </button>
+
+                                    <button
+                                        onClick={() => handleSave(true)}
+                                        disabled={saving}
+                                        className="flex flex-col items-center gap-1 p-2 bg-blue-600/90 backdrop-blur-md rounded-lg text-white font-medium hover:bg-blue-600 shadow-lg active:scale-95 transition-all"
+                                    >
+                                        <Plus size={24} />
+                                        <span className="text-[10px] font-bold uppercase">Add More</span>
+                                    </button>
+                                </div>
+
+                                {/* Overlay: Bottom Inputs */}
+                                <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/90 via-black/60 to-transparent z-10 space-y-4">
+                                    <div className="flex gap-3">
+                                        <div className="flex-1">
+                                            <input
+                                                type="number"
+                                                value={price}
+                                                placeholder="Price"
+                                                onChange={(e) => setPrice(e.target.value)}
+                                                className="w-full bg-white/90 backdrop-blur text-black p-3 rounded-lg font-bold text-center placeholder:text-gray-500 shadow-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                                            />
+                                        </div>
+                                        <div className="flex-[1.5]">
+                                            <input
+                                                value={remarks}
+                                                placeholder="Rmks"
+                                                onChange={(e) => setRemarks(e.target.value)}
+                                                className="w-full bg-white/90 backdrop-blur text-black p-3 rounded-lg font-medium text-sm placeholder:text-gray-500 shadow-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <button
+                                        onClick={() => handleSave(false)}
+                                        disabled={saving}
+                                        className="w-full py-4 bg-green-600 hover:bg-green-500 text-white rounded-xl font-bold text-lg shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2"
+                                    >
+                                        {saving ? <Loader2 className="animate-spin" /> : <Save size={20} />}
+                                        SAVE & NEXT
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                    </div>,
+                    document.body
+                    )
 }
