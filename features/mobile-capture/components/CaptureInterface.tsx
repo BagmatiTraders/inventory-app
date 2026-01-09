@@ -35,6 +35,11 @@ export default function CaptureInterface({ trigger }: { trigger?: React.ReactNod
         }
     }, [])
 
+    // Debug: Log whenever cameraActive changes
+    useEffect(() => {
+        console.log('[Camera] ===== cameraActive changed to:', cameraActive, '=====')
+    }, [cameraActive])
+
     const toggleAppVisibility = (hide: boolean) => {
         const appContent = document.getElementById('app-content')
         if (appContent) {
@@ -45,8 +50,10 @@ export default function CaptureInterface({ trigger }: { trigger?: React.ReactNod
     const startCamera = async () => {
         try {
             console.log('[Camera] Starting camera...')
+            console.log('[Camera] Current cameraActive:', cameraActive)
             setIsOpen(true)
             setCameraActive(true)
+            console.log('[Camera] Set cameraActive to TRUE')
 
             toggleAppVisibility(true)
             document.body.classList.add('camera-active')
@@ -62,7 +69,8 @@ export default function CaptureInterface({ trigger }: { trigger?: React.ReactNod
                 rotateWhenOrientationChanged: false,
                 disableAudio: true
             })
-            console.log('[Camera] Camera started successfully!')
+            console.log('[Camera] Camera started successfully! cameraActive should stay TRUE')
+            console.log('[Camera] Current cameraActive after start:', cameraActive)
         } catch (error: any) {
             console.error('[Camera] Failed to start camera:', error)
             console.error('[Camera] Error details:', JSON.stringify(error))
@@ -72,11 +80,24 @@ export default function CaptureInterface({ trigger }: { trigger?: React.ReactNod
     }
 
     const stopCamera = async () => {
+        if (!cameraActive) {
+            console.log('[Camera] stopCamera called but camera is already inactive, skipping')
+            return
+        }
+
         try {
+            console.log('[Camera] Stopping camera...')
             await CameraPreview.stop()
-        } catch (error) {
-            console.error('Error stopping camera:', error)
+            console.log('[Camera] Camera stopped successfully')
+        } catch (error: any) {
+            // Don't log "already stopped" errors as errors
+            if (error?.message?.includes('already stopped')) {
+                console.log('[Camera] Camera was already stopped')
+            } else {
+                console.error('[Camera] Error stopping camera:', error)
+            }
         } finally {
+            console.log('[Camera] Setting cameraActive to FALSE')
             setCameraActive(false)
         }
     }
