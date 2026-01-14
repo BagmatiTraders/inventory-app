@@ -429,9 +429,10 @@ function DashboardContent() {
                                             <thead className="bg-gray-50 dark:bg-zinc-900 border-b dark:border-zinc-700">
                                                 <tr>
                                                     <th className="px-3 py-2 w-8">
-                                                        <Checkbox
+                                                        <input
+                                                            type="checkbox"
                                                             checked={!!manualOrdersData?.orders && manualOrdersData.orders.length > 0 && selectedOrderIds.length === manualOrdersData.orders.length}
-                                                            onCheckedChange={handleSelectAll}
+                                                            onChange={toggleAll}
                                                             className="rounded border-gray-300"
                                                         />
                                                     </th>
