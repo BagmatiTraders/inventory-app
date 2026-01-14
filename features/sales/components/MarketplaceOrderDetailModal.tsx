@@ -122,6 +122,118 @@ export function MarketplaceOrderDetailModal({ order, onClose }: MarketplaceOrder
                             <p className="text-sm text-yellow-800 dark:text-yellow-200">{order.remarks}</p>
                         </div>
                     )}
+
+                    {/* Audit Trail */}
+                    <div className="border-t pt-4 dark:border-zinc-800">
+                        <h3 className="text-sm font-bold mb-3">Audit Trail</h3>
+                        <div className="space-y-3">
+                            <div className="flex items-center text-sm">
+                                <div className="w-32 text-gray-500">Created Order</div>
+                                <div className="flex-1 font-medium">
+                                    {order.created_user?.full_name || 'System'}
+                                    <span className="text-gray-400 font-normal ml-2">
+                                        {new Date(order.created_at).toLocaleString()}
+                                    </span>
+                                </div>
+                            </div>
+
+                            {order.shipped_at && (
+                                <div className="flex items-center text-sm">
+                                    <div className="w-32 text-gray-500">Shipped</div>
+                                    <div className="flex-1 font-medium">
+                                        {(order as any).shipped_user?.full_name || 'Unknown'}
+                                        <span className="text-gray-400 font-normal ml-2">
+                                            {new Date(order.shipped_at).toLocaleString()}
+                                        </span>
+                                    </div>
+                                </div>
+                            )}
+
+                            {order.delivered_at && (
+                                <div className="flex items-center text-sm">
+                                    <div className="w-32 text-gray-500">Delivered</div>
+                                    <div className="flex-1 font-medium">
+                                        {(order as any).delivered_user?.full_name || 'Unknown'}
+                                        <span className="text-gray-400 font-normal ml-2">
+                                            {new Date(order.delivered_at).toLocaleString()}
+                                        </span>
+                                    </div>
+                                </div>
+                            )}
+
+                            {order.failed_delivered_at && (
+                                <div className="flex items-center text-sm">
+                                    <div className="w-32 text-gray-500">Failed Delivery</div>
+                                    <div className="flex-1 font-medium">
+                                        {(order as any).failed_delivered_user?.full_name || 'Unknown'}
+                                        <span className="text-gray-400 font-normal ml-2">
+                                            {new Date(order.failed_delivered_at).toLocaleString()}
+                                        </span>
+                                    </div>
+                                </div>
+                            )}
+
+                            {(order as any).returned_to_seller_at && (
+                                <div className="flex items-center text-sm">
+                                    <div className="w-32 text-gray-500">Return to Seller</div>
+                                    <div className="flex-1 font-medium">
+                                        {(order as any).returned_to_seller_user?.full_name || 'Unknown'}
+                                        <span className="text-gray-400 font-normal ml-2">
+                                            {new Date((order as any).returned_to_seller_at).toLocaleString()}
+                                        </span>
+                                    </div>
+                                </div>
+                            )}
+
+                            {(order as any).customer_return_at && (
+                                <div className="flex items-center text-sm">
+                                    <div className="w-32 text-gray-500">Customer Return</div>
+                                    <div className="flex-1 font-medium">
+                                        {(order as any).customer_return_user?.full_name || 'Unknown'}
+                                        <span className="text-gray-400 font-normal ml-2">
+                                            {new Date((order as any).customer_return_at).toLocaleString()}
+                                        </span>
+                                    </div>
+                                </div>
+                            )}
+
+                            {(order as any).return_delivered_at && (
+                                <div className="flex items-center text-sm">
+                                    <div className="w-32 text-gray-500">Return Delivered</div>
+                                    <div className="flex-1 font-medium">
+                                        {(order as any).return_delivered_user?.full_name || 'Unknown'}
+                                        <span className="text-gray-400 font-normal ml-2">
+                                            {new Date((order as any).return_delivered_at).toLocaleString()}
+                                        </span>
+                                    </div>
+                                </div>
+                            )}
+
+                            {order.cancelled_at && (
+                                <div className="flex items-center text-sm">
+                                    <div className="w-32 text-gray-500">Cancelled</div>
+                                    <div className="flex-1 font-medium">
+                                        {(order as any).cancelled_user?.full_name || 'Unknown'}
+                                        <span className="text-gray-400 font-normal ml-2">
+                                            {new Date(order.cancelled_at).toLocaleString()}
+                                        </span>
+                                    </div>
+                                </div>
+                            )}
+
+                            {order.updated_at && (
+                                <div className="flex items-center text-sm text-gray-400 italic mt-2 !pt-2 border-t border-dashed">
+                                    <div className="w-32">Last Updated</div>
+                                    <div className="flex-1">
+                                        {order.updated_user?.full_name}
+                                        <span className="ml-2">
+                                            {new Date(order.updated_at).toLocaleString()}
+                                        </span>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
                 </div>
 
                 <div className="p-4 border-t dark:border-zinc-800 flex justify-end">

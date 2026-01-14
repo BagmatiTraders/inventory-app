@@ -15,7 +15,7 @@ export default function LocationsPage() {
     return (
         <div className="space-y-6">
             <SettingsPageHeader
-                title="Delivery Location"
+                title="Courier"
                 subtitle="Delivery Location & Charges by Courier Provider"
             />
 

@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { getDailySalesReport, getOrderSummaryReport, getOrderStatusSummary } from '@/features/sales/actions/daraz-actions'
 import { getUserRole } from '@/features/sales/actions/daraz-deletion-actions'
-import { ArrowLeft, BarChart2, FileText, AlertCircle, PieChart, RefreshCw, Download } from 'lucide-react'
+import { ArrowLeft, BarChart2, AlertCircle, PieChart, RefreshCw, Download, List } from 'lucide-react'
 import Link from 'next/link'
 import { Card } from '@/components/ui-shim'
 import { useSearchParams } from 'next/navigation'
@@ -12,13 +12,14 @@ import { useSearchParams } from 'next/navigation'
 import { OrderStatusSyncTable } from '@/features/sales/components/OrderStatusSyncTable'
 import { OrderSyncPageContent } from '../order-sync/page'
 import ProfitTrackerPage from '../profit-tracker/page'
+import { DarazOrderList } from '@/features/sales/components/DarazOrderList'
 
 import { Suspense } from 'react'
 
-type ReportTab = 'daily' | 'summary' | 'status-sync' | 'order-sync' | 'profit-tracker'
+type ReportTab = 'daily' | 'summary' | 'status-sync' | 'order-sync' | 'profit-tracker' | 'order-list'
 
 function DashboardContent() {
-    const [activeTab, setActiveTab] = useState<ReportTab>('daily')
+    const [activeTab, setActiveTab] = useState<ReportTab>('order-list')
     const [userRole, setUserRole] = useState<'admin' | 'user' | null>(null)
     const [isCheckingRole, setIsCheckingRole] = useState(true)
     const searchParams = useSearchParams()
@@ -185,60 +186,68 @@ function DashboardContent() {
 
 
             {/* Tab Bar - Hidden on mobile, visible on desktop */}
-            <div className="hidden md:block sticky top-[44px] z-10 bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 px-3 py-1.5 shadow-sm">
-                <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1.5">
-                        <button
-                            onClick={() => setActiveTab('daily')}
-                            className={`flex items-center gap-1 px-2 py-1 text-sm rounded transition-colors ${activeTab === 'daily'
-                                ? 'bg-blue-600 text-white'
-                                : 'bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700'
-                                }`}
-                        >
-                            <BarChart2 size={12} />
-                            Daily Sales Report
-                        </button>
-                        <button
-                            onClick={() => setActiveTab('summary')}
-                            className={`flex items-center gap-1 px-2 py-1 text-sm rounded transition-colors ${activeTab === 'summary'
-                                ? 'bg-blue-600 text-white'
-                                : 'bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700'
-                                }`}
-                        >
-                            <PieChart size={12} />
-                            Account Summary
-                        </button>
-                        <button
-                            onClick={() => setActiveTab('status-sync')}
-                            className={`flex items-center gap-1 px-2 py-1 text-sm rounded transition-colors ${activeTab === 'status-sync'
-                                ? 'bg-blue-600 text-white'
-                                : 'bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700'
-                                }`}
-                        >
-                            <RefreshCw size={12} />
-                            Order Status Sync
-                        </button>
-                        <button
-                            onClick={() => setActiveTab('order-sync')}
-                            className={`flex items-center gap-1 px-2 py-1 text-sm rounded transition-colors ${activeTab === 'order-sync'
-                                ? 'bg-blue-600 text-white'
-                                : 'bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700'
-                                }`}
-                        >
-                            <Download size={12} />
-                            Order Sync
-                        </button>
-                        <button
-                            onClick={() => setActiveTab('profit-tracker')}
-                            className={`flex items-center gap-1 px-2 py-1 text-sm rounded transition-colors ${activeTab === 'profit-tracker'
-                                ? 'bg-blue-600 text-white'
-                                : 'bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700'
-                                }`}
-                        >
-                            <BarChart2 size={12} />
-                            Profit Tracker
-                        </button>
-                    </div>
+            <div className="hidden md:block sticky top-[44px] z-10 bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 px-3 py-1.5 shadow-sm overflow-x-auto">
+                <div className="flex items-center gap-1.5 min-w-max">
+                    <button
+                        onClick={() => setActiveTab('order-list')}
+                        className={`flex items-center gap-1 px-2 py-1 text-sm rounded transition-colors ${activeTab === 'order-list'
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700'
+                            }`}
+                    >
+                        <List size={12} />
+                        Order List
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('daily')}
+                        className={`flex items-center gap-1 px-2 py-1 text-sm rounded transition-colors ${activeTab === 'daily'
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700'
+                            }`}
+                    >
+                        <BarChart2 size={12} />
+                        Daily Sales Report
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('summary')}
+                        className={`flex items-center gap-1 px-2 py-1 text-sm rounded transition-colors ${activeTab === 'summary'
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700'
+                            }`}
+                    >
+                        <PieChart size={12} />
+                        Account Summary
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('status-sync')}
+                        className={`flex items-center gap-1 px-2 py-1 text-sm rounded transition-colors ${activeTab === 'status-sync'
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700'
+                            }`}
+                    >
+                        <RefreshCw size={12} />
+                        Order Status Sync
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('order-sync')}
+                        className={`flex items-center gap-1 px-2 py-1 text-sm rounded transition-colors ${activeTab === 'order-sync'
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700'
+                            }`}
+                    >
+                        <Download size={12} />
+                        Order Sync
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('profit-tracker')}
+                        className={`flex items-center gap-1 px-2 py-1 text-sm rounded transition-colors ${activeTab === 'profit-tracker'
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700'
+                            }`}
+                    >
+                        <BarChart2 size={12} />
+                        Profit Tracker
+                    </button>
                 </div>
             </div>
 
@@ -258,7 +267,6 @@ function DashboardContent() {
                                         <th className="px-2 py-1.5 text-xs font-bold uppercase text-gray-600 dark:text-gray-400 text-center">Returning to Seller</th>
                                         <th className="px-2 py-1.5 text-xs font-bold uppercase text-gray-600 dark:text-gray-400 text-center">Returned Delivered</th>
                                         <th className="px-2 py-1.5 text-xs font-bold uppercase text-gray-600 dark:text-gray-400 text-center">Delivered Qty</th>
-                                        {/* Removed Delivered Amount column? No, user said "Shipped Qty, Shipped Amount... Delivered Qty". User didn't explicitly say remove Delivered Amount but the order list "S.N, Date, Seller Account, Shipped Qty, Shipped Amount, Returning to Seller, Returned Delivered, Delivered Qty, Customer Return, Customer Return Delivered" does NOT include Delivered Amount. I will remove it to strictly follow instructions. */}
                                         <th className="px-2 py-1.5 text-xs font-bold uppercase text-gray-600 dark:text-gray-400 text-center">Customer Return</th>
                                         <th className="px-2 py-1.5 text-xs font-bold uppercase text-gray-600 dark:text-gray-400 text-center">Customer Return Delivered</th>
                                     </tr>
@@ -266,7 +274,7 @@ function DashboardContent() {
                                 <tbody className="divide-y divide-gray-100 dark:divide-zinc-800">
                                     {isLoading ? (
                                         <tr>
-                                            <td colSpan={9} className="px-2 py-8 text-center text-[15px] text-gray-500">
+                                            <td colSpan={10} className="px-2 py-8 text-center text-[15px] text-gray-500">
                                                 Loading report data...
                                             </td>
                                         </tr>
@@ -325,7 +333,7 @@ function DashboardContent() {
                                         ))
                                     ) : (
                                         <tr>
-                                            <td colSpan={9} className="px-2 py-8 text-center text-[15px] text-gray-500">
+                                            <td colSpan={10} className="px-2 py-8 text-center text-[15px] text-gray-500">
                                                 No report data available. Orders with Shipped, Delivered, Failed Delivery, or Customer Return status will appear here.
                                             </td>
                                         </tr>
@@ -379,14 +387,6 @@ function DashboardContent() {
                                                 <th className="px-2 py-1.5 text-xs font-bold uppercase text-gray-600 dark:text-gray-400 text-center">Returning to Seller</th>
                                                 <th className="px-2 py-1.5 text-xs font-bold uppercase text-gray-600 dark:text-gray-400 text-center">Returned Delivered</th>
                                                 <th className="px-2 py-1.5 text-xs font-bold uppercase text-gray-600 dark:text-gray-400 text-center">Delivered Qty</th>
-                                                {/* User requested column order: Shipped Qty, Shipped Amt, Returning to Seller, Returned Delivered, Delivered Qty, Customer Return, Customer Return Delivered, Remain Qty */}
-                                                {/* Delivered Amt is usually requested but user list was "Delivered Qty, Customer Return". I'll keep Delivered Amt if it was there or follow strictly? Previous table HAD Delivered Amount. User prompt "Delivered Qty, Customer Return...". It skipped Delivered Amount. But user prompt for Daily Sales skipped it too and I kept it? No, in Daily Sales prompt: "Shipped Qty, Shipped Amount, ... Delivered Qty, Customer Return". It skipped Delivered Amount. I REMOVED Delivered Amount in Daily Sales? NO, I think I kept it? Let's check Daily Sales table... I DELETED IT because I followed instructions.
-                                        Wait, in previous turn I updated Daily Sales. Did I remove Delivered Amount?
-                                        Let's check file content... I viewed it previously. I should check step 992. I commented "Removed Delivered Amount column? ... I will remove it to strictly follow instructions.". So I removed it.
-                                        Okay, for Order Summary, I will also REMOVE Delivered Amount if it's not in the list.
-                                        List: "S.N, Date, Seller Account, Shipped Qty, Shipped Amount, Returning to Seller, Returned Delivered, Delivered Qty, Customer Return, Customer Return Delivered , ,Remain Qty"
-                                        So NO Delivered Amount.
-                                        */}
                                                 <th className="px-2 py-1.5 text-xs font-bold uppercase text-gray-600 dark:text-gray-400 text-center">Customer Return</th>
                                                 <th className="px-2 py-1.5 text-xs font-bold uppercase text-gray-600 dark:text-gray-400 text-center">Customer Return Delivered</th>
                                                 <th className="px-2 py-1.5 text-xs font-bold uppercase text-gray-600 dark:text-gray-400 text-center">Remain Qty</th>
@@ -433,7 +433,6 @@ function DashboardContent() {
                                                                 {row.delivered_qty}
                                                             </span>
                                                         </td>
-                                                        {/* Removed Delivered Amount as per instruction */}
                                                         <td className="px-2 py-1.5 text-[13px] text-center">
                                                             <span className={`inline-flex items-center justify-center min-w-[24px] px-1.5 py-0.5 rounded font-medium ${row.return_qty > 0
                                                                 ? 'bg-orange-50 text-orange-700 border border-orange-200'
@@ -462,7 +461,7 @@ function DashboardContent() {
                                                 ))
                                             ) : (
                                                 <tr>
-                                                    <td colSpan={9} className="px-2 py-8 text-center text-[15px] text-gray-500">
+                                                    <td colSpan={10} className="px-2 py-8 text-center text-[15px] text-gray-500">
                                                         No summary data available.
                                                     </td>
                                                 </tr>
@@ -577,6 +576,10 @@ function DashboardContent() {
                     <ProfitTrackerPage isEmbedded={true} />
                 )}
 
+                {activeTab === 'order-list' && (
+                    <DarazOrderList isEmbedded={true} />
+                )}
+
             </div >
 
             {/* Mobile Footer Navigation - Only visible on mobile */}
@@ -629,4 +632,3 @@ export default function DarazSalesDashboardPage() {
         </Suspense>
     )
 }
-

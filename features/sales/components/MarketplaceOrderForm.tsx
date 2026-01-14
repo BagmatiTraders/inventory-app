@@ -3,9 +3,10 @@
 import { useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { X, Plus } from 'lucide-react'
-import { getDeliveryLocations } from '@/features/settings/actions/delivery-actions'
+import { getCourierLocations, getCouriers } from '@/features/settings/actions/courier-actions'
 import { getProducts } from '@/features/inventory/actions/product-actions'
 import { createMarketplaceOrder, updateMarketplaceOrder, MarketplaceOrder } from '@/features/sales/actions/marketplace-actions'
+import { getUserRole } from '@/features/sales/actions/daraz-deletion-actions'
 import Select from 'react-select'
 import AsyncSelect from 'react-select/async'
 
@@ -24,13 +25,16 @@ interface OrderItem {
 
 export function MarketplaceOrderForm({ onSuccess, onCancel, initialData }: MarketplaceOrderFormProps) {
     const isEditing = !!initialData
+    const [isAdmin, setIsAdmin] = useState(false)
 
     // Form state
     const [orderDate, setOrderDate] = useState(new Date().toISOString().split('T')[0])
     const [customerName, setCustomerName] = useState('')
     const [phoneNumber, setPhoneNumber] = useState('')
     const [address, setAddress] = useState('')
+    const [courierId, setCourierId] = useState<string>('') // Added courierId
     const [deliveryBranchId, setDeliveryBranchId] = useState<string>('')
+    const [selectedBranch, setSelectedBranch] = useState<{ label: string, value: string } | null>(null) // Track selected option
     const [branchCharge, setBranchCharge] = useState(0)
     const [deliveryCharge, setDeliveryCharge] = useState(0)
     const [orderStatus, setOrderStatus] = useState('Pending')
@@ -43,6 +47,13 @@ export function MarketplaceOrderForm({ onSuccess, onCancel, initialData }: Marke
 
     const [isSubmitting, setIsSubmitting] = useState(false)
 
+    // Check if user is admin
+    useEffect(() => {
+        getUserRole().then(role => {
+            setIsAdmin(role === 'admin')
+        })
+    }, [])
+
     // Load initial data if editing
     useEffect(() => {
         if (initialData) {
@@ -50,7 +61,37 @@ export function MarketplaceOrderForm({ onSuccess, onCancel, initialData }: Marke
             setCustomerName(initialData.customer_name)
             setPhoneNumber(initialData.phone_number)
             setAddress(initialData.address || '')
+            setCourierId(initialData.courier_id || '')
             setDeliveryBranchId(initialData.delivery_branch_id || '')
+
+            // Set initial selected branch if exists
+            // Check both delivery_branch_id and the joined branch object
+            if (initialData.delivery_branch_id) {
+                // Handle different possible structures of 'branch' (single object or array from join)
+                const branchData = (initialData as any).branch
+                let branchName = 'Unknown Branch'
+                let branchCharge = initialData.branch_charge
+
+                if (branchData) {
+                    if (Array.isArray(branchData) && branchData.length > 0) {
+                        branchName = branchData[0].branch_name
+                    } else if (typeof branchData === 'object') {
+                        branchName = branchData.branch_name
+                    }
+                }
+
+                // If branch name is still unknown but we have an ID, try to be helpful or just show ID? 
+                // Better to show what we have.
+
+                setSelectedBranch({
+                    label: branchName || 'Unknown Branch',
+                    value: initialData.delivery_branch_id,
+                    deliveryCharge: branchCharge
+                } as any)
+            } else {
+                setSelectedBranch(null)
+            }
+
             setBranchCharge(initialData.branch_charge)
             setDeliveryCharge(initialData.delivery_charge)
             setOrderStatus(initialData.order_status)
@@ -67,10 +108,12 @@ export function MarketplaceOrderForm({ onSuccess, onCancel, initialData }: Marke
         }
     }, [initialData])
 
-    // Fetch delivery locations (branches)
-    const { data: locations = [] } = useQuery({
-        queryKey: ['delivery-locations'],
-        queryFn: getDeliveryLocations
+
+
+    // Fetch couriers
+    const { data: couriers = [] } = useQuery({
+        queryKey: ['couriers'],
+        queryFn: getCouriers
     })
 
     const loadProductOptions = async (inputValue: string) => {
@@ -87,27 +130,45 @@ export function MarketplaceOrderForm({ onSuccess, onCancel, initialData }: Marke
         }))
     }
 
-    const branchOptions = locations.map(loc => ({
-        value: loc.id,
-        label: loc.branch_name,
-        deliveryCharge: loc.delivery_charge
-    }))
 
-    // Auto-fill branch charge when branch selected
-    useEffect(() => {
-        const selectedBranch = branchOptions.find(b => b.value === deliveryBranchId)
-        if (selectedBranch) {
-            // Only update if not editing or if user manually changed branch
-            // Simple check: if initialData exists and we haven't touched branch, don't override
-            // But for simplicity, we let it update if branch changes. 
-            // To prevent override on load: check if branchId changed from initial
-            if (!initialData || deliveryBranchId !== initialData.delivery_branch_id) {
-                setBranchCharge(selectedBranch.deliveryCharge || 0)
+
+    // Prepare courier options - Sorted with Active first
+    const courierOptions = [...couriers]
+        .sort((a, b) => {
+            // Sort by active status first (active first), then by name
+            if (a.is_active === b.is_active) {
+                return a.courier_name.localeCompare(b.courier_name)
             }
-        } else {
-            if (!initialData) setBranchCharge(0)
+            return a.is_active ? -1 : 1
+        })
+        .map(c => ({
+            value: c.id,
+            label: c.courier_name,
+            isActive: c.is_active
+        }))
+
+    // Load branch options for AsyncSelect
+    const loadBranchOptions = async (inputValue: string) => {
+        if (!courierId) return []
+        const locations = await getCourierLocations(courierId, inputValue)
+        return locations.map(loc => ({
+            value: loc.id,
+            label: loc.branch_name,
+            deliveryCharge: loc.delivery_charge
+        }))
+    }
+
+
+
+    // Auto-select first active courier if not editing and no courier selected
+    useEffect(() => {
+        if (!isEditing && !courierId && couriers.length > 0) {
+            const activeCourier = couriers.find(c => c.is_active)
+            if (activeCourier) {
+                setCourierId(activeCourier.id)
+            }
         }
-    }, [deliveryBranchId, branchOptions, initialData])
+    }, [isEditing, courierId, couriers])
 
     // Calculate total amount
     const calculateTotal = () => {
@@ -164,6 +225,23 @@ export function MarketplaceOrderForm({ onSuccess, onCancel, initialData }: Marke
     // Handle branch selection
     const handleBranchSelect = (option: any) => {
         setDeliveryBranchId(option?.value || '')
+        setSelectedBranch(option) // Update selected option
+        if (option) {
+            setBranchCharge(option.deliveryCharge || 0)
+        } else {
+            setBranchCharge(0)
+        }
+    }
+
+    // Handle courier selection
+    const handleCourierSelect = (option: any) => {
+        const newCourierId = option?.value || ''
+        setCourierId(newCourierId)
+
+        // Reset branch and charge immediately when courier changes
+        setDeliveryBranchId('')
+        setSelectedBranch(null)
+        setBranchCharge(0)
     }
 
     // Validate phone number (10 digits)
@@ -202,6 +280,7 @@ export function MarketplaceOrderForm({ onSuccess, onCancel, initialData }: Marke
                 phone_number: phoneNumber,
                 address: address || undefined,
                 delivery_branch_id: deliveryBranchId || undefined,
+                courier_id: courierId || undefined, // Include courier_id
                 branch_charge: branchCharge,
                 delivery_charge: deliveryCharge,
                 order_status: orderStatus,
@@ -286,8 +365,24 @@ export function MarketplaceOrderForm({ onSuccess, onCancel, initialData }: Marke
                 />
             </div>
 
-            {/* Row 3: Address */}
-            <div className="col-span-2 md:col-span-4">
+            {/* Row 3: Courier, Address */}
+            <div className="col-span-1 md:col-span-1">
+                <label className="block text-xs font-medium mb-1">
+                    Courier
+                </label>
+                <Select
+                    options={courierOptions}
+                    value={courierOptions.find(c => c.value === courierId)}
+                    onChange={handleCourierSelect}
+                    className="text-sm"
+                    classNamePrefix="select"
+                    placeholder="Select courier..."
+                    isDisabled={isEditing && !isAdmin} // Read-only in edit mode unless admin
+                    isClearable={!isEditing}
+                />
+            </div>
+
+            <div className="col-span-1 md:col-span-3">
                 <label className="block text-xs font-medium mb-1">
                     Address
                 </label>
@@ -305,14 +400,19 @@ export function MarketplaceOrderForm({ onSuccess, onCancel, initialData }: Marke
                 <label className="block text-xs font-medium mb-1">
                     Delivery Branch
                 </label>
-                <Select
-                    options={branchOptions}
-                    value={branchOptions.find(b => b.value === deliveryBranchId)}
+                <AsyncSelect
+                    key={courierId} // Reset when courier changes
+                    cacheOptions
+                    defaultOptions
+                    loadOptions={loadBranchOptions}
+                    value={selectedBranch}
                     onChange={handleBranchSelect}
                     className="text-sm"
                     classNamePrefix="select"
-                    placeholder="Select branch..."
+                    placeholder={courierId ? "Search branch..." : "Select courier first"}
                     isClearable
+                    isDisabled={!courierId || (isEditing && !isAdmin)} // Disabled if no courier OR (editing AND not admin)
+                    noOptionsMessage={() => courierId ? "No branches found" : "Select courier first"}
                 />
             </div>
 
@@ -443,7 +543,10 @@ export function MarketplaceOrderForm({ onSuccess, onCancel, initialData }: Marke
                     <option value="Pending">Pending</option>
                     <option value="Shipped">Shipped</option>
                     <option value="Delivered">Delivered</option>
+                    <option value="Returning to Seller">Returning to Seller</option>
                     <option value="Fail Delivered">Fail Delivered</option>
+                    <option value="Customer Return">Customer Return</option>
+                    <option value="Return Delivered">Return Delivered</option>
                     <option value="Cancel">Cancel</option>
                 </select>
             </div>

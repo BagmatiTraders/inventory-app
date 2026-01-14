@@ -1669,6 +1669,7 @@ export async function getOrderStatusSummary() {
     // Aggregate by seller account and status
     const summary = new Map<string, {
         seller_account: string
+        unpaid: number
         pending: number
         packed: number
         ready_to_ship: number
@@ -1685,6 +1686,7 @@ export async function getOrderStatusSummary() {
         if (!summary.has(account)) {
             summary.set(account, {
                 seller_account: account,
+                unpaid: 0,
                 pending: 0,
                 packed: 0,
                 ready_to_ship: 0,
@@ -1700,7 +1702,8 @@ export async function getOrderStatusSummary() {
         const row = summary.get(account)!
         const status = order.order_status?.toLowerCase() || 'pending'
 
-        if (status === 'pending' || status === 'unpaid') row.pending++
+        if (status === 'unpaid') row.unpaid++
+        else if (status === 'pending') row.pending++
         else if (status === 'packed') row.packed++
         else if (status === 'ready to ship') row.ready_to_ship++
         else if (status === 'shipped') row.shipped++

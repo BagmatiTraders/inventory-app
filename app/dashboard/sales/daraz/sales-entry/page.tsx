@@ -738,13 +738,7 @@ export default function DarazSalesEntryPage() {
                             Sales Dashboard
                         </Link>
 
-                        <Link
-                            href="/dashboard/sales/daraz/order-list"
-                            className="flex items-center gap-1 px-2 py-1 text-[15px] bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors whitespace-nowrap"
-                        >
-                            <List size={11} />
-                            Order List
-                        </Link>
+
 
                         <div className="text-[15px] font-black text-black dark:text-gray-100 whitespace-nowrap flex items-center gap-2">
                             {isFetching && <RefreshCw className="animate-spin text-blue-600" size={12} />}

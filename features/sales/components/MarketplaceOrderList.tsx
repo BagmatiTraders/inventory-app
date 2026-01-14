@@ -3,55 +3,84 @@
 import { useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { getMarketplaceOrders, exportMarketplaceOrders } from '@/features/sales/actions/marketplace-actions'
-import { getActiveFiscalYear } from '@/features/sales/actions/daraz-actions'
-import { ArrowLeft, Plus, Upload, Download, Search, X, List } from 'lucide-react'
+import { ArrowLeft, Download, Search, X } from 'lucide-react'
 import Link from 'next/link'
 import { Card } from '@/components/ui-shim'
 import { MarketplaceOrderForm } from '@/features/sales/components/MarketplaceOrderForm'
 import { MarketplaceOrderDetailModal } from '@/features/sales/components/MarketplaceOrderDetailModal'
+import { useSearchParams, useRouter } from 'next/navigation'
+import { getActiveFiscalYear, getAllFiscalYears } from '@/features/sales/actions/daraz-actions'
 
-export default function MarketplaceSalesEntryPage() {
+interface MarketplaceOrderListProps {
+    isEmbedded?: boolean
+}
+
+export function MarketplaceOrderList({ isEmbedded = false }: MarketplaceOrderListProps) {
+    const router = useRouter()
+    const searchParams = useSearchParams()
+    const urlFiscalYearId = searchParams.get('fiscalYearId')
+
+    const [activeFiscalYearId, setActiveFiscalYearId] = useState<string>('')
+    const [selectedFiscalYear, setSelectedFiscalYear] = useState<string>('')
+    const [page, setPage] = useState(1)
     const [search, setSearch] = useState('')
     const [searchInput, setSearchInput] = useState('')
-    const [isModalOpen, setIsModalOpen] = useState(false)
-    const [activeFiscalYearId, setActiveFiscalYearId] = useState<string | null>(null)
-    const [checkingFy, setCheckingFy] = useState(true)
+    const [statusFilter, setStatusFilter] = useState('all')
 
-    // New state for actions
+    // State for actions
     const [viewingOrder, setViewingOrder] = useState<any>(null)
     const [editingOrder, setEditingOrder] = useState<any>(null)
     const [isEditModalOpen, setIsEditModalOpen] = useState(false)
 
-    // Fetch active fiscal year on mount
+    // Fetch active and all fiscal years
+    const { data: fiscalYears, isLoading: loadingFYs } = useQuery({
+        queryKey: ['fiscal-years'],
+        queryFn: getAllFiscalYears,
+    })
+
     useEffect(() => {
-        setCheckingFy(true)
-        getActiveFiscalYear().then(fy => {
-            if (fy) setActiveFiscalYearId(fy.id)
-            else setActiveFiscalYearId('') // No active FY found
-        }).finally(() => {
-            setCheckingFy(false)
-        })
-    }, [])
+        // If URL param exists, respect it.
+        if (urlFiscalYearId) {
+            setSelectedFiscalYear(urlFiscalYearId)
+            // Still fetch active to know it
+            getActiveFiscalYear().then(fy => {
+                if (fy) setActiveFiscalYearId(fy.id)
+            })
+        } else {
+            // Otherwise default to active FY
+            getActiveFiscalYear().then(fy => {
+                if (fy) {
+                    setActiveFiscalYearId(fy.id)
+                    setSelectedFiscalYear(fy.id)
+                }
+            })
+        }
+    }, [urlFiscalYearId])
+
+    const isFyReady = !!selectedFiscalYear;
 
     // Fetch orders
     const { data, isLoading, error, refetch } = useQuery({
-        queryKey: ['marketplace-orders-filtered', search, activeFiscalYearId],
+        queryKey: ['marketplace-orders-all', page, search, statusFilter, selectedFiscalYear],
         queryFn: () => getMarketplaceOrders({
+            page,
             search,
-            showTodayAndPending: true,
-            limit: 500,
-            fiscalYearId: activeFiscalYearId || undefined
+            status: statusFilter,
+            limit: 50,
+            fiscalYearId: selectedFiscalYear
         }),
-        enabled: !!activeFiscalYearId
+        enabled: isFyReady
     })
 
     const handleSearch = () => {
         setSearch(searchInput)
+        setPage(1)
     }
 
     const handleClearSearch = () => {
         setSearchInput('')
         setSearch('')
+        setPage(1)
     }
 
     const handleDelete = async (id: string) => {
@@ -69,7 +98,10 @@ export default function MarketplaceSalesEntryPage() {
 
     const handleExport = async () => {
         try {
-            const exportData = await exportMarketplaceOrders({ showTodayAndPending: true })
+            const exportData = await exportMarketplaceOrders({
+                status: statusFilter,
+                fiscalYearId: selectedFiscalYear
+            })
 
             const headers = Object.keys(exportData[0] || {})
             const csvRows = [
@@ -101,26 +133,56 @@ export default function MarketplaceSalesEntryPage() {
         }
     }
 
+    const handleFiscalYearChange = (fyId: string) => {
+        setSelectedFiscalYear(fyId);
+        setPage(1);
+        const newParams = new URLSearchParams(searchParams.toString());
+        if (fyId) newParams.set('fiscalYearId', fyId);
+        else newParams.delete('fiscalYearId');
+        router.push(`?${newParams.toString()}`);
+    }
+
     return (
         <div className="flex flex-col h-full bg-gray-50 dark:bg-zinc-900">
-            {/* Header */}
-            <div className="hidden md:flex sticky top-0 z-10 bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 px-3 py-1.5 items-center justify-between shadow-sm">
-                <div>
-                    <h1 className="text-[17px] font-bold">Marketplace Sales Entry</h1>
-                    <p className="text-[13px] text-gray-500 dark:text-gray-400">Manage marketplace orders</p>
+            {/* Header - Only if NOT embedded */}
+            {!isEmbedded && (
+                <div className="sticky top-0 z-10 bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 px-3 py-1.5 flex items-center justify-between shadow-sm">
+                    <div>
+                        <h1 className="text-[17px] font-bold">Marketplace Order List</h1>
+                        <p className="text-[13px] text-gray-500 dark:text-gray-400">View all marketplace orders</p>
+                    </div>
+                    <Link
+                        href="/dashboard/sales/marketplace/sales-entry"
+                        className="flex items-center gap-1 px-2 py-1 text-[13px] bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700 rounded transition-colors"
+                    >
+                        <ArrowLeft size={12} />
+                        Back to Sales Entry
+                    </Link>
                 </div>
-                <Link
-                    href="/dashboard/sales"
-                    className="flex items-center gap-1 px-2 py-1 text-[13px] bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700 rounded transition-colors"
-                >
-                    <ArrowLeft size={12} />
-                    Back
-                </Link>
-            </div>
+            )}
 
             {/* Action Bar */}
-            <div className="sticky top-0 md:top-[44px] z-10 bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 px-2 md:px-3 py-1.5 shadow-sm">
+            <div className={`sticky ${isEmbedded ? 'top-0' : 'top-[44px]'} z-10 bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 px-3 py-1.5 shadow-sm`}>
                 <div className="flex flex-wrap items-center gap-1.5">
+                    {/* Fiscal Year Selector */}
+                    {urlFiscalYearId && (
+                        <select
+                            value={selectedFiscalYear}
+                            onChange={(e) => handleFiscalYearChange(e.target.value)}
+                            className="px-2 py-1 text-sm border dark:border-zinc-700 rounded focus:ring-1 focus:ring-blue-500 dark:bg-zinc-800 font-medium bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 border-blue-200 dark:border-blue-800"
+                        >
+                            {!fiscalYears ? (
+                                <option>Loading FY...</option>
+                            ) : (
+                                fiscalYears.map(fy => (
+                                    <option key={fy.id} value={fy.id}>
+                                        FY {fy.name} {fy.is_active ? '(Active)' : ''}
+                                    </option>
+                                ))
+                            )}
+                        </select>
+                    )}
+
                     {/* Search */}
                     <div className="flex-1 min-w-[200px] max-w-sm">
                         <div className="relative">
@@ -144,30 +206,27 @@ export default function MarketplaceSalesEntryPage() {
                         </div>
                     </div>
 
-                    {/* Action Buttons */}
-                    <Link
-                        href="/dashboard/sales/marketplace/order-list"
-                        className="flex items-center gap-1 px-2 py-1 text-sm border dark:border-zinc-700 hover:bg-gray-50 dark:hover:bg-zinc-800 rounded transition-colors"
+                    {/* Status Filter */}
+                    <select
+                        value={statusFilter}
+                        onChange={(e) => {
+                            setStatusFilter(e.target.value)
+                            setPage(1)
+                        }}
+                        className="px-2 py-1 text-sm border dark:border-zinc-700 rounded focus:ring-1 focus:ring-blue-500 dark:bg-zinc-800"
                     >
-                        <List size={12} />
-                        Order List
-                    </Link>
-                    <button
-                        onClick={() => setIsModalOpen(true)}
-                        className="flex items-center gap-1 px-2 py-1 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors"
-                    >
-                        <Plus size={12} />
-                        Add Order
-                    </button>
-                    <button
-                        className="hidden md:flex items-center gap-1 px-2 py-1 text-sm border dark:border-zinc-700 hover:bg-gray-50 dark:hover:bg-zinc-800 rounded transition-colors"
-                    >
-                        <Upload size={12} />
-                        Import
-                    </button>
+                        <option value="all">All Status</option>
+                        <option value="Pending">Pending</option>
+                        <option value="Shipped">Shipped</option>
+                        <option value="Delivered">Delivered</option>
+                        <option value="Fail Delivered">Fail Delivered</option>
+                        <option value="Cancel">Cancel</option>
+                    </select>
+
+                    {/* Export */}
                     <button
                         onClick={handleExport}
-                        className="hidden md:flex items-center gap-1 px-2 py-1 text-sm border dark:border-zinc-700 hover:bg-gray-50 dark:hover:bg-zinc-800 rounded transition-colors"
+                        className="flex items-center gap-1 px-2 py-1 text-sm border dark:border-zinc-700 hover:bg-gray-50 dark:hover:bg-zinc-800 rounded transition-colors"
                     >
                         <Download size={12} />
                         Export
@@ -176,7 +235,7 @@ export default function MarketplaceSalesEntryPage() {
             </div>
 
             {/* Orders Table */}
-            <div className="flex-1 overflow-auto px-2 md:px-3 py-2 md:py-3">
+            <div className="flex-1 overflow-auto px-3 py-3">
                 <Card className="overflow-hidden">
                     <div className="overflow-x-auto">
                         <table className="w-full text-left">
@@ -187,54 +246,54 @@ export default function MarketplaceSalesEntryPage() {
                                     <th className="px-2 py-1.5 text-xs font-bold uppercase text-gray-600 dark:text-gray-400">Sales ID</th>
                                     <th className="px-2 py-1.5 text-xs font-bold uppercase text-gray-600 dark:text-gray-400">Customer</th>
                                     <th className="px-2 py-1.5 text-xs font-bold uppercase text-gray-600 dark:text-gray-400">Phone</th>
-                                    <th className="px-2 py-1.5 text-xs font-bold uppercase text-gray-600 dark:text-gray-400 min-w-[250px]">Products</th>
+                                    <th className="px-2 py-1.5 text-xs font-bold uppercase text-gray-600 dark:text-gray-400">Branch</th>
+                                    <th className="px-2 py-1.5 text-xs font-bold uppercase text-gray-600 dark:text-gray-400">Products</th>
                                     <th className="px-2 py-1.5 text-xs font-bold uppercase text-gray-600 dark:text-gray-400">Total</th>
                                     <th className="px-2 py-1.5 text-xs font-bold uppercase text-gray-600 dark:text-gray-400">Status</th>
                                     <th className="px-2 py-1.5 text-xs font-bold uppercase text-gray-600 dark:text-gray-400 text-right">Actions</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-100 dark:divide-zinc-800">
-                                {checkingFy ? (
+                                {!isFyReady ? (
                                     <tr>
-                                        <td colSpan={9} className="px-2 py-8 text-center text-[15px] text-gray-500">
-                                            Checking Active Fiscal Year...
-                                        </td>
-                                    </tr>
-                                ) : !activeFiscalYearId ? (
-                                    <tr>
-                                        <td colSpan={9} className="px-2 py-8 text-center text-[15px] text-orange-500">
-                                            No Active Fiscal Year Configured. Please set one in Settings.
+                                        <td colSpan={10} className="px-2 py-8 text-center text-[15px] text-gray-500">
+                                            Initializing Fiscal Year...
                                         </td>
                                     </tr>
                                 ) : isLoading ? (
                                     <tr>
-                                        <td colSpan={9} className="px-2 py-8 text-center text-[15px] text-gray-500">
-                                            Loading orders...
+                                        <td colSpan={10} className="px-2 py-8 text-center text-[15px] text-gray-500">
+                                            Loading orders for selected period...
                                         </td>
                                     </tr>
                                 ) : error ? (
                                     <tr>
-                                        <td colSpan={9} className="px-2 py-8 text-center text-[15px] text-red-500">
+                                        <td colSpan={10} className="px-2 py-8 text-center text-[15px] text-red-500">
                                             Error loading orders: {error.message}
                                         </td>
                                     </tr>
                                 ) : !data || data.orders.length === 0 ? (
                                     <tr>
-                                        <td colSpan={9} className="px-2 py-8 text-center text-[15px] text-gray-500">
-                                            No orders found for today or pending in Active FY.
+                                        <td colSpan={10} className="px-2 py-8 text-center text-[15px] text-gray-500">
+                                            No orders found for this Fiscal Year.
                                         </td>
                                     </tr>
                                 ) : (
                                     data.orders.map((order: any, index: number) => (
                                         <tr key={order.id} className="hover:bg-gray-50 dark:hover:bg-zinc-800/50 hover:shadow-lg hover:z-10 relative transition-all duration-200">
                                             <td className="px-2 py-1.5 text-[13px] text-gray-500">
-                                                {index + 1}
+                                                {(page - 1) * 50 + index + 1}
                                             </td>
                                             <td className="px-2 py-1.5 text-[13px]">
                                                 {new Date(order.order_date).toLocaleDateString()}
                                             </td>
                                             <td className="px-2 py-1.5 text-[13px] font-mono font-medium">
-                                                {order.sales_id}
+                                                <button
+                                                    onClick={() => setViewingOrder(order)}
+                                                    className="font-mono font-medium text-blue-600 hover:underline"
+                                                >
+                                                    {order.sales_id}
+                                                </button>
                                             </td>
                                             <td className="px-2 py-1.5 text-[13px]">
                                                 {order.customer_name}
@@ -243,17 +302,10 @@ export default function MarketplaceSalesEntryPage() {
                                                 {order.phone_number}
                                             </td>
                                             <td className="px-2 py-1.5 text-[13px]">
-                                                <div className="flex flex-col cursor-pointer hover:text-blue-600"
-                                                    onClick={() => setViewingOrder(order)}>
-                                                    <span className="font-medium break-words whitespace-normal" title={order.items?.[0]?.product_name}>
-                                                        {order.items?.[0]?.product_name || '-'}
-                                                    </span>
-                                                    {order.items && order.items.length > 1 && (
-                                                        <span className="text-[11px] text-blue-600 font-medium">
-                                                            + {order.items.length - 1} Items
-                                                        </span>
-                                                    )}
-                                                </div>
+                                                {order.branch?.branch_name || '-'}
+                                            </td>
+                                            <td className="px-2 py-1.5 text-[13px]">
+                                                {order.items?.length || 0} item(s)
                                             </td>
                                             <td className="px-2 py-1.5 text-[13px] font-medium">
                                                 Rs {order.total_amount.toFixed(2)}
@@ -280,7 +332,9 @@ export default function MarketplaceSalesEntryPage() {
                                                         Edit
                                                     </button>
                                                     <button
-                                                        onClick={() => handleDelete(order.id)}
+                                                        onClick={() => {
+                                                            handleDelete(order.id).then(() => refetch())
+                                                        }}
                                                         className="px-2 py-0.5 text-[13px] text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded"
                                                     >
                                                         Delete
@@ -293,34 +347,33 @@ export default function MarketplaceSalesEntryPage() {
                             </tbody>
                         </table>
                     </div>
+
+                    {/* Pagination */}
+                    {data && data.totalPages > 1 && (
+                        <div className="border-t dark:border-zinc-800 px-3 py-2">
+                            <div className="flex items-center justify-center gap-1.5">
+                                <button
+                                    onClick={() => setPage(p => Math.max(1, p - 1))}
+                                    disabled={page === 1}
+                                    className="px-2 py-1 text-sm border dark:border-zinc-700 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 dark:hover:bg-zinc-800"
+                                >
+                                    Previous
+                                </button>
+                                <span className="text-sm px-3">
+                                    Page {page} of {data.totalPages}
+                                </span>
+                                <button
+                                    onClick={() => setPage(p => Math.min(data.totalPages, p + 1))}
+                                    disabled={page === data.totalPages}
+                                    className="px-2 py-1 text-sm border dark:border-zinc-700 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 dark:hover:bg-zinc-800"
+                                >
+                                    Next
+                                </button>
+                            </div>
+                        </div>
+                    )}
                 </Card>
             </div>
-
-            {/* Add Order Modal */}
-            {isModalOpen && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100] p-4">
-                    <div className="bg-white dark:bg-zinc-900 rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-auto">
-                        <div className="sticky top-0 bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 px-4 py-3 flex items-center justify-between">
-                            <h2 className="text-lg font-bold">Add Marketplace Order</h2>
-                            <button
-                                onClick={() => setIsModalOpen(false)}
-                                className="p-1 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded"
-                            >
-                                <X size={20} />
-                            </button>
-                        </div>
-                        <div className="p-4">
-                            <MarketplaceOrderForm
-                                onSuccess={() => {
-                                    setIsModalOpen(false)
-                                    refetch()
-                                }}
-                                onCancel={() => setIsModalOpen(false)}
-                            />
-                        </div>
-                    </div>
-                </div>
-            )}
 
             {/* Edit Modal */}
             {isEditModalOpen && editingOrder && (
@@ -349,7 +402,7 @@ export default function MarketplaceSalesEntryPage() {
                 </div>
             )}
 
-            {/* View Modal */}
+            {/* Detail Modal */}
             {viewingOrder && (
                 <MarketplaceOrderDetailModal
                     order={viewingOrder}

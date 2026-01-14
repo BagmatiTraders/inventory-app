@@ -5,45 +5,50 @@ import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod"
 import { X } from "lucide-react"
-import { createDeliveryLocation } from "../actions/delivery-actions"
+import { createCourier } from "../actions/courier-actions"
+import { toast } from "sonner"
+import { useQueryClient } from "@tanstack/react-query"
 
 const formSchema = z.object({
-    branch_name: z.string().min(1, "Branch name is required"),
-    delivery_charge: z.number().min(0, "Charge must be a positive number"),
-    cover_area: z.string().optional(),
+    courier_id: z.string().min(1, "ID is required"),
+    courier_name: z.string().min(1, "Courier name is required"),
+    additional_details: z.string().optional(),
 })
 
 type FormData = z.infer<typeof formSchema>
 
-interface AddDeliveryLocationDialogProps {
+interface AddCourierDialogProps {
     isOpen: boolean
     onClose: () => void
 }
 
-export default function AddDeliveryLocationDialog({ isOpen, onClose }: AddDeliveryLocationDialogProps) {
+export default function AddCourierDialog({ isOpen, onClose }: AddCourierDialogProps) {
     const [isSubmitting, setIsSubmitting] = useState(false)
+    const queryClient = useQueryClient()
     const { register, handleSubmit, reset, formState: { errors } } = useForm<FormData>({
         resolver: zodResolver(formSchema),
         defaultValues: {
-            branch_name: "",
-            delivery_charge: 0,
-            cover_area: "",
+            courier_id: "",
+            courier_name: "",
+            additional_details: "",
         },
     })
 
     const onSubmit = async (data: FormData) => {
         try {
             setIsSubmitting(true)
-            await createDeliveryLocation({
-                branch_name: data.branch_name,
-                delivery_charge: data.delivery_charge,
-                cover_area: data.cover_area || "",
+            await createCourier({
+                courier_id: data.courier_id,
+                courier_name: data.courier_name,
+                additional_details: data.additional_details || "",
             })
+            toast.success("Added Successfully")
+            queryClient.invalidateQueries({ queryKey: ['couriers'] })
             reset()
             onClose()
         } catch (error) {
-            console.error("Failed to add location:", error)
-            alert("Failed to add location. Please try again.")
+            console.error("Failed to add courier:", error)
+            toast.error("Failed to add courier. Please try again.")
         } finally {
             setIsSubmitting(false)
         }
@@ -55,7 +60,7 @@ export default function AddDeliveryLocationDialog({ isOpen, onClose }: AddDelive
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
             <div className="bg-white dark:bg-zinc-800 rounded-lg shadow-xl w-full max-w-md">
                 <div className="flex items-center justify-between p-4 border-b dark:border-zinc-700">
-                    <h2 className="text-lg font-semibold">Add New Courier Location</h2>
+                    <h2 className="text-lg font-semibold">Add New Courier</h2>
                     <button onClick={onClose} className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
                         <X size={20} />
                     </button>
@@ -64,44 +69,42 @@ export default function AddDeliveryLocationDialog({ isOpen, onClose }: AddDelive
                 <form onSubmit={handleSubmit(onSubmit)} className="p-4 space-y-4">
                     <div className="space-y-2">
                         <label className="text-sm font-medium">
-                            Branch <span className="text-red-500">*</span>
+                            ID <span className="text-red-500">*</span>
                         </label>
                         <input
-                            {...register("branch_name")}
+                            {...register("courier_id")}
                             className="w-full p-2 border rounded-md dark:bg-zinc-900 dark:border-zinc-700 uppercase"
-                            placeholder="e.g. KATHMANDU"
+                            placeholder="e.g. DHL001"
                             onChange={(e) => {
                                 e.target.value = e.target.value.toUpperCase()
-                                register("branch_name").onChange(e)
+                                register("courier_id").onChange(e)
                             }}
                         />
-                        {errors.branch_name && (
-                            <p className="text-xs text-red-500">{errors.branch_name.message}</p>
+                        {errors.courier_id && (
+                            <p className="text-xs text-red-500">{errors.courier_id.message}</p>
                         )}
                     </div>
 
                     <div className="space-y-2">
                         <label className="text-sm font-medium">
-                            Delivery Charge <span className="text-red-500">*</span>
+                            Courier Name <span className="text-red-500">*</span>
                         </label>
                         <input
-                            type="number"
-                            step="0.01"
-                            {...register("delivery_charge", { valueAsNumber: true })}
+                            {...register("courier_name")}
                             className="w-full p-2 border rounded-md dark:bg-zinc-900 dark:border-zinc-700"
-                            placeholder="e.g. 100"
+                            placeholder="e.g. DHL Express"
                         />
-                        {errors.delivery_charge && (
-                            <p className="text-xs text-red-500">{errors.delivery_charge.message}</p>
+                        {errors.courier_name && (
+                            <p className="text-xs text-red-500">{errors.courier_name.message}</p>
                         )}
                     </div>
 
                     <div className="space-y-2">
-                        <label className="text-sm font-medium">Cover Area</label>
-                        <input
-                            {...register("cover_area")}
-                            className="w-full p-2 border rounded-md dark:bg-zinc-900 dark:border-zinc-700"
-                            placeholder="e.g. Near Parlament Building"
+                        <label className="text-sm font-medium">Additional Details</label>
+                        <textarea
+                            {...register("additional_details")}
+                            className="w-full p-2 border rounded-md dark:bg-zinc-900 dark:border-zinc-700 min-h-[80px]"
+                            placeholder="e.g. International courier service, tracking available"
                         />
                     </div>
 
@@ -118,7 +121,7 @@ export default function AddDeliveryLocationDialog({ isOpen, onClose }: AddDelive
                             disabled={isSubmitting}
                             className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50"
                         >
-                            {isSubmitting ? "Adding..." : "Add Location"}
+                            {isSubmitting ? "Adding..." : "Add Courier"}
                         </button>
                     </div>
                 </form>

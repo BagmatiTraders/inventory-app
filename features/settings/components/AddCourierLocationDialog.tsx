@@ -5,23 +5,27 @@ import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod"
 import { X } from "lucide-react"
-import { createDeliveryLocation } from "../actions/delivery-actions"
+import { createCourierLocation } from "../actions/courier-location-actions"
+import { toast } from "sonner"
+import { useQueryClient } from "@tanstack/react-query"
 
 const formSchema = z.object({
     branch_name: z.string().min(1, "Branch name is required"),
-    delivery_charge: z.number().min(0, "Charge must be a positive number"),
+    delivery_charge: z.number().min(0, "Delivery charge must be a positive number"),
     cover_area: z.string().optional(),
 })
 
 type FormData = z.infer<typeof formSchema>
 
-interface AddDeliveryLocationDialogProps {
+interface AddCourierLocationDialogProps {
     isOpen: boolean
     onClose: () => void
+    courierId: string
 }
 
-export default function AddDeliveryLocationDialog({ isOpen, onClose }: AddDeliveryLocationDialogProps) {
+export default function AddCourierLocationDialog({ isOpen, onClose, courierId }: AddCourierLocationDialogProps) {
     const [isSubmitting, setIsSubmitting] = useState(false)
+    const queryClient = useQueryClient()
     const { register, handleSubmit, reset, formState: { errors } } = useForm<FormData>({
         resolver: zodResolver(formSchema),
         defaultValues: {
@@ -34,16 +38,18 @@ export default function AddDeliveryLocationDialog({ isOpen, onClose }: AddDelive
     const onSubmit = async (data: FormData) => {
         try {
             setIsSubmitting(true)
-            await createDeliveryLocation({
+            await createCourierLocation(courierId, {
                 branch_name: data.branch_name,
                 delivery_charge: data.delivery_charge,
                 cover_area: data.cover_area || "",
             })
+            toast.success("Location added successfully")
+            queryClient.invalidateQueries({ queryKey: ['courier-locations', courierId] })
             reset()
             onClose()
         } catch (error) {
             console.error("Failed to add location:", error)
-            alert("Failed to add location. Please try again.")
+            toast.error("Failed to add location. Please try again.")
         } finally {
             setIsSubmitting(false)
         }
@@ -55,7 +61,7 @@ export default function AddDeliveryLocationDialog({ isOpen, onClose }: AddDelive
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
             <div className="bg-white dark:bg-zinc-800 rounded-lg shadow-xl w-full max-w-md">
                 <div className="flex items-center justify-between p-4 border-b dark:border-zinc-700">
-                    <h2 className="text-lg font-semibold">Add New Courier Location</h2>
+                    <h2 className="text-lg font-semibold">Add New Location</h2>
                     <button onClick={onClose} className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
                         <X size={20} />
                     </button>
@@ -101,7 +107,7 @@ export default function AddDeliveryLocationDialog({ isOpen, onClose }: AddDelive
                         <input
                             {...register("cover_area")}
                             className="w-full p-2 border rounded-md dark:bg-zinc-900 dark:border-zinc-700"
-                            placeholder="e.g. Near Parlament Building"
+                            placeholder="e.g. Thamel, Lazimpat"
                         />
                     </div>
 

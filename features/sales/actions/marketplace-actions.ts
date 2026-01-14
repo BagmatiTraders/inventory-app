@@ -15,6 +15,7 @@ export interface MarketplaceOrder {
     phone_number: string
     address?: string
     delivery_branch_id?: string
+    courier_id?: string // Added courier_id
     branch_charge: number
     delivery_charge: number
     total_amount: number
@@ -33,6 +34,11 @@ export interface MarketplaceOrder {
     failed_delivered_by?: string
     cancelled_at?: string
     cancelled_by?: string
+    // Relations
+    courier?: {           // Added courier relation
+        id: string
+        courier_name: string
+    }
 }
 
 export interface MarketplaceOrderItem {
@@ -50,6 +56,7 @@ export interface CreateMarketplaceOrderData {
     phone_number: string
     address?: string
     delivery_branch_id?: string
+    courier_id?: string // Added courier_id
     branch_charge?: number
     delivery_charge: number
     order_status?: string
@@ -122,6 +129,7 @@ export async function createMarketplaceOrder(data: CreateMarketplaceOrderData) {
             phone_number: data.phone_number,
             address: data.address,
             delivery_branch_id: data.delivery_branch_id,
+            courier_id: data.courier_id, // Added courier_id
             branch_charge: data.branch_charge || 0,
             delivery_charge: data.delivery_charge || 0,
             total_amount: totalAmount,
@@ -195,17 +203,27 @@ export async function getMarketplaceOrders(filters: GetMarketplaceOrdersFilters 
         .select(`
             *,
             items:marketplace_order_items(*),
-            branch:delivery_locations(branch_name),
+            branch:courier_locations!fk_marketplace_courier_branch(branch_name),
+            courier:couriers(id, courier_name),
             created_user:user_profiles!marketplace_orders_created_by_fkey(full_name),
+            updated_user:user_profiles!marketplace_orders_updated_by_fkey(full_name),
             shipped_user:user_profiles!marketplace_orders_shipped_by_fkey(full_name),
-            delivered_user:user_profiles!marketplace_orders_delivered_by_fkey(full_name)
+            delivered_user:user_profiles!marketplace_orders_delivered_by_fkey(full_name),
+            failed_delivered_user:user_profiles!marketplace_orders_failed_delivered_by_fkey(full_name),
+            returned_to_seller_user:user_profiles!marketplace_orders_returned_to_seller_by_fkey(full_name),
+            customer_return_user:user_profiles!marketplace_orders_customer_return_by_fkey(full_name),
+            return_delivered_user:user_profiles!marketplace_orders_return_delivered_by_fkey(full_name),
+            cancelled_user:user_profiles!marketplace_orders_cancelled_by_fkey(full_name)
         `, { count: 'exact' })
 
     // Special filter for Sales Entry page
     if (showTodayAndPending) {
         const today = new Date().toISOString().split('T')[0]
 
-        query = query.or(`order_date.eq.${today},order_status.eq.Pending,shipped_at.gte.${today}T00:00:00`)
+        // Show Pending orders from ANY date
+        // OR Shipped orders updated/shipped TODAY
+        // Using raw PostgREST syntax for complex logic
+        query = query.or(`order_status.eq.Pending,and(order_status.eq.Shipped,shipped_at.gte.${today}T00:00:00)`)
     }
 
     // Fiscal Year Filter
@@ -270,12 +288,16 @@ export async function getMarketplaceOrderById(id: string) {
         .select(`
             *,
             items:marketplace_order_items(*),
-            branch:delivery_locations(branch_name, delivery_charge),
+            branch:courier_locations!fk_marketplace_courier_branch(branch_name, delivery_charge),
+            courier:couriers(id, courier_name),
             created_user:user_profiles!marketplace_orders_created_by_fkey(full_name),
             updated_user:user_profiles!marketplace_orders_updated_by_fkey(full_name),
             shipped_user:user_profiles!marketplace_orders_shipped_by_fkey(full_name),
             delivered_user:user_profiles!marketplace_orders_delivered_by_fkey(full_name),
             failed_delivered_user:user_profiles!marketplace_orders_failed_delivered_by_fkey(full_name),
+            returned_to_seller_user:user_profiles!marketplace_orders_returned_to_seller_by_fkey(full_name),
+            customer_return_user:user_profiles!marketplace_orders_customer_return_by_fkey(full_name),
+            return_delivered_user:user_profiles!marketplace_orders_return_delivered_by_fkey(full_name),
             cancelled_user:user_profiles!marketplace_orders_cancelled_by_fkey(full_name)
         `)
         .eq('id', id)
@@ -295,6 +317,7 @@ interface UpdateMarketplaceOrderData {
     phone_number?: string
     address?: string
     delivery_branch_id?: string
+    // courier_id?: string  <-- Intentionally omitted to prevent edits
     branch_charge?: number
     delivery_charge?: number
     order_status?: string
@@ -327,8 +350,11 @@ export async function updateMarketplaceOrder(id: string, data: UpdateMarketplace
     if (!currentOrder) throw new Error('Order not found')
 
     // Prepare update data
+    // Remove items from the data object effectively
+    const { items, ...orderUpdateData } = data
+
     const updateData: any = {
-        ...data,
+        ...orderUpdateData,
         updated_by: user.id
     }
 
@@ -342,9 +368,18 @@ export async function updateMarketplaceOrder(id: string, data: UpdateMarketplace
         } else if (data.order_status === 'Delivered') {
             updateData.delivered_at = now
             updateData.delivered_by = user.id
+        } else if (data.order_status === 'Returning to Seller') {
+            updateData.returned_to_seller_at = now
+            updateData.returned_to_seller_by = user.id
         } else if (data.order_status === 'Fail Delivered') {
             updateData.failed_delivered_at = now
             updateData.failed_delivered_by = user.id
+        } else if (data.order_status === 'Customer Return') {
+            updateData.customer_return_at = now
+            updateData.customer_return_by = user.id
+        } else if (data.order_status === 'Return Delivered') {
+            updateData.return_delivered_at = now
+            updateData.return_delivered_by = user.id
         } else if (data.order_status === 'Cancel') {
             updateData.cancelled_at = now
             updateData.cancelled_by = user.id
@@ -352,8 +387,8 @@ export async function updateMarketplaceOrder(id: string, data: UpdateMarketplace
     }
 
     // Calculate new total if items changed
-    if (data.items) {
-        const itemsTotal = data.items.reduce((sum, item) => sum + (item.quantity * item.amount), 0)
+    if (items) {
+        const itemsTotal = items.reduce((sum, item) => sum + (item.quantity * item.amount), 0)
         updateData.total_amount = itemsTotal + (data.delivery_charge || 0)
 
         // Delete existing items and insert new ones
@@ -362,7 +397,7 @@ export async function updateMarketplaceOrder(id: string, data: UpdateMarketplace
             .delete()
             .eq('order_id', id)
 
-        const itemsToInsert = data.items.map(item => ({
+        const itemsToInsert = items.map(item => ({
             order_id: id,
             product_id: item.product_id,
             product_name: item.product_name,
@@ -430,6 +465,7 @@ export async function exportMarketplaceOrders(filters: GetMarketplaceOrdersFilte
         'Product Name': order.items?.map((item: any) => item.product_name).join(', ') || '',
         'Address': order.address || '',
         'Branch': order.branch?.branch_name || '',
+        'Courier': order.courier?.courier_name || '', // Added courier to export
         'Branch Charge': order.branch_charge,
         'Delivery Charge': order.delivery_charge,
         'Total Amount': order.total_amount,
@@ -616,4 +652,208 @@ export async function getMarketplaceDailySalesByFiscalYear(fiscalYearId: string)
         console.error('getMarketplaceDailySalesByFiscalYear error:', error)
         return []
     }
+}
+
+/**
+ * Find a single marketplace order by key
+ */
+export async function findMarketplaceOrder(key: 'order_number' | 'phone_number', value: string) {
+    const supabase = await createClient()
+
+    // Note: marketplace_orders uses 'sales_id' as the human-readable ID, not 'order_number'. 
+    // The user requested "Order Number" but in Marketplace context that is likely 'sales_id'.
+    // I will map 'order_number' to 'sales_id' for query.
+
+    const searchField = key === 'order_number' ? 'sales_id' : 'phone_number'
+
+    const { data, error } = await supabase
+        .from('marketplace_orders')
+        .select(`
+            *,
+            items:marketplace_order_items(*),
+            created_user:user_profiles!marketplace_orders_created_by_fkey(full_name),
+            updated_user:user_profiles!marketplace_orders_updated_by_fkey(full_name),
+            shipped_user:user_profiles!marketplace_orders_shipped_by_fkey(full_name),
+            delivered_user:user_profiles!marketplace_orders_delivered_by_fkey(full_name),
+            failed_delivered_user:user_profiles!marketplace_orders_failed_delivered_by_fkey(full_name),
+            returned_to_seller_user:user_profiles!marketplace_orders_returned_to_seller_by_fkey(full_name),
+            customer_return_user:user_profiles!marketplace_orders_customer_return_by_fkey(full_name),
+            return_delivered_user:user_profiles!marketplace_orders_return_delivered_by_fkey(full_name),
+            cancelled_user:user_profiles!marketplace_orders_cancelled_by_fkey(full_name)
+        `)
+        .eq(searchField, value.trim())
+        .limit(1) // Just take one if multiple match (e.g. phone number)
+        .single()
+
+    if (error) {
+        // Returns null if not found
+        return null
+    }
+
+    return data
+}
+
+/**
+ * Bulk update marketplace order status
+ */
+export async function updateMarketplaceOrderStatus(ids: string[], status: string) {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+
+    if (!user) throw new Error('Not authenticated')
+
+    const now = new Date().toISOString()
+    const updateData: any = {
+        order_status: status,
+        updated_by: user.id,
+        updated_at: now
+    }
+
+    // Handle timestamps
+    if (status === 'Shipped') {
+        updateData.shipped_at = now
+        updateData.shipped_by = user.id
+    } else if (status === 'Delivered') {
+        updateData.delivered_at = now
+        updateData.delivered_by = user.id
+    } else if (status === 'Returning to Seller') {
+        updateData.returned_to_seller_at = now
+        updateData.returned_to_seller_by = user.id
+    } else if (status === 'Fail Delivered') {
+        updateData.failed_delivered_at = now
+        updateData.failed_delivered_by = user.id
+    } else if (status === 'Customer Return') {
+        updateData.customer_return_at = now
+        updateData.customer_return_by = user.id
+    } else if (status === 'Return Delivered') {
+        updateData.return_delivered_at = now
+        updateData.return_delivered_by = user.id
+    } else if (status === 'Cancel') {
+        updateData.cancelled_at = now
+        updateData.cancelled_by = user.id
+    }
+
+    const { error } = await supabase
+        .from('marketplace_orders')
+        .update(updateData)
+        .in('id', ids)
+
+    if (error) throw error
+
+    revalidatePath('/dashboard/sales/marketplace')
+    return { success: true }
+}
+// ============================================================================
+// IMPORT
+// ============================================================================
+
+/**
+ * Bulk import marketplace orders from CSV data
+ */
+export async function bulkImportMarketplaceOrders(rows: any[]) {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+
+    if (!user) throw new Error('Not authenticated')
+
+    // 1. Fetch Couriers for matching
+    const { data: couriers } = await supabase
+        .from('couriers')
+        .select('id, courier_name, is_active')
+
+    // Find active courier for default
+    const activeCourier = couriers?.find(c => c.is_active)
+
+    // Create a map for name lookup (case-insensitive)
+    const courierMap = new Map()
+    couriers?.forEach(c => {
+        courierMap.set(c.courier_name.toLowerCase(), c.id)
+    })
+
+    const results = {
+        success: 0,
+        failures: [] as any[]
+    }
+
+    // Process rows sequentially to generate proper Sales IDs
+    for (let i = 0; i < rows.length; i++) {
+        const row = rows[i]
+
+        try {
+            // Determine Courier ID
+            let courierId = activeCourier?.id // Default to active
+            const rowCourierName = row['Courier'] || row['courier'] // Check both cases
+
+            if (rowCourierName && rowCourierName.trim()) {
+                const foundId = courierMap.get(rowCourierName.trim().toLowerCase())
+                if (foundId) {
+                    courierId = foundId
+                }
+            }
+
+            // Generate Sales ID
+            // If date is provided utilize it, otherwise use today
+            // Expecting date format YYYY-MM-DD
+            const orderDate = row['Date'] || row['Order Date'] || new Date().toISOString().split('T')[0]
+            const salesId = await generateSalesId(orderDate)
+
+            // Parse Amounts
+            const quantity = parseInt(row['Quantity'] || '1') || 1
+            const amount = parseFloat(row['Amount'] || row['Price'] || '0')
+            const deliveryCharge = parseFloat(row['Delivery Charge'] || '0')
+            const branchCharge = parseFloat(row['Branch Charge'] || '0')
+
+            const totalAmount = (quantity * amount) + deliveryCharge
+
+            // Create Order
+            const { data: order, error: orderError } = await supabase
+                .from('marketplace_orders')
+                .insert({
+                    sales_id: salesId,
+                    order_date: orderDate,
+                    customer_name: row['Customer Name'] || row['Customer'],
+                    phone_number: row['Phone'] || row['Phone Number'] || '',
+                    address: row['Address'] || '',
+                    courier_id: courierId,
+                    branch_charge: branchCharge,
+                    delivery_charge: deliveryCharge,
+                    total_amount: totalAmount,
+                    order_status: row['Status'] || 'Pending',
+                    user_type: 'ALL',
+                    remarks: row['Remarks'] || 'Imported via CSV',
+                    created_by: user.id
+                })
+                .select()
+                .single()
+
+            if (orderError) throw orderError
+
+            // Create Order Item
+            // Note: Import usually implies single item per row for simple CSVs. 
+            // If multi-item support is needed, CSV structure would be complex.
+            // Assuming 1 row = 1 order with 1 item for now as per common flat CSV structures.
+            await supabase
+                .from('marketplace_order_items')
+                .insert({
+                    order_id: order.id,
+                    product_name: row['Product Name'] || row['Product'] || 'Unknown Product',
+                    quantity: quantity,
+                    amount: amount
+                })
+
+            results.success++
+
+        } catch (error: any) {
+            console.error(`Row ${i + 1} Error:`, error)
+            results.failures.push({
+                row: i + 1,
+                reason: error.message || 'Unknown error',
+                data: row
+            })
+        }
+    }
+
+    revalidatePath('/dashboard/sales/marketplace')
+
+    return results
 }

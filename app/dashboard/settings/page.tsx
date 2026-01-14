@@ -19,10 +19,10 @@ const settingsCards = [
         color: 'bg-green-500',
     },
     {
-        title: 'Delivery Location/Branches',
+        title: 'Courier',
         description: 'Manage delivery locations',
         icon: MapPin,
-        href: '/dashboard/settings/locations',
+        href: '/dashboard/settings/couriers',
         color: 'bg-purple-500',
     },
     {
