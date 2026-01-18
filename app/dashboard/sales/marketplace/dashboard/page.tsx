@@ -1,17 +1,18 @@
 'use client'
 
 import { useState, Suspense, useRef, useEffect } from 'react'
-import { ArrowLeft, BarChart2, PieChart, RefreshCw, Search, X, Check, Trash2, Upload } from 'lucide-react'
+import { ArrowLeft, BarChart2, PieChart, RefreshCw, Search, X, Check, Trash2, Upload, ArrowRightLeft } from 'lucide-react'
 import Link from 'next/link'
 import { Card } from '@/components/ui-shim'
 import { useSearchParams } from 'next/navigation'
-import { findMarketplaceOrder, updateMarketplaceOrderStatus, getMarketplaceOrders } from '@/features/sales/actions/marketplace-actions'
+import { findMarketplaceOrder, updateMarketplaceOrderStatus, getMarketplaceOrders, findRedirectTarget } from '@/features/sales/actions/marketplace-actions'
 import { useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { DailySalesReport } from '@/features/sales/components/DailySalesReport'
 import { OrderSummaryReport } from '@/features/sales/components/OrderSummaryReport'
 import { MarketplaceOrderList } from '@/features/sales/components/MarketplaceOrderList'
 import { List } from 'lucide-react'
+import { RedirectOrderModal } from '@/features/sales/components/RedirectOrderModal'
 
 type DashboardTab = 'update-status' | 'daily-report' | 'order-summary' | 'profit-tracker' | 'order-list'
 type UpdateMode = 'manual' | 'bulk'
@@ -49,6 +50,12 @@ function DashboardContent() {
     const [selectedOrderIds, setSelectedOrderIds] = useState<string[]>([])
     const [manualBulkStatus, setManualBulkStatus] = useState('')
 
+    // Redirect Modal State
+    const [redirectSource, setRedirectSource] = useState<any>(null)
+    const [redirectTarget, setRedirectTarget] = useState<any>(null)
+    const [redirectCandidates, setRedirectCandidates] = useState<any[]>([])
+    const [isRedirectModalOpen, setIsRedirectModalOpen] = useState(false)
+
     // Fetch orders for manual update
     // We only need this query if activeTab is 'update-status' and updateMode is 'manual', 
     // but hooks must be unconditional. We can control 'enabled'.
@@ -64,14 +71,24 @@ function DashboardContent() {
 
     // Helper to determine available next statuses
     const getNextStatuses = (currentStatus: string) => {
+        // If All status selected, allow all typical transitions
+        if (manualFilterStatus === 'All') {
+            return ['Pending', 'Shipped', 'Delivered', 'Returning to Seller', 'Fail Delivered', 'Customer Return', 'Return Delivered', 'Cancel']
+        }
+
         switch (currentStatus) {
             case 'Pending': return ['Shipped', 'Cancel']
             case 'Shipped': return ['Delivered', 'Returning to Seller']
             case 'Delivered': return ['Customer Return']
-            case 'Returning to Seller': return ['Fail Delivered']
+            case 'Returning to Seller': return ['Fail Delivered', 'Return Delivered']
             case 'Customer Return': return ['Return Delivered']
+            case 'Fail Delivered': return ['Return Delivered']
             default: return []
         }
+    }
+
+    const getAllStatuses = () => {
+        return ['Pending', 'Shipped', 'Delivered', 'Returning to Seller', 'Fail Delivered', 'Customer Return', 'Return Delivered', 'Cancel']
     }
 
     const handleManualStatusChange = async (ids: string[], status: string) => {
@@ -91,6 +108,42 @@ function DashboardContent() {
             setIsUpdating(false)
         }
     }
+
+    // Handle Redirect Click
+    const handleRedirectClick = async (order: any) => {
+        if (order.order_status !== 'Pending') {
+            toast.error('Only Pending orders can be redirected')
+            return
+        }
+
+        const toastId = toast.loading('Searching for returning stock...')
+        try {
+            const result = await findRedirectTarget(order.id)
+
+            if (!result) {
+                toast.error('Cannot redirect: Order has no delivery branch', { id: toastId })
+                return
+            }
+
+            const { recommended, candidates } = result
+
+            setRedirectSource(order)
+            setRedirectTarget(recommended)
+            setRedirectCandidates(candidates || [])
+            setIsRedirectModalOpen(true)
+
+            if (recommended) {
+                toast.success('Returning stock found!', { id: toastId })
+            } else if (candidates && candidates.length > 0) {
+                toast.info('No exact match found. Select from candidates.', { id: toastId })
+            } else {
+                toast.info('No returning orders found. Check branch/status.', { id: toastId })
+            }
+        } catch (error: any) {
+            toast.error(`Error: ${error.message}`, { id: toastId })
+        }
+    }
+
 
     // Handle selection
     const toggleSelection = (id: string) => {
@@ -413,7 +466,7 @@ function DashboardContent() {
                                                     className="px-2 py-1.5 text-sm border dark:border-zinc-700 rounded focus:ring-1 focus:ring-blue-500 dark:bg-zinc-900 bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800"
                                                 >
                                                     <option value="">Bulk Change Status...</option>
-                                                    {getNextStatuses(manualFilterStatus).map(s => (
+                                                    {(manualFilterStatus === 'All' ? getAllStatuses() : getNextStatuses(manualFilterStatus)).map(s => (
                                                         <option key={s} value={s}>{s}</option>
                                                     ))}
                                                 </select>
@@ -472,27 +525,53 @@ function DashboardContent() {
                                                                 {order.items?.length > 1 && ` +${order.items.length - 1}`}
                                                             </td>
                                                             <td className="px-3 py-2 text-sm">
-                                                                <span className={`inline-flex px-1.5 py-0.5 text-xs font-medium rounded ${order.order_status === 'Pending' ? 'bg-yellow-100 text-yellow-700' :
-                                                                    order.order_status === 'Shipped' ? 'bg-blue-100 text-blue-700' :
-                                                                        order.order_status === 'Delivered' ? 'bg-green-100 text-green-700' :
-                                                                            'bg-gray-100 text-gray-700'
-                                                                    }`}>
-                                                                    {order.order_status}
-                                                                </span>
+                                                                {order.order_status === 'Redirected' ? (
+                                                                    <div className="flex flex-col">
+                                                                        <span className="inline-flex px-1.5 py-0.5 text-xs font-medium rounded bg-purple-100 text-purple-700">
+                                                                            Redirected
+                                                                        </span>
+                                                                        <span className="text-[10px] text-gray-500 mt-1">
+                                                                            {order.redirect_related_order_id ? 'Linked' : ''}
+                                                                        </span>
+                                                                    </div>
+                                                                ) : (
+                                                                    <span className={`inline-flex px-1.5 py-0.5 text-xs font-medium rounded ${order.order_status === 'Pending' ? 'bg-yellow-100 text-yellow-700' :
+                                                                        order.order_status === 'Shipped' ? 'bg-blue-100 text-blue-700' :
+                                                                            order.order_status === 'Delivered' ? 'bg-green-100 text-green-700' :
+                                                                                'bg-gray-100 text-gray-700'
+                                                                        }`}>
+                                                                        {order.order_status}
+                                                                    </span>
+                                                                )}
                                                             </td>
                                                             <td className="px-3 py-2 text-sm">
-                                                                {getNextStatuses(order.order_status).length > 0 && (
-                                                                    <select
-                                                                        value=""
-                                                                        onChange={(e) => handleManualStatusChange([order.id], e.target.value)}
-                                                                        className="px-2 py-1 text-xs border dark:border-zinc-700 rounded hover:border-blue-500 focus:ring-1 focus:ring-blue-500 dark:bg-zinc-900 w-full max-w-[130px]"
-                                                                    >
-                                                                        <option value="">Change Status...</option>
-                                                                        {getNextStatuses(order.order_status).map(s => (
-                                                                            <option key={s} value={s}>{s}</option>
-                                                                        ))}
-                                                                    </select>
-                                                                )}
+                                                                <div className="flex items-center gap-2">
+                                                                    {/* Regular Status Change */}
+                                                                    {(manualFilterStatus === 'All' || getNextStatuses(order.order_status).length > 0) && (
+                                                                        <select
+                                                                            value=""
+                                                                            onChange={(e) => handleManualStatusChange([order.id], e.target.value)}
+                                                                            className="px-2 py-1 text-xs border dark:border-zinc-700 rounded hover:border-blue-500 focus:ring-1 focus:ring-blue-500 dark:bg-zinc-900 w-full max-w-[130px]"
+                                                                            disabled={order.order_status === 'Redirected'}
+                                                                        >
+                                                                            <option value="">Change Status...</option>
+                                                                            {(manualFilterStatus === 'All' ? getAllStatuses() : getNextStatuses(order.order_status)).map(s => (
+                                                                                <option key={s} value={s}>{s}</option>
+                                                                            ))}
+                                                                        </select>
+                                                                    )}
+
+                                                                    {/* Redirect Button - Only for Pending */}
+                                                                    {order.order_status === 'Pending' && (
+                                                                        <button
+                                                                            onClick={() => handleRedirectClick(order)}
+                                                                            className="p-1.5 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded border border-blue-200"
+                                                                            title="Redirect Order"
+                                                                        >
+                                                                            <ArrowRightLeft size={12} />
+                                                                        </button>
+                                                                    )}
+                                                                </div>
                                                             </td>
                                                         </tr>
                                                     ))
@@ -659,6 +738,20 @@ function DashboardContent() {
                     </Card>
                 )}
             </div>
+
+            {/* Redirect Modal */}
+            {isRedirectModalOpen && redirectSource && (
+                <RedirectOrderModal
+                    sourceOrder={redirectSource}
+                    initialTargetOrder={redirectTarget}
+                    candidates={redirectCandidates}
+                    onClose={() => setIsRedirectModalOpen(false)}
+                    onSuccess={() => {
+                        setIsRedirectModalOpen(false)
+                        refetchManual()
+                    }}
+                />
+            )}
         </div>
     )
 }

@@ -2,14 +2,16 @@
 
 import { useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { getMarketplaceOrders, exportMarketplaceOrders } from '@/features/sales/actions/marketplace-actions'
-import { ArrowLeft, Download, Search, X } from 'lucide-react'
+import { getMarketplaceOrders, exportMarketplaceOrders, findRedirectTarget } from '@/features/sales/actions/marketplace-actions'
+import { ArrowLeft, Download, Search, X, ArrowRightLeft } from 'lucide-react'
 import Link from 'next/link'
 import { Card } from '@/components/ui-shim'
 import { MarketplaceOrderForm } from '@/features/sales/components/MarketplaceOrderForm'
 import { MarketplaceOrderDetailModal } from '@/features/sales/components/MarketplaceOrderDetailModal'
+import { RedirectOrderModal } from '@/features/sales/components/RedirectOrderModal'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { getActiveFiscalYear, getAllFiscalYears } from '@/features/sales/actions/daraz-actions'
+import { toast } from 'sonner'
 
 interface MarketplaceOrderListProps {
     isEmbedded?: boolean
@@ -31,6 +33,12 @@ export function MarketplaceOrderList({ isEmbedded = false }: MarketplaceOrderLis
     const [viewingOrder, setViewingOrder] = useState<any>(null)
     const [editingOrder, setEditingOrder] = useState<any>(null)
     const [isEditModalOpen, setIsEditModalOpen] = useState(false)
+
+    // Redirect State
+    const [redirectSource, setRedirectSource] = useState<any>(null)
+    const [redirectTarget, setRedirectTarget] = useState<any>(null)
+    const [redirectCandidates, setRedirectCandidates] = useState<any[]>([])
+    const [isRedirectModalOpen, setIsRedirectModalOpen] = useState(false)
 
     // Fetch active and all fiscal years
     const { data: fiscalYears, isLoading: loadingFYs } = useQuery({
@@ -93,6 +101,40 @@ export function MarketplaceOrderList({ isEmbedded = false }: MarketplaceOrderLis
             } catch (error: any) {
                 alert(`Error deleting order: ${error.message}`)
             }
+        }
+    }
+
+    const handleRedirectClick = async (order: any) => {
+        if (order.order_status !== 'Pending') {
+            toast.error('Only Pending orders can be redirected')
+            return
+        }
+
+        const toastId = toast.loading('Searching for returning stock...')
+        try {
+            const result = await findRedirectTarget(order.id)
+
+            if (!result) {
+                toast.error('Cannot redirect: Order has no delivery branch', { id: toastId })
+                return
+            }
+
+            const { recommended, candidates } = result
+
+            setRedirectSource(order)
+            setRedirectTarget(recommended)
+            setRedirectCandidates(candidates || [])
+            setIsRedirectModalOpen(true)
+
+            if (recommended) {
+                toast.success('Returning stock found!', { id: toastId })
+            } else if (candidates && candidates.length > 0) {
+                toast.info('No exact match found. Select from candidates.', { id: toastId })
+            } else {
+                toast.info('No returning orders found. Check branch/status.', { id: toastId })
+            }
+        } catch (error: any) {
+            toast.error(`Error: ${error.message}`, { id: toastId })
         }
     }
 
@@ -219,8 +261,12 @@ export function MarketplaceOrderList({ isEmbedded = false }: MarketplaceOrderLis
                         <option value="Pending">Pending</option>
                         <option value="Shipped">Shipped</option>
                         <option value="Delivered">Delivered</option>
+                        <option value="Returning to Seller">Returning to Seller</option>
                         <option value="Fail Delivered">Fail Delivered</option>
+                        <option value="Customer Return">Customer Return</option>
+                        <option value="Return Delivered">Return Delivered</option>
                         <option value="Cancel">Cancel</option>
+                        <option value="Redirected">Redirected</option>
                     </select>
 
                     {/* Export */}
@@ -311,17 +357,32 @@ export function MarketplaceOrderList({ isEmbedded = false }: MarketplaceOrderLis
                                                 Rs {order.total_amount.toFixed(2)}
                                             </td>
                                             <td className="px-2 py-1.5">
-                                                <span className={`inline-flex px-1.5 py-0.5 text-xs font-medium rounded ${order.order_status === 'Pending' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300' :
-                                                    order.order_status === 'Shipped' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300' :
-                                                        order.order_status === 'Delivered' ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300' :
-                                                            order.order_status === 'Cancel' ? 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300' :
-                                                                'bg-gray-100 text-gray-700 dark:bg-zinc-800 dark:text-gray-300'
-                                                    }`}>
-                                                    {order.order_status}
-                                                </span>
+                                                {order.order_status === 'Redirected' ? (
+                                                    <span className="inline-flex px-1.5 py-0.5 text-xs font-medium rounded bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">
+                                                        Redirected
+                                                    </span>
+                                                ) : (
+                                                    <span className={`inline-flex px-1.5 py-0.5 text-xs font-medium rounded ${order.order_status === 'Pending' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300' :
+                                                        order.order_status === 'Shipped' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300' :
+                                                            order.order_status === 'Delivered' ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300' :
+                                                                order.order_status === 'Cancel' ? 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300' :
+                                                                    'bg-gray-100 text-gray-700 dark:bg-zinc-800 dark:text-gray-300'
+                                                        }`}>
+                                                        {order.order_status}
+                                                    </span>
+                                                )}
                                             </td>
                                             <td className="px-2 py-1.5">
                                                 <div className="flex items-center justify-end gap-1">
+                                                    {order.order_status === 'Pending' && (
+                                                        <button
+                                                            onClick={() => handleRedirectClick(order)}
+                                                            className="p-1 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded border border-transparent hover:border-blue-200"
+                                                            title="Redirect Order"
+                                                        >
+                                                            <ArrowRightLeft size={14} />
+                                                        </button>
+                                                    )}
                                                     <button
                                                         onClick={() => {
                                                             setEditingOrder(order)
@@ -407,6 +468,20 @@ export function MarketplaceOrderList({ isEmbedded = false }: MarketplaceOrderLis
                 <MarketplaceOrderDetailModal
                     order={viewingOrder}
                     onClose={() => setViewingOrder(null)}
+                />
+            )}
+
+            {/* Redirect Modal */}
+            {isRedirectModalOpen && redirectSource && (
+                <RedirectOrderModal
+                    sourceOrder={redirectSource}
+                    initialTargetOrder={redirectTarget}
+                    candidates={redirectCandidates}
+                    onClose={() => setIsRedirectModalOpen(false)}
+                    onSuccess={() => {
+                        setIsRedirectModalOpen(false)
+                        refetch()
+                    }}
                 />
             )}
         </div>

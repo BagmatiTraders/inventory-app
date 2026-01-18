@@ -1,6 +1,6 @@
 ﻿'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Fragment } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { getDailySalesReport, getOrderSummaryReport, getOrderStatusSummary } from '@/features/sales/actions/daraz-actions'
 import { getUserRole } from '@/features/sales/actions/daraz-deletion-actions'
@@ -66,7 +66,7 @@ function DashboardContent() {
         queryKey: ['order-status-summary'],
         queryFn: getOrderStatusSummary,
         enabled: userRole === 'admin' && activeTab === 'summary',
-        staleTime: 60 * 1000
+        staleTime: 0 // Always fetch fresh data to avoid inconsistency
     })
 
     // Format currency
@@ -279,58 +279,118 @@ function DashboardContent() {
                                             </td>
                                         </tr>
                                     ) : dailyReport && dailyReport.length > 0 ? (
-                                        dailyReport.map((row, index) => (
-                                            <tr key={`${row.date}-${row.seller_account}`} className="hover:bg-gray-50 dark:hover:bg-zinc-800/50">
-                                                <td className="px-2 py-1.5 text-[13px] text-gray-500">{index + 1}</td>
-                                                <td className="px-2 py-1.5 text-[13px] font-medium">{formatDate(row.date)}</td>
-                                                <td className="px-2 py-1.5 text-[13px]">{row.seller_account}</td>
-                                                <td className="px-2 py-1.5 text-[13px] text-center">
-                                                    <span className="inline-flex items-center justify-center min-w-[24px] px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 font-medium">
-                                                        {row.shipped_qty}
-                                                    </span>
-                                                </td>
-                                                <td className="px-2 py-1.5 text-[13px] text-right font-mono text-blue-600 dark:text-blue-400">
-                                                    {formatAmount(row.shipped_amount)}
-                                                </td>
-                                                <td className="px-2 py-1.5 text-[13px] text-center">
-                                                    <span className={`inline-flex items-center justify-center min-w-[24px] px-1.5 py-0.5 rounded font-medium ${row.returning_to_seller_qty > 0
-                                                        ? 'bg-orange-50 text-orange-700 border border-orange-200'
-                                                        : 'bg-gray-100 text-gray-500 dark:bg-zinc-800 dark:text-gray-400'
-                                                        }`}>
-                                                        {row.returning_to_seller_qty}
-                                                    </span>
-                                                </td>
-                                                <td className="px-2 py-1.5 text-[13px] text-center">
-                                                    <span className={`inline-flex items-center justify-center min-w-[24px] px-1.5 py-0.5 rounded font-medium ${row.returned_delivered_qty > 0
-                                                        ? 'bg-orange-100 text-orange-800 border border-orange-300'
-                                                        : 'bg-gray-100 text-gray-500 dark:bg-zinc-800 dark:text-gray-400'
-                                                        }`}>
-                                                        {row.returned_delivered_qty}
-                                                    </span>
-                                                </td>
-                                                <td className="px-2 py-1.5 text-[13px] text-center">
-                                                    <span className="inline-flex items-center justify-center min-w-[24px] px-1.5 py-0.5 rounded bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 font-medium">
-                                                        {row.delivered_qty}
-                                                    </span>
-                                                </td>
-                                                <td className="px-2 py-1.5 text-[13px] text-center">
-                                                    <span className={`inline-flex items-center justify-center min-w-[24px] px-1.5 py-0.5 rounded font-medium ${row.return_qty > 0
-                                                        ? 'bg-orange-50 text-orange-700 border border-orange-200'
-                                                        : 'bg-gray-100 text-gray-500 dark:bg-zinc-800 dark:text-gray-400'
-                                                        }`}>
-                                                        {row.return_qty}
-                                                    </span>
-                                                </td>
-                                                <td className="px-2 py-1.5 text-[13px] text-center">
-                                                    <span className={`inline-flex items-center justify-center min-w-[24px] px-1.5 py-0.5 rounded font-medium ${row.customer_return_delivered_qty > 0
-                                                        ? 'bg-orange-100 text-orange-800 border border-orange-300'
-                                                        : 'bg-gray-100 text-gray-500 dark:bg-zinc-800 dark:text-gray-400'
-                                                        }`}>
-                                                        {row.customer_return_delivered_qty}
-                                                    </span>
-                                                </td>
-                                            </tr>
-                                        ))
+                                        (() => {
+                                            // Group by date
+                                            const groupedReport = dailyReport?.reduce((acc, row) => {
+                                                if (!acc[row.date]) acc[row.date] = []
+                                                acc[row.date].push(row)
+                                                return acc
+                                            }, {} as Record<string, typeof dailyReport>)
+
+                                            return Object.entries(groupedReport || {}).map(([date, rows]) => {
+                                                // Calculate date totals
+                                                const dateTotals = rows.reduce((acc, row) => ({
+                                                    shipped_qty: acc.shipped_qty + row.shipped_qty,
+                                                    shipped_amount: acc.shipped_amount + row.shipped_amount,
+                                                    returning_to_seller_qty: acc.returning_to_seller_qty + row.returning_to_seller_qty,
+                                                    returned_delivered_qty: acc.returned_delivered_qty + row.returned_delivered_qty,
+                                                    delivered_qty: acc.delivered_qty + row.delivered_qty,
+                                                    return_qty: acc.return_qty + row.return_qty,
+                                                    customer_return_delivered_qty: acc.customer_return_delivered_qty + row.customer_return_delivered_qty
+                                                }), {
+                                                    shipped_qty: 0,
+                                                    shipped_amount: 0,
+                                                    returning_to_seller_qty: 0,
+                                                    returned_delivered_qty: 0,
+                                                    delivered_qty: 0,
+                                                    return_qty: 0,
+                                                    customer_return_delivered_qty: 0
+                                                })
+
+                                                return (
+                                                    <Fragment key={date}>
+                                                        {rows.map((row, index) => (
+                                                            <tr key={`${row.date}-${row.seller_account}`} className="hover:bg-gray-50 dark:hover:bg-zinc-800/50">
+                                                                <td className="px-2 py-1.5 text-[13px] text-gray-500">{index + 1}</td>
+                                                                <td className="px-2 py-1.5 text-[13px] font-medium">{formatDate(row.date)}</td>
+                                                                <td className="px-2 py-1.5 text-[13px]">{row.seller_account}</td>
+                                                                <td className="px-2 py-1.5 text-[13px] text-center">
+                                                                    <span className="inline-flex items-center justify-center min-w-[24px] px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 font-medium">
+                                                                        {row.shipped_qty}
+                                                                    </span>
+                                                                </td>
+                                                                <td className="px-2 py-1.5 text-[13px] text-right font-mono text-blue-600 dark:text-blue-400">
+                                                                    {formatAmount(row.shipped_amount)}
+                                                                </td>
+                                                                <td className="px-2 py-1.5 text-[13px] text-center">
+                                                                    <span className={`inline-flex items-center justify-center min-w-[24px] px-1.5 py-0.5 rounded font-medium ${row.returning_to_seller_qty > 0
+                                                                        ? 'bg-orange-50 text-orange-700 border border-orange-200'
+                                                                        : 'bg-gray-100 text-gray-500 dark:bg-zinc-800 dark:text-gray-400'
+                                                                        }`}>
+                                                                        {row.returning_to_seller_qty}
+                                                                    </span>
+                                                                </td>
+                                                                <td className="px-2 py-1.5 text-[13px] text-center">
+                                                                    <span className={`inline-flex items-center justify-center min-w-[24px] px-1.5 py-0.5 rounded font-medium ${row.returned_delivered_qty > 0
+                                                                        ? 'bg-orange-100 text-orange-800 border border-orange-300'
+                                                                        : 'bg-gray-100 text-gray-500 dark:bg-zinc-800 dark:text-gray-400'
+                                                                        }`}>
+                                                                        {row.returned_delivered_qty}
+                                                                    </span>
+                                                                </td>
+                                                                <td className="px-2 py-1.5 text-[13px] text-center">
+                                                                    <span className="inline-flex items-center justify-center min-w-[24px] px-1.5 py-0.5 rounded bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 font-medium">
+                                                                        {row.delivered_qty}
+                                                                    </span>
+                                                                </td>
+                                                                <td className="px-2 py-1.5 text-[13px] text-center">
+                                                                    <span className={`inline-flex items-center justify-center min-w-[24px] px-1.5 py-0.5 rounded font-medium ${row.return_qty > 0
+                                                                        ? 'bg-orange-50 text-orange-700 border border-orange-200'
+                                                                        : 'bg-gray-100 text-gray-500 dark:bg-zinc-800 dark:text-gray-400'
+                                                                        }`}>
+                                                                        {row.return_qty}
+                                                                    </span>
+                                                                </td>
+                                                                <td className="px-2 py-1.5 text-[13px] text-center">
+                                                                    <span className={`inline-flex items-center justify-center min-w-[24px] px-1.5 py-0.5 rounded font-medium ${row.customer_return_delivered_qty > 0
+                                                                        ? 'bg-orange-100 text-orange-800 border border-orange-300'
+                                                                        : 'bg-gray-100 text-gray-500 dark:bg-zinc-800 dark:text-gray-400'
+                                                                        }`}>
+                                                                        {row.customer_return_delivered_qty}
+                                                                    </span>
+                                                                </td>
+                                                            </tr>
+                                                        ))}
+                                                        {/* Sub-total Row */}
+                                                        <tr className="bg-gray-200 dark:bg-zinc-700 font-bold border-b-2 border-gray-300 dark:border-zinc-600">
+                                                            <td colSpan={2}></td>
+                                                            <td className="px-2 py-2 text-[13px] text-gray-800 dark:text-gray-200 uppercase tracking-wide">Total</td>
+                                                            <td className="px-2 py-2 text-[13px] text-center text-blue-800 dark:text-blue-300">
+                                                                {dateTotals.shipped_qty}
+                                                            </td>
+                                                            <td className="px-2 py-2 text-[13px] text-right text-blue-800 dark:text-blue-300 font-mono">
+                                                                {formatAmount(dateTotals.shipped_amount)}
+                                                            </td>
+                                                            <td className="px-2 py-2 text-[13px] text-center text-orange-800 dark:text-orange-300">
+                                                                {dateTotals.returning_to_seller_qty}
+                                                            </td>
+                                                            <td className="px-2 py-2 text-[13px] text-center text-orange-900 dark:text-orange-200">
+                                                                {dateTotals.returned_delivered_qty}
+                                                            </td>
+                                                            <td className="px-2 py-2 text-[13px] text-center text-green-800 dark:text-green-300">
+                                                                {dateTotals.delivered_qty}
+                                                            </td>
+                                                            <td className="px-2 py-2 text-[13px] text-center text-orange-800 dark:text-orange-300">
+                                                                {dateTotals.return_qty}
+                                                            </td>
+                                                            <td className="px-2 py-2 text-[13px] text-center text-orange-900 dark:text-orange-200">
+                                                                {dateTotals.customer_return_delivered_qty}
+                                                            </td>
+                                                        </tr>
+                                                    </Fragment>
+                                                )
+                                            })
+                                        })()
                                     ) : (
                                         <tr>
                                             <td colSpan={10} className="px-2 py-8 text-center text-[15px] text-gray-500">

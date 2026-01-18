@@ -213,7 +213,7 @@ export async function getAllDarazOrders(params: {
     const supabase = await createClient()
     const { page = 1, limit = 50, search, status, fromDate, toDate, fiscalYearId, timestampField = 'order_date', sellerAccount, ignoreStatusFilter } = params
 
-    console.log('Fetching Daraz Orders:', params)
+
 
     let query = supabase
         .from('daraz_orders_with_totals')
@@ -307,7 +307,7 @@ export async function getAllDarazOrders(params: {
 
     if (error) throw error
 
-    console.log('getAllDarazOrders result:', { count, dataLength: data?.length })
+
 
     // Enrich orders with product_id from the first item (Optimized: Single Query)
     const orderIds = (data || []).map((o: any) => o.id)
@@ -1109,26 +1109,46 @@ export async function getDailySalesReport() {
     const supabase = await createClient()
 
     try {
-        // Fetch all non-deleted orders with relevant statuses
-        const { data: orders, error } = await supabase
-            .from('daraz_orders')
-            .select(`
-                id,
-                order_id,
-                order_number,
-                store_id,
-                order_status,
-                order_date,
-                price,
-                updated_at,
-                shipped_at,
-                online_stores!inner(seller_account)
-            `)
-            .eq('deleted', false)
-            .in('order_status', ['Shipped', 'Delivered', 'Returning to Seller', 'Returned Delivered', 'Customer Return', 'Customer Return Delivered'])
-            .order('updated_at', { ascending: false })
+        // Fetch all non-deleted orders with relevant statuses using BATCH FETCHING
+        let allOrders: any[] = []
+        let page = 0
+        const pageSize = 1000
 
-        if (error) throw error
+        while (true) {
+            const from = page * pageSize
+            const to = from + pageSize - 1
+
+            const { data: orders, error } = await supabase
+                .from('daraz_orders')
+                .select(`
+                    id,
+                    order_id,
+                    order_number,
+                    store_id,
+                    order_status,
+                    order_date,
+                    price,
+                    updated_at,
+                    shipped_at,
+                    delivered_at,
+                    online_stores!inner(seller_account)
+                `)
+                .eq('deleted', false)
+                .in('order_status', ['Shipped', 'Delivered', 'Returning to Seller', 'Returned Delivered', 'Customer Return', 'Customer Return Delivered'])
+                .order('updated_at', { ascending: false })
+                .range(from, to)
+
+            if (error) throw error
+
+            if (!orders || orders.length === 0) break
+
+            allOrders = allOrders.concat(orders)
+
+            // If we got less than pageSize, we've reached the end
+            if (orders.length < pageSize) break
+
+            page++
+        }
 
         // Group by date and seller account
         const reportMap = new Map<string, Map<string, {
@@ -1163,7 +1183,7 @@ export async function getDailySalesReport() {
             return dateMap.get(sellerAccount)!
         }
 
-        orders?.forEach((order: any) => {
+        allOrders?.forEach((order: any) => {
             const sellerAccount = order.online_stores?.seller_account || 'Unknown'
             const price = parseFloat(order.price) || 0
 
@@ -1182,16 +1202,31 @@ export async function getDailySalesReport() {
                 stats.shipped_amount += price
             }
 
-            // 2. Handle Other Statuses (based on current status & updated_at)
+            // 2. Handle Delivered Metric (independent check)
+            // Use delivered_at timestamp if available
+            if (order.delivered_at) {
+                const deliveredDate = new Date(order.delivered_at).toISOString().split('T')[0]
+                const stats = getStats(deliveredDate, sellerAccount)
+                stats.delivered_qty++
+                stats.delivered_amount += price
+            }
+
+            // 3. Handle Other Statuses (based on current status & updated_at)
             const dateStr = new Date(order.updated_at).toISOString().split('T')[0]
             const stats = getStats(dateStr, sellerAccount)
 
             switch (order.order_status) {
                 // Note: We do NOT count 'Shipped' here via updated_at, handled above.
+                // Note: We do NOT count 'Delivered' here either if using delivered_at logic
+                // For now, if delivered_at is present, we skip the switch case for 'Delivered'
+                // to avoid double counting or using the wrong date.
 
                 case 'Delivered':
-                    stats.delivered_qty++
-                    stats.delivered_amount += price
+                    // Only count via status if no delivered_at exists (legacy fallback)
+                    if (!order.delivered_at) {
+                        stats.delivered_qty++
+                        stats.delivered_amount += price
+                    }
                     break
                 case 'Returning to Seller':
                     stats.returning_to_seller_qty++
@@ -1256,7 +1291,6 @@ export async function getOrderSummaryReport() {
         if (storeError) throw storeError
 
         // Initialize map with all stores
-        // Map<SellerAccount, Stats>
         const summaryMap = new Map<string, {
             shipped_qty: number
             shipped_amount: number
@@ -1285,24 +1319,37 @@ export async function getOrderSummaryReport() {
             }
         })
 
-        // 2. Fetch all orders with relevant statuses
-        // We include 'Shipped' because 'Remain Qty' essentially means currently 'Shipped'
-        // New statuses: Returning to Seller, Returned Delivered, Customer Return, Customer Return Delivered
-        const { data: orders, error } = await supabase
-            .from('daraz_orders')
-            .select(`
-                order_status,
-                price,
-                online_stores!inner(seller_account)
-            `)
-            .eq('deleted', false)
-            .in('order_status', ['Shipped', 'Delivered', 'Returning to Seller', 'Returned Delivered', 'Customer Return', 'Customer Return Delivered'])
+        // 2. Fetch all orders with relevant statuses using BATCH FETCHING
+        let allOrders: any[] = []
+        let page = 0
+        const pageSize = 1000
 
-        if (error) throw error
+        while (true) {
+            const from = page * pageSize
+            const to = from + pageSize - 1
+
+            const { data: orders, error } = await supabase
+                .from('daraz_orders_with_totals')
+                .select('order_status, price, seller_account')
+                .or('deleted.is.null,deleted.eq.false')
+                .in('order_status', ['Shipped', 'Delivered', 'Returning to Seller', 'Returned Delivered', 'Customer Return', 'Customer Return Delivered'])
+                .range(from, to)
+
+            if (error) throw error
+
+            if (!orders || orders.length === 0) break
+
+            allOrders = allOrders.concat(orders)
+
+            // If we got less than pageSize, we've reached the end
+            if (orders.length < pageSize) break
+
+            page++
+        }
 
         // 3. Aggregate Data
-        orders?.forEach((order: any) => {
-            const sellerAccount = order.online_stores?.seller_account || 'Unknown'
+        allOrders?.forEach((order: any) => {
+            const sellerAccount = order.seller_account || 'Unknown'
             const price = parseFloat(order.price) || 0
 
             // If this is an unknown seller OR one not in our settings list, add it anyway
@@ -1658,33 +1705,20 @@ export async function getUniqueSellerAccounts() {
 export async function getOrderStatusSummary() {
     const supabase = await createClient()
 
-    const { data, error } = await supabase
-        .from('daraz_orders_with_totals')
-        .select('seller_account, order_status')
-        .or('deleted.is.null,deleted.eq.false')
-        .or('order_status.neq.Cancel,is_printed.eq.true') // Hide unprinteed cancels
+    try {
+        // Get unique seller accounts
+        const sellerAccounts = await getUniqueSellerAccounts()
 
-    if (error) throw error
 
-    // Aggregate by seller account and status
-    const summary = new Map<string, {
-        seller_account: string
-        unpaid: number
-        pending: number
-        packed: number
-        ready_to_ship: number
-        shipped: number
-        delivered: number
-        returning_to_seller: number
-        returned_delivered: number
-        customer_return: number
-        customer_return_delivered: number
-    }>()
+        const statuses = ['Pending', 'Packed', 'Ready to Ship', 'Shipped', 'Delivered',
+            'Returning to Seller', 'Returned Delivered', 'Customer Return',
+            'Customer Return Delivered', 'Unpaid']
 
-    data?.forEach(order => {
-        const account = order.seller_account || 'Unknown'
-        if (!summary.has(account)) {
-            summary.set(account, {
+        const summary: any[] = []
+
+        // For each seller account, query counts for each status using getAllDarazOrders
+        for (const account of sellerAccounts) {
+            const row: any = {
                 seller_account: account,
                 unpaid: 0,
                 pending: 0,
@@ -1696,23 +1730,44 @@ export async function getOrderStatusSummary() {
                 returned_delivered: 0,
                 customer_return: 0,
                 customer_return_delivered: 0
-            })
+            }
+
+            // Query each status to get exact count that matches filtered view
+            // We run these in parallel for the current account to speed it up
+            await Promise.all(statuses.map(async (status) => {
+                const result = await getAllDarazOrders({
+                    page: 1,
+                    limit: 1, // We only need the count, not the data
+                    status: status,
+                    sellerAccount: account
+                })
+
+                const count = result.pagination.total
+
+                // Map status to summary field
+                if (status === 'Unpaid') row.unpaid = count
+                else if (status === 'Pending') row.pending = count
+                else if (status === 'Packed') row.packed = count
+                else if (status === 'Ready to Ship') row.ready_to_ship = count
+                else if (status === 'Shipped') row.shipped = count
+                else if (status === 'Delivered') row.delivered = count
+                else if (status === 'Returning to Seller') row.returning_to_seller = count
+                else if (status === 'Returned Delivered') row.returned_delivered = count
+                else if (status === 'Customer Return') row.customer_return = count
+                else if (status === 'Customer Return Delivered') row.customer_return_delivered = count
+            }))
+
+            summary.push(row)
         }
 
-        const row = summary.get(account)!
-        const status = order.order_status?.toLowerCase() || 'pending'
 
-        if (status === 'unpaid') row.unpaid++
-        else if (status === 'pending') row.pending++
-        else if (status === 'packed') row.packed++
-        else if (status === 'ready to ship') row.ready_to_ship++
-        else if (status === 'shipped') row.shipped++
-        else if (status === 'delivered') row.delivered++
-        else if (status === 'returning to seller') row.returning_to_seller++
-        else if (status === 'returned delivered') row.returned_delivered++
-        else if (status === 'customer return') row.customer_return++
-        else if (status === 'customer return delivered') row.customer_return_delivered++
-    })
 
-    return Array.from(summary.values()).sort((a, b) => a.seller_account.localeCompare(b.seller_account))
+
+        const result = summary.sort((a, b) => a.seller_account.localeCompare(b.seller_account))
+
+        return result
+    } catch (error) {
+        console.error('Error in getOrderStatusSummary:', error)
+        return []
+    }
 }

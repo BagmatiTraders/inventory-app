@@ -120,6 +120,7 @@ export function OrderStatusSyncTable() {
         queryClient.invalidateQueries({ queryKey: ['status-sync-orders'] })      // This page
         queryClient.invalidateQueries({ queryKey: ['all-daraz-orders'] })        // Order List
         queryClient.invalidateQueries({ queryKey: ['daraz-order-sync'] })        // Order Sync
+        queryClient.invalidateQueries({ queryKey: ['order-status-summary'] })    // Dashboard Summary Table
 
         // Show results with status changes
         if (statusChanges.length > 0) {

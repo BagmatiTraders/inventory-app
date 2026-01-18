@@ -39,6 +39,12 @@ export interface MarketplaceOrder {
         id: string
         courier_name: string
     }
+    items?: MarketplaceOrderItem[]
+    branch?: {
+        id?: string
+        branch_name: string
+        delivery_charge?: number
+    }
 }
 
 export interface MarketplaceOrderItem {
@@ -702,6 +708,19 @@ export async function updateMarketplaceOrderStatus(ids: string[], status: string
 
     if (!user) throw new Error('Not authenticated')
 
+    // RESTRICTION: Cannot revert Redirected orders to Pending
+    if (status === 'Pending') {
+        const { data: redirectedOrders } = await supabase
+            .from('marketplace_orders')
+            .select('id')
+            .in('id', ids)
+            .eq('order_status', 'Redirected')
+
+        if (redirectedOrders && redirectedOrders.length > 0) {
+            throw new Error('Cannot revert Redirected orders to Pending status.')
+        }
+    }
+
     const now = new Date().toISOString()
     const updateData: any = {
         order_status: status,
@@ -798,29 +817,29 @@ export async function bulkImportMarketplaceOrders(rows: any[]) {
             const salesId = await generateSalesId(orderDate)
 
             // Parse Amounts
-            const quantity = parseInt(row['Quantity'] || '1') || 1
-            const amount = parseFloat(row['Amount'] || row['Price'] || '0')
-            const deliveryCharge = parseFloat(row['Delivery Charge'] || '0')
-            const branchCharge = parseFloat(row['Branch Charge'] || '0')
+            const deliveryCharge = parseFloat(row['Delivery Charge'] || row['delivery_charge'] || '0')
+            const branchCharge = parseFloat(row['Branch Charge'] || row['branch_charge'] || '0')
+            const quantity = parseInt(row['Quantity'] || row['quantity'] || '1')
+            const amount = parseFloat(row['Amount'] || row['amount'] || '0')
 
-            const totalAmount = (quantity * amount) + deliveryCharge
-
-            // Create Order
+            // Insert Order
             const { data: order, error: orderError } = await supabase
                 .from('marketplace_orders')
                 .insert({
                     sales_id: salesId,
                     order_date: orderDate,
-                    customer_name: row['Customer Name'] || row['Customer'],
-                    phone_number: row['Phone'] || row['Phone Number'] || '',
-                    address: row['Address'] || '',
+                    customer_name: row['Customer Name'] || row['customer_name'] || 'Unknown',
+                    phone_number: row['Phone'] || row['phone_number'] || '',
+                    address: row['Address'] || row['address'],
+                    delivery_branch_id: null, // Basic import implies no branch logic initially
                     courier_id: courierId,
                     branch_charge: branchCharge,
                     delivery_charge: deliveryCharge,
-                    total_amount: totalAmount,
-                    order_status: row['Status'] || 'Pending',
+                    // Use item total + delivery for total
+                    total_amount: (quantity * amount) + deliveryCharge,
+                    order_status: row['Status'] || row['status'] || 'Pending',
                     user_type: 'ALL',
-                    remarks: row['Remarks'] || 'Imported via CSV',
+                    remarks: row['Remarks'] || row['remarks'],
                     created_by: user.id
                 })
                 .select()
@@ -828,32 +847,209 @@ export async function bulkImportMarketplaceOrders(rows: any[]) {
 
             if (orderError) throw orderError
 
-            // Create Order Item
-            // Note: Import usually implies single item per row for simple CSVs. 
-            // If multi-item support is needed, CSV structure would be complex.
-            // Assuming 1 row = 1 order with 1 item for now as per common flat CSV structures.
-            await supabase
+            // Insert Item
+            const { error: itemError } = await supabase
                 .from('marketplace_order_items')
                 .insert({
                     order_id: order.id,
-                    product_name: row['Product Name'] || row['Product'] || 'Unknown Product',
+                    product_name: row['Product Name'] || row['product_name'] || 'Unknown Product',
                     quantity: quantity,
                     amount: amount
                 })
 
+            if (itemError) throw itemError
+
             results.success++
 
         } catch (error: any) {
-            console.error(`Row ${i + 1} Error:`, error)
-            results.failures.push({
-                row: i + 1,
-                reason: error.message || 'Unknown error',
-                data: row
-            })
+            console.error('Row import error:', error)
+            results.failures.push({ row: i + 1, error: error.message })
         }
     }
 
     revalidatePath('/dashboard/sales/marketplace')
-
     return results
+}
+
+// ============================================================================
+// REDIRECT FEATURE
+// ============================================================================
+
+/**
+ * Find a potential target order for redirection.
+ * Target Match Rules:
+ * - Status: 'Returning to Seller'
+ * - Same Product Name
+ * - Same Branch (Location)
+ */
+export async function findRedirectTarget(sourceOrderId: string) {
+    const supabase = await createClient()
+
+    // 1. Get Source Order Details
+    const { data: sourceOrder, error: sourceError } = await supabase
+        .from('marketplace_orders')
+        .select(`
+            *,
+            items:marketplace_order_items(product_name),
+            branch:courier_locations!fk_marketplace_courier_branch(id, branch_name)
+        `)
+        .eq('id', sourceOrderId)
+        .single()
+
+    if (sourceError || !sourceOrder) {
+        throw new Error('Source order not found')
+    }
+
+    if (!sourceOrder.items?.[0]?.product_name) {
+        throw new Error('Source order has no product name')
+    }
+
+    const productName = sourceOrder.items[0].product_name
+    const branchId = sourceOrder.delivery_branch_id
+    const branchName = sourceOrder.branch?.branch_name || ''
+
+    // 2. Find Candidate Targets (Fetch globally, filter locally)
+    const { data: targets, error: targetError } = await supabase
+        .from('marketplace_orders')
+        .select(`
+            *,
+            items:marketplace_order_items(product_name),
+            branch:courier_locations!fk_marketplace_courier_branch(id, branch_name)
+        `)
+        .eq('order_status', 'Returning to Seller')
+        .neq('id', sourceOrderId) // Exclude self
+        .is('redirect_related_order_id', null) // Not already redirected/linked
+        .order('order_date', { ascending: false })
+        .limit(200) // Safety limit
+
+    if (targetError) throw targetError
+
+    // Helper: Levenshtein Distance for fuzzy matching
+    const getLevenshteinDistance = (a: string, b: string) => {
+        if (a.length === 0) return b.length
+        if (b.length === 0) return a.length
+        const matrix = []
+        for (let i = 0; i <= b.length; i++) matrix[i] = [i]
+        for (let j = 0; j <= a.length; j++) matrix[0][j] = j
+        for (let i = 1; i <= b.length; i++) {
+            for (let j = 1; j <= a.length; j++) {
+                if (b.charAt(i - 1) === a.charAt(j - 1)) {
+                    matrix[i][j] = matrix[i - 1][j - 1]
+                } else {
+                    matrix[i][j] = Math.min(
+                        matrix[i - 1][j - 1] + 1,
+                        matrix[i][j - 1] + 1,
+                        matrix[i - 1][j] + 1
+                    )
+                }
+            }
+        }
+        return matrix[b.length][a.length]
+    }
+
+    // Scoring & Filtering
+    const scoredTargets = targets?.map(t => {
+        let score = 0
+        const targetBranchName = t.branch?.branch_name || ''
+        const targetProductName = t.items?.[0]?.product_name || ''
+
+        // Branch Match
+        // Note: We check if branchId is present before strict compare, though source always has it here.
+        const isSameBranchId = branchId && t.delivery_branch_id === branchId
+
+        // Fuzzy Branch Name: distance <= 3 or includes
+        const dist = getLevenshteinDistance(branchName.toLowerCase(), targetBranchName.toLowerCase())
+        // "Kathmandu" (9 chars) vs "katmandu" (8 chars) -> dist 1.
+        // "Pokhara" vs "Pokara" -> dist 1.
+        // "Lalitpur" vs "Lalipur" -> dist 1.
+        // "Baktapur" vs "Bhaktapur" -> dist 1.
+        // If dist is small RELATIVE to length, it's a match. <= 3 is generous for short distinct names.
+        const isFuzzyBranch = dist <= 3 || targetBranchName.toLowerCase().includes(branchName.toLowerCase()) || branchName.toLowerCase().includes(targetBranchName.toLowerCase())
+
+        if (isSameBranchId) score += 20
+        else if (isFuzzyBranch) score += 10
+
+        // Product Match
+        if (targetProductName === productName) score += 10
+        else if (targetProductName.toLowerCase().includes(productName.toLowerCase())) score += 5
+
+        return { ...t, score, isFuzzyBranch, dist }
+    }) || []
+
+    // Filter out completely irrelevant ones (Low score)
+    // Keep if Score > 0. This means EITHER branch fuzzy match OR product name partial match.
+    // If strict branch was required, we would require score >= 10. But user wants fuzzy.
+    const candidates = scoredTargets
+        .filter(t => t.score > 0)
+        .sort((a, b) => b.score - a.score)
+
+    // Recommended: Must be High Score (e.g. Branch (Fuzzy or ID) + Product)
+    // Score >= 15 implies (Branch=10 + Product=5) or (Branch=20). 
+    // Ideally we want Branch AND Product.
+    const recommended = candidates.find(t => t.score >= 15) || candidates[0] || null
+
+    return {
+        recommended: recommended && recommended.score >= 15 ? recommended : null,
+        candidates
+    }
+}
+
+/**
+ * Execute the atomic redirect transaction
+ */
+export async function redirectMarketplaceOrder(data: {
+    sourceOrderId: string,
+    targetOrderId: string,
+    charge: number
+}) {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) throw new Error('Not authenticated')
+
+    const now = new Date().toISOString()
+
+    // 1. Update Source Order
+    const { error: error1 } = await supabase
+        .from('marketplace_orders')
+        .update({
+            order_status: 'Redirected',
+            redirect_related_order_id: data.targetOrderId,
+            delivery_charge: data.charge,
+            updated_at: now,
+            updated_by: user.id
+        })
+        .eq('id', data.sourceOrderId)
+        .eq('order_status', 'Pending') // Optimistic locking
+
+    if (error1) throw new Error(`Source update failed: ${error1.message}`)
+
+    // 2. Update Target Order
+    const { error: error2 } = await supabase
+        .from('marketplace_orders')
+        .update({
+            order_status: 'Redirected',
+            redirect_related_order_id: data.sourceOrderId,
+            updated_at: now,
+            updated_by: user.id
+        })
+        .eq('id', data.targetOrderId)
+        .eq('order_status', 'Returning to Seller')
+
+    if (error2) {
+        // Critical: Source updated, Target failed. Try to rollback Source.
+        console.error('Target update failed, rolling back source...')
+        await supabase
+            .from('marketplace_orders')
+            .update({
+                order_status: 'Pending',
+                redirect_related_order_id: null,
+                updated_at: now
+            })
+            .eq('id', data.sourceOrderId)
+
+        throw new Error(`Redirect failed: ${error2.message}`)
+    }
+
+    revalidatePath('/dashboard/sales/marketplace')
+    return { success: true }
 }

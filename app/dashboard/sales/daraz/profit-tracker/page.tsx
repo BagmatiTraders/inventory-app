@@ -183,6 +183,11 @@ function ProfitTrackerContent({ isEmbedded = false }: { isEmbedded?: boolean }) 
                         />
                     </div>
 
+                    {/* Sync Button */}
+                    <div className="w-full md:w-auto">
+                        <BulkSyncButton orderNumbers={visibleOrderNumbers} />
+                    </div>
+
                     {/* Status Tabs */}
                     <div className="flex w-full md:w-auto p-1 bg-gray-100 dark:bg-zinc-800 rounded-lg overflow-x-auto no-scrollbar">
                         {(['all', 'synced', 'not_synced'] as const).map(status => (
