@@ -420,8 +420,13 @@ export default function DarazSalesEntryPage() {
             groups[seller].push(order)
         })
 
-        // 2. Sort Groups by Order Count (Descending) - Largest group first
+        // 2. Sort Groups - "Account Not Found" first, then by Order Count (Descending)
         const sortedKeys = Object.keys(groups).sort((a, b) => {
+            // Priority: "Account Not Found" should always be first
+            if (a === 'Account Not Found') return -1
+            if (b === 'Account Not Found') return 1
+
+            // For other groups, sort by order count (descending)
             return (groups[b]?.length || 0) - (groups[a]?.length || 0)
         })
 
@@ -991,8 +996,13 @@ export default function DarazSalesEntryPage() {
                                                                 onClick={async () => {
                                                                     if (confirm('Sync products for this order?')) {
                                                                         const res = await syncDarazOrderProducts(order.id)
-                                                                        if (res.success) toast.success(res.message)
-                                                                        else toast.error(res.message)
+                                                                        if (res.success) {
+                                                                            toast.success(res.message)
+                                                                            // Auto-refresh: Invalidate orders cache to trigger automatic UI update
+                                                                            queryClient.invalidateQueries({ queryKey: ['daraz-orders'] })
+                                                                        } else {
+                                                                            toast.error(res.message)
+                                                                        }
                                                                     }
                                                                 }}
                                                                 className="px-1 py-0.5 text-[13px] text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20 rounded"

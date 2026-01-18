@@ -279,7 +279,15 @@ export async function GET(request: NextRequest) {
                 if (order.order_number) existingByNumberMap.set(String(order.order_number), order)
             })
 
-            // C. Process each order
+            // C. Process orders - BATCH OPTIMIZED VERSION
+            // Step 1: Pre-process all orders to determine what needs to be done
+            const ordersToProcess: any[] = []
+            const ordersToSoftDelete: any[] = []
+            const ordersRequiringInvoice: any[] = []
+            const excludedOrders: any[] = []
+
+            console.log(`[DarazSync] Starting to process ${finalOrders.length} fetched orders`)
+
             for (const o of finalOrders) {
                 const itemStatuses = o.items_detail?.map((i: any) => i.status).filter(Boolean) || []
                 const orderStatuses = o.statuses || (o.status ? [o.status] : [])
@@ -287,6 +295,7 @@ export async function GET(request: NextRequest) {
                 const salesStatus = getProminentStatus(allStatuses)
                 const status = orderStatuses[0]?.toLowerCase() || 'pending'
                 const orderId = String(o.order_id)
+                const orderNumber = String(o.order_number)
                 const orderDate = new Date(o.created_at)
 
                 // Logic: Exclude Unpaid/Cancel from Sales
@@ -294,26 +303,30 @@ export async function GET(request: NextRequest) {
                 const isBeforeCutoff = cutoffDate && orderDate < cutoffDate
                 const effectiveShouldSync = shouldBeInSales && !isBeforeCutoff
 
-                let existingOrderObj = existingByIdMap.get(orderId) || existingByNumberMap.get(String(o.order_number)) || null
+                let existingOrderObj = existingByIdMap.get(orderId) || existingByNumberMap.get(orderNumber) || null
 
                 if (!effectiveShouldSync) {
-                    if (existingOrderObj && isBeforeCutoff) { // Only soft delete if cutoff violation, user might want cancel updates?
-                        // If we want to hide cancelled orders that were previously synced:
-                        // User said: "except unpaid or cancel". So if it BECOMES cancel, we hide it?
-                        // Soft delete is the safest way to "hide" from sales lists which filter deleted=false.
-                        if (['cancel', 'canceled', 'cancelled'].includes(status)) {
-                            console.log(`[DarazSync] Soft deleting cancelled order ${orderId}`)
-                            await supabase.from('daraz_orders').update({ deleted: true, order_status: salesStatus }).eq('id', existingOrderObj.id)
-                        }
+                    // LOG WHY ORDER IS EXCLUDED
+                    const reason = !shouldBeInSales
+                        ? `Status '${status}' is excluded (unpaid/cancel)`
+                        : `Order date ${orderDate.toISOString()} is before cutoff ${cutoffDate?.toISOString()}`
+
+                    console.log(`[DarazSync] ❌ EXCLUDED Order #${orderNumber} (${orderId}): ${reason}`)
+                    console.log(`  - Raw statuses: ${JSON.stringify(orderStatuses)}`)
+                    console.log(`  - Item statuses: ${JSON.stringify(itemStatuses)}`)
+                    console.log(`  - All statuses: ${JSON.stringify(allStatuses)}`)
+                    console.log(`  - Computed salesStatus: ${salesStatus}`)
+                    console.log(`  - First status: ${status}`)
+
+                    excludedOrders.push({ orderNumber, orderId, reason, status, salesStatus, orderStatuses, itemStatuses })
+
+                    if (existingOrderObj && isBeforeCutoff && ['cancel', 'canceled', 'cancelled'].includes(status)) {
+                        ordersToSoftDelete.push(existingOrderObj)
                     }
-                    continue;
+                    continue
                 }
 
-                // Prepare Data
-                const shipping = typeof o.address_shipping === 'string' ? JSON.parse(o.address_shipping || '{}') : o.address_shipping || {}
-                const billing = typeof o.address_billing === 'string' ? JSON.parse(o.address_billing || '{}') : o.address_billing || {}
-                const shippingPhone = shipping.phone || shipping.Phone || null
-
+                // Prepare tracking code
                 let trackingCode: string | null = null
                 if (!['pending', 'unpaid', 'canceled'].includes(status)) {
                     const codes = new Set<string>()
@@ -327,13 +340,73 @@ export async function GET(request: NextRequest) {
                     trackingCode = codes.size > 0 ? Array.from(codes).join(', ') : null
                 }
 
-                let invoiceNumber = existingOrderObj?.invoice_number
-                if (!invoiceNumber && effectiveShouldSync) {
-                    const { data: invData, error: invErr } = await supabase.rpc('generate_daraz_invoice_number')
-                    if (!invErr) invoiceNumber = invData
+                // Check if invoice is needed
+                const needsInvoice = !existingOrderObj?.invoice_number && effectiveShouldSync
+                if (needsInvoice) {
+                    ordersRequiringInvoice.push(o)
                 }
 
+                ordersToProcess.push({
+                    rawOrder: o,
+                    salesStatus,
+                    allStatuses,
+                    status,
+                    orderId,
+                    existingOrderObj,
+                    trackingCode,
+                    needsInvoice,
+                    effectiveShouldSync
+                })
+            }
+
+            // Log summary
+            console.log(`[DarazSync] Pre-processing complete:`)
+            console.log(`  ✓ Orders to process: ${ordersToProcess.length}`)
+            console.log(`  ✓ Orders requiring invoice: ${ordersRequiringInvoice.length}`)
+            console.log(`  ✓ Orders to soft-delete: ${ordersToSoftDelete.length}`)
+            console.log(`  ❌ Orders excluded: ${excludedOrders.length}`)
+            if (excludedOrders.length > 0) {
+                console.log(`  Excluded order numbers: ${excludedOrders.map(o => o.orderNumber).join(', ')}`)
+            }
+
+
+            // Step 2: Batch soft delete cancelled orders
+            if (ordersToSoftDelete.length > 0) {
+                console.log(`[DarazSync] Soft deleting ${ordersToSoftDelete.length} cancelled orders`)
+                const idsToDelete = ordersToSoftDelete.map(o => o.id)
+                await supabase.from('daraz_orders')
+                    .update({ deleted: true })
+                    .in('id', idsToDelete)
+            }
+
+            // Step 3: Batch generate invoice numbers
+            const invoiceMap = new Map<string, string>()
+            if (ordersRequiringInvoice.length > 0) {
+                console.log(`[DarazSync] Generating ${ordersRequiringInvoice.length} invoice numbers`)
+                for (const order of ordersRequiringInvoice) {
+                    const { data: invData, error: invErr } = await supabase.rpc('generate_daraz_invoice_number')
+                    if (!invErr && invData) {
+                        invoiceMap.set(String(order.order_id), invData)
+                    }
+                }
+            }
+
+            // Step 4: Prepare batch updates and inserts
+            const ordersToUpdate: any[] = []
+            const ordersToInsert: any[] = []
+            const orderIdToProcessedMap = new Map<string, any>()
+
+            for (const processedOrder of ordersToProcess) {
+                const { rawOrder: o, salesStatus, allStatuses, orderId, existingOrderObj, trackingCode, needsInvoice } = processedOrder
+
+                const shipping = typeof o.address_shipping === 'string' ? JSON.parse(o.address_shipping || '{}') : o.address_shipping || {}
+                const billing = typeof o.address_billing === 'string' ? JSON.parse(o.address_billing || '{}') : o.address_billing || {}
+                const shippingPhone = shipping.phone || shipping.Phone || null
+
+                const invoiceNumber = existingOrderObj?.invoice_number || (needsInvoice ? invoiceMap.get(orderId) : null)
+
                 // Common Payload
+                const eventTime = o.updated_at ? new Date(o.updated_at).toISOString() : new Date().toISOString()
                 const commonPayload: any = {
                     order_status: salesStatus,
                     statuses: allStatuses,
@@ -342,12 +415,13 @@ export async function GET(request: NextRequest) {
                     updated_at: new Date().toISOString(),
                     deleted: false,
                     import_source: 'api_sync',
+                    tracking_code: trackingCode,
+                    tracking_number: trackingCode,
                     shipped_by: null, delivered_by: null, failed_delivered_by: null, customer_returned_by: null, edit_by: null,
-                    edited_at: o.updated_at ? new Date(o.updated_at).toISOString() : new Date().toISOString()
+                    edited_at: eventTime
                 }
 
                 // Timestamps mapping
-                const eventTime = o.updated_at ? new Date(o.updated_at).toISOString() : new Date().toISOString()
                 if (salesStatus === 'Shipped') commonPayload.shipped_at = eventTime
                 if (salesStatus === 'Delivered') commonPayload.delivered_at = eventTime
                 if (salesStatus === 'Failed Delivered') commonPayload.failed_delivered_at = eventTime
@@ -357,13 +431,9 @@ export async function GET(request: NextRequest) {
                 if (salesStatus === 'Customer Return Delivered') commonPayload.customer_return_delivered_at = eventTime
                 if (salesStatus === 'Cancel' || salesStatus === 'Cancelled') commonPayload.cancelled_at = eventTime
 
-                let savedOrder
                 if (existingOrderObj) {
-                    console.log(`[DarazSync] Updating existing order ${orderId}`)
                     const updatePayload = {
                         ...commonPayload,
-                        tracking_code: trackingCode,
-                        tracking_number: trackingCode,
                         invoice_number: invoiceNumber,
                         order_id: String(o.order_id),
                         store_id: storeId
@@ -371,12 +441,10 @@ export async function GET(request: NextRequest) {
                     if (existingOrderObj.import_source === 'manual' || existingOrderObj.import_source === 'csv') {
                         delete (updatePayload as any).import_source
                     }
-                    const { data, error } = await supabase.from('daraz_orders').update(updatePayload).eq('id', existingOrderObj.id).select().single()
-                    if (error) console.error(`[DarazSync] Update failed for ${orderId}:`, error)
-                    savedOrder = data
+                    ordersToUpdate.push({ id: existingOrderObj.id, payload: updatePayload })
+                    orderIdToProcessedMap.set(orderId, { ...existingOrderObj, ...updatePayload, items_detail: o.items_detail })
                 } else {
-                    console.log(`[DarazSync] Inserting new order ${orderId}`)
-                    const { data, error } = await supabase.from('daraz_orders').upsert({
+                    const insertPayload = {
                         ...commonPayload,
                         order_id: String(o.order_id),
                         order_number: String(o.order_number),
@@ -388,8 +456,6 @@ export async function GET(request: NextRequest) {
                         shipping_city: shipping.city || shipping.City,
                         shipping_postcode: shipping.post_code || shipping.postCode || shipping.PostCode,
                         shipping_phone: shippingPhone,
-                        tracking_code: trackingCode,
-                        tracking_number: trackingCode,
                         invoice_number: invoiceNumber,
                         customer_name: shipping.first_name || shipping.firstName || shipping.name || o.customer_name || o.customer_first_name || 'Guest',
                         price: o.price,
@@ -397,24 +463,125 @@ export async function GET(request: NextRequest) {
                         daraz_created_at: o.created_at,
                         order_date: o.created_at,
                         order_source: 'sync'
-                    }, { onConflict: 'order_id' }).select().single()
-                    if (error) console.error(`[DarazSync] Insert failed for ${orderId}:`, error)
-                    savedOrder = data
+                    }
+                    ordersToInsert.push({ orderId, payload: insertPayload, items_detail: o.items_detail })
                 }
+            }
 
-                if (!savedOrder) {
-                    console.log(`[DarazSync] No savedOrder for ${orderId}, skipping items`)
-                    continue
+            // Step 5: Execute batch updates
+            if (ordersToUpdate.length > 0) {
+                console.log(`[DarazSync] Batch updating ${ordersToUpdate.length} existing orders`)
+                for (const { id, payload } of ordersToUpdate) {
+                    const { error } = await supabase.from('daraz_orders').update(payload).eq('id', id)
+                    if (error) console.error(`[DarazSync] Update failed for order id ${id}:`, error)
                 }
+            }
 
-                // 4. Sync Items
-                const allItems = o.items_detail || []
+            // Step 6: Execute batch inserts using upsert
+            let insertedOrders: any[] = []
+            if (ordersToInsert.length > 0) {
+                console.log(`[DarazSync] Batch inserting ${ordersToInsert.length} new orders`)
+                const { data, error } = await supabase
+                    .from('daraz_orders')
+                    .upsert(ordersToInsert.map(o => o.payload), { onConflict: 'order_id' })
+                    .select()
+
+                if (error) {
+                    console.error('[DarazSync] Batch insert failed:', error)
+
+                    // If batch insert failed due to invoice number conflict, try individual inserts
+                    if (error.code === '23505' && error.message.includes('invoice_number_key')) {
+                        console.log('[DarazSync] Falling back to individual inserts with invoice regeneration...')
+
+                        for (const orderToInsert of ordersToInsert) {
+                            let attempt = 0
+                            let inserted = false
+
+                            while (attempt < 3 && !inserted) {
+                                try {
+                                    // If invoice conflict, generate a new invoice number
+                                    if (attempt > 0) {
+                                        const { data: newInvoice } = await supabase.rpc('generate_daraz_invoice_number')
+                                        if (newInvoice) {
+                                            orderToInsert.payload.invoice_number = newInvoice
+                                            console.log(`[DarazSync] Regenerated invoice for order ${orderToInsert.payload.order_number}: ${newInvoice}`)
+                                        }
+                                    }
+
+                                    const { data: singleInsert, error: singleError } = await supabase
+                                        .from('daraz_orders')
+                                        .upsert(orderToInsert.payload, { onConflict: 'order_id' })
+                                        .select()
+                                        .single()
+
+                                    if (singleError) {
+                                        if (singleError.code === '23505' && singleError.message.includes('invoice_number_key')) {
+                                            console.log(`[DarazSync] Invoice conflict on attempt ${attempt + 1} for order ${orderToInsert.payload.order_number}, retrying...`)
+                                            attempt++
+                                            continue
+                                        } else {
+                                            console.error(`[DarazSync] Failed to insert order ${orderToInsert.payload.order_number}:`, singleError)
+                                            break
+                                        }
+                                    }
+
+                                    if (singleInsert) {
+                                        insertedOrders.push(singleInsert)
+                                        orderIdToProcessedMap.set(orderToInsert.orderId, { ...singleInsert, items_detail: orderToInsert.items_detail })
+                                        inserted = true
+                                        console.log(`[DarazSync] ✓ Successfully inserted order ${orderToInsert.payload.order_number}`)
+                                    }
+                                } catch (err) {
+                                    console.error(`[DarazSync] Exception inserting order ${orderToInsert.payload.order_number}:`, err)
+                                    break
+                                }
+                            }
+
+                            if (!inserted) {
+                                console.error(`[DarazSync] ❌ Failed to insert order ${orderToInsert.payload.order_number} after ${attempt} attempts`)
+                            }
+                        }
+                    }
+                } else {
+                    insertedOrders = data || []
+                    // Map inserted orders back
+                    insertedOrders.forEach((insertedOrder) => {
+                        const matchingOrder = ordersToInsert.find(o => o.payload.order_id === insertedOrder.order_id)
+                        if (matchingOrder) {
+                            orderIdToProcessedMap.set(matchingOrder.orderId, { ...insertedOrder, items_detail: matchingOrder.items_detail })
+                        }
+                    })
+                }
+            }
+
+            // Step 7: Batch process items
+            // First, collect all order IDs that need item deletion
+            const orderIdsForItemDeletion = Array.from(orderIdToProcessedMap.values())
+                .filter(order => {
+                    const items = order.items_detail || []
+                    const itemsToSync = items.filter((item: any) => !['unpaid', 'canceled', 'cancelled'].includes((item.status || '').toLowerCase()))
+                    return itemsToSync.length > 0
+                })
+                .map(order => order.id)
+                .filter(Boolean)
+
+            // Batch delete all items for orders that need re-syncing
+            if (orderIdsForItemDeletion.length > 0) {
+                console.log(`[DarazSync] Batch deleting items for ${orderIdsForItemDeletion.length} orders`)
+                await supabase.from('daraz_order_items').delete().in('order_id', orderIdsForItemDeletion)
+            }
+
+            // Prepare all items for batch insert
+            const allItemsToInsert: any[] = []
+            const ordersNeedingFinanceSync: string[] = []
+
+            for (const savedOrder of orderIdToProcessedMap.values()) {
+                if (!savedOrder.id) continue
+
+                const allItems = savedOrder.items_detail || []
                 const itemsToSync = allItems.filter((item: any) => !['unpaid', 'canceled', 'cancelled'].includes((item.status || '').toLowerCase()))
 
                 if (itemsToSync.length > 0) {
-                    await supabase.from('daraz_order_items').delete().eq('order_id', savedOrder.id)
-
-                    const orderItemsPayload = []
                     let sequence = 1
                     for (const item of itemsToSync) {
                         const shopSku = item.shop_sku || item.ShopSku || ''
@@ -425,7 +592,7 @@ export async function GET(request: NextRequest) {
                         let matchedProduct = skuMap.get(sku.toLowerCase()) || skuMap.get(shopSku.toLowerCase())
                         if (!matchedProduct && itemName) matchedProduct = nameMap.get(itemName)
 
-                        orderItemsPayload.push({
+                        allItemsToInsert.push({
                             order_id: savedOrder.id,
                             seller_sku: sku || shopSku,
                             product_id: matchedProduct?.id || null,
@@ -434,30 +601,47 @@ export async function GET(request: NextRequest) {
                             quantity: 1,
                             amount: item.item_price || item.price || 0,
                             status: itemStatus,
-                            item_sequence: sequence++
+                            item_sequence: sequence++,
+                            aggregation_key: `${savedOrder.id}_${sku || shopSku}_${item.item_price || item.price || 0}`
                         })
-                    }
-
-                    if (orderItemsPayload.length > 0) {
-                        const aggregatedItems = new Map<string, any>()
-                        orderItemsPayload.forEach(p => {
-                            const key = p.seller_sku + '_' + p.amount
-                            if (aggregatedItems.has(key)) {
-                                aggregatedItems.get(key).quantity += 1
-                            } else {
-                                aggregatedItems.set(key, p)
-                            }
-                        })
-                        await supabase.from('daraz_order_items').insert(Array.from(aggregatedItems.values()))
                     }
                 }
 
-                // Auto-sync Finance
-                if (effectiveShouldSync && salesStatus === 'Delivered') {
+                // Track orders needing finance sync
+                if (savedOrder.order_status === 'Delivered') {
+                    ordersNeedingFinanceSync.push(savedOrder.order_number)
+                }
+            }
+
+            // Aggregate items by order and SKU+price
+            if (allItemsToInsert.length > 0) {
+                console.log(`[DarazSync] Batch inserting ${allItemsToInsert.length} items across all orders`)
+                const aggregatedItems = new Map<string, any>()
+                allItemsToInsert.forEach(item => {
+                    const key = item.aggregation_key
+                    if (aggregatedItems.has(key)) {
+                        aggregatedItems.get(key).quantity += 1
+                    } else {
+                        const { aggregation_key, ...itemWithoutKey } = item
+                        aggregatedItems.set(key, itemWithoutKey)
+                    }
+                })
+
+                const finalItems = Array.from(aggregatedItems.values())
+                if (finalItems.length > 0) {
+                    const { error: itemsError } = await supabase.from('daraz_order_items').insert(finalItems)
+                    if (itemsError) console.error('[DarazSync] Batch items insert failed:', itemsError)
+                }
+            }
+
+            // Step 8: Auto-sync finance for delivered orders (can be done async if needed)
+            if (ordersNeedingFinanceSync.length > 0) {
+                console.log(`[DarazSync] Syncing finance for ${ordersNeedingFinanceSync.length} delivered orders`)
+                for (const orderNumber of ordersNeedingFinanceSync) {
                     try {
-                        await syncOrderPurchaseCost(String(o.order_number))
+                        await syncOrderPurchaseCost(orderNumber)
                     } catch (e) {
-                        console.error('Auto-sync finance failed', e)
+                        console.error(`Auto-sync finance failed for ${orderNumber}`, e)
                     }
                 }
             }
