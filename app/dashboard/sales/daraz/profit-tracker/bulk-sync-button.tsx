@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { RefreshCw } from 'lucide-react'
 import { syncBulkOrderPurchaseCosts, syncSpecificOrders } from '@/features/sales/actions/report-actions'
-import { useRouter } from 'next/navigation'
+import { useQueryClient } from '@tanstack/react-query'
 
 interface BulkSyncButtonProps {
     orderNumbers?: string[]
@@ -12,7 +12,7 @@ interface BulkSyncButtonProps {
 export function BulkSyncButton({ orderNumbers = [] }: BulkSyncButtonProps) {
     const [isSyncing, setIsSyncing] = useState(false)
     const [message, setMessage] = useState('')
-    const router = useRouter()
+    const queryClient = useQueryClient()
 
     const handleSync = async () => {
         const count = orderNumbers.length
@@ -39,8 +39,9 @@ export function BulkSyncButton({ orderNumbers = [] }: BulkSyncButtonProps) {
             // Show first debug message if available for clarity
             setMessage(`✓ ${result.message}`)
 
-            // Refresh the page data
-            router.refresh()
+            // Invalidate and refetch the profit tracker data
+            await queryClient.invalidateQueries({ queryKey: ['profit-tracker'] })
+            await queryClient.invalidateQueries({ queryKey: ['daily-profit-stats'] })
 
             // Clear message after 3 seconds
             setTimeout(() => setMessage(''), 3000)

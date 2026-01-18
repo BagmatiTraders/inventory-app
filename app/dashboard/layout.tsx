@@ -4,7 +4,7 @@ import { LocationGuard } from "@/features/security/components/LocationGuard"
 import { useSecurityCheck } from "@/features/security/hooks/useSecurityCheck"
 import { useTheme } from "@/lib/theme/ThemeProvider"
 import Link from "next/link"
-import { LogOut, LayoutDashboard, Settings, ShoppingCart, Calculator, Shield, Menu, MoreVertical, Moon, Sun, ChevronDown, ChevronRight, FileText, AlertTriangle, History, BarChart2, Package, ShoppingBag, User, Plus, Camera as CameraIcon } from "lucide-react"
+import { LogOut, LayoutDashboard, Settings, ShoppingCart, Calculator, Shield, Menu, MoreVertical, Moon, Sun, ChevronDown, ChevronRight, FileText, AlertTriangle, History, BarChart2, Package, ShoppingBag, User, Plus, Camera as CameraIcon, Wallet } from "lucide-react"
 import { logout } from "@/features/auth/actions/auth-actions"
 import { useRouter, usePathname } from "next/navigation"
 import { useState, useEffect } from "react"
@@ -19,6 +19,7 @@ import { MobileFooter } from "@/components/dashboard/MobileFooter"
 interface DashboardContextType {
     isMobileMenuOpen: boolean
     setIsMobileMenuOpen: (isOpen: boolean) => void
+    isCollapsed: boolean
 }
 
 const DashboardContext = createContext<DashboardContextType | undefined>(undefined)
@@ -63,7 +64,7 @@ function DashboardLayout({
     return (
         // Temporarily disabled LocationGuard - will re-enable after setup
         // <LocationGuard>
-        <DashboardContext.Provider value={{ isMobileMenuOpen, setIsMobileMenuOpen }}>
+        <DashboardContext.Provider value={{ isMobileMenuOpen, setIsMobileMenuOpen, isCollapsed }}>
             <div className="flex h-screen bg-gray-100 dark:bg-zinc-900 relative">
                 {/* Mobile Header - Hide for Stock Ledger and other specific pages */}
                 {pathname !== '/dashboard/purchase/inventory-price-reports' &&
@@ -146,6 +147,9 @@ function DashboardLayout({
                                 {pathname === '/dashboard/mobile-uploads' && (
                                     <span className="font-bold text-lg whitespace-nowrap">Mobile Uploads</span>
                                 )}
+                                {pathname === '/dashboard/account' && (
+                                    <span className="font-bold text-lg whitespace-nowrap">Account & Transaction</span>
+                                )}
 
                                 {/* Default Title */}
                                 {pathname !== '/dashboard/sales/daraz' &&
@@ -168,7 +172,8 @@ function DashboardLayout({
                                     pathname !== '/dashboard/sales/daraz/order-sync' &&
                                     pathname !== '/dashboard/profile' &&
                                     pathname !== '/dashboard/sales/daraz/profit-tracker' &&
-                                    pathname !== '/dashboard/mobile-uploads' && (
+                                    pathname !== '/dashboard/mobile-uploads' &&
+                                    pathname !== '/dashboard/account' && (
                                         <span className="font-bold text-lg text-black dark:text-white whitespace-nowrap">BAGMATI TRADERS</span>
                                     )}
                             </div>
@@ -286,6 +291,11 @@ function DashboardLayout({
                                 <div onClick={closeMobileMenu}>
                                     <NavItem href="/dashboard/suppliers" icon={<Package size={20} />} isCollapsed={isCollapsed}>
                                         Suppliers
+                                    </NavItem>
+                                </div>
+                                <div onClick={closeMobileMenu}>
+                                    <NavItem href="/dashboard/account" icon={<Wallet size={20} />} isCollapsed={isCollapsed}>
+                                        Account
                                     </NavItem>
                                 </div>
                                 <div onClick={closeMobileMenu}>
