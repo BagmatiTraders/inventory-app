@@ -848,7 +848,7 @@ export async function getFiscalYearById(id: string) {
     return data
 }
 
-// Get sales summary by fiscal year
+// Get sales summary by fiscal year (Scaled for large datasets)
 export async function getDarazSalesByFiscalYear(fiscalYearId: string) {
     try {
         const supabase = await createClient()
@@ -870,45 +870,57 @@ export async function getDarazSalesByFiscalYear(fiscalYearId: string) {
             }
         }
 
-        const { data, error } = await supabase
-            .from('daraz_orders')
-            .select(`
-                id,
-                order_status,
-                items:daraz_order_items(
-                    quantity,
-                    amount,
-                    seller_account
-                )
-            `)
-            .gte('order_date', fiscalYear.start_date)
-            .lte('order_date', fiscalYear.end_date)
-
-        if (error) {
-            console.error('Orders query error:', error)
-            return {
-                fiscalYear: fiscalYear.name,
-                totalOrders: 0,
-                totalQuantity: 0,
-                totalAmount: 0,
-                activeSellerAccounts: 0
-            }
-        }
-
-        const orders = data || []
-        const totalOrders = orders.length
-        const totalQuantity = orders.reduce((sum, order) =>
-            sum + (order.items?.reduce((itemSum: number, item: any) => itemSum + (item.quantity || 0), 0) || 0), 0)
-        const totalAmount = orders.reduce((sum, order) =>
-            sum + (order.items?.reduce((itemSum: number, item: any) => itemSum + ((item.quantity || 0) * (item.amount || 0)), 0) || 0), 0)
-
-        // Get unique seller accounts
+        let totalOrders = 0
+        let totalQuantity = 0
+        let totalAmount = 0
         const sellerAccounts = new Set<string>()
-        orders.forEach(order => {
-            order.items?.forEach((item: any) => {
-                if (item.seller_account) sellerAccounts.add(item.seller_account)
+
+        let page = 0
+        const pageSize = 1000
+
+        while (true) {
+            const { data, error } = await supabase
+                .from('daraz_orders')
+                .select(`
+                    id,
+                    order_status,
+                    items:daraz_order_items(
+                        quantity,
+                        amount,
+                        seller_account
+                    )
+                `)
+                .gte('order_date', fiscalYear.start_date)
+                .lte('order_date', fiscalYear.end_date)
+                .range(page * pageSize, (page + 1) * pageSize - 1)
+
+            if (error) {
+                console.error('Orders query error:', error)
+                break
+            }
+
+            if (!data || data.length === 0) break
+
+            const orders = data
+            totalOrders += orders.length
+
+            orders.forEach(order => {
+                // Sum items for this order
+                const orderQty = order.items?.reduce((itemSum: number, item: any) => itemSum + (item.quantity || 0), 0) || 0
+                const orderAmt = order.items?.reduce((itemSum: number, item: any) => itemSum + ((item.quantity || 0) * (item.amount || 0)), 0) || 0
+
+                totalQuantity += orderQty
+                totalAmount += orderAmt
+
+                // Collect seller accounts
+                order.items?.forEach((item: any) => {
+                    if (item.seller_account) sellerAccounts.add(item.seller_account)
+                })
             })
-        })
+
+            if (data.length < pageSize) break
+            page++
+        }
 
         return {
             fiscalYear: fiscalYear.name,
@@ -929,7 +941,7 @@ export async function getDarazSalesByFiscalYear(fiscalYearId: string) {
     }
 }
 
-// Get monthly sales breakdown by fiscal year
+// Get monthly sales breakdown by fiscal year (Scaled)
 export async function getMonthlySalesByFiscalYear(fiscalYearId: string) {
     try {
         const supabase = await createClient()
@@ -945,36 +957,45 @@ export async function getMonthlySalesByFiscalYear(fiscalYearId: string) {
             return []
         }
 
-        const { data, error } = await supabase
-            .from('daraz_orders')
-            .select(`
-                order_date,
-                items:daraz_order_items(
-                    quantity,
-                    amount
-                )
-            `)
-            .gte('order_date', fiscalYear.start_date)
-            .lte('order_date', fiscalYear.end_date)
-
-        if (error) {
-            console.error('Monthly orders error:', error)
-            return []
-        }
-
-        // Group by month
         const monthlyData: { [key: string]: { count: number, total: number } } = {}
+        let page = 0
+        const pageSize = 1000
 
-        data?.forEach(order => {
-            const month = new Date(order.order_date).toISOString().substring(0, 7) // YYYY-MM
-            if (!monthlyData[month]) {
-                monthlyData[month] = { count: 0, total: 0 }
+        while (true) {
+            const { data, error } = await supabase
+                .from('daraz_orders')
+                .select(`
+                    order_date,
+                    items:daraz_order_items(
+                        quantity,
+                        amount
+                    )
+                `)
+                .gte('order_date', fiscalYear.start_date)
+                .lte('order_date', fiscalYear.end_date)
+                .range(page * pageSize, (page + 1) * pageSize - 1)
+
+            if (error) {
+                console.error('Monthly orders error:', error)
+                break
             }
-            monthlyData[month].count++
-            // Calculate total from items
-            const orderTotal = order.items?.reduce((sum: number, item: any) => sum + ((item.quantity || 0) * (item.amount || 0)), 0) || 0
-            monthlyData[month].total += orderTotal
-        })
+
+            if (!data || data.length === 0) break
+
+            data.forEach(order => {
+                const month = new Date(order.order_date).toISOString().substring(0, 7) // YYYY-MM
+                if (!monthlyData[month]) {
+                    monthlyData[month] = { count: 0, total: 0 }
+                }
+                monthlyData[month].count++
+                // Calculate total from items
+                const orderTotal = order.items?.reduce((sum: number, item: any) => sum + ((item.quantity || 0) * (item.amount || 0)), 0) || 0
+                monthlyData[month].total += orderTotal
+            })
+
+            if (data.length < pageSize) break
+            page++
+        }
 
         return Object.entries(monthlyData)
             .map(([month, data]) => ({
@@ -989,7 +1010,7 @@ export async function getMonthlySalesByFiscalYear(fiscalYearId: string) {
     }
 }
 
-// Get sales by seller account for fiscal year
+// Get sales by seller account for fiscal year (Scaled)
 export async function getSalesBySellerAccount(fiscalYearId: string) {
     try {
         const supabase = await createClient()
@@ -1005,38 +1026,47 @@ export async function getSalesBySellerAccount(fiscalYearId: string) {
             return []
         }
 
-        const { data, error } = await supabase
-            .from('daraz_orders')
-            .select(`
-                items:daraz_order_items(
-                    seller_account,
-                    product_name,
-                    quantity,
-                    amount
-                )
-            `)
-            .gte('order_date', fiscalYear.start_date)
-            .lte('order_date', fiscalYear.end_date)
-
-        if (error) {
-            console.error('Seller sales error:', error)
-            return []
-        }
-
-        // Group by seller account
         const accountData: { [key: string]: { orders: number, quantity: number, totalAmount: number } } = {}
+        let page = 0
+        const pageSize = 1000
 
-        data?.forEach(order => {
-            order.items?.forEach((item: any) => {
-                const account = item.seller_account || 'Unknown'
-                if (!accountData[account]) {
-                    accountData[account] = { orders: 0, quantity: 0, totalAmount: 0 }
-                }
-                accountData[account].orders++
-                accountData[account].quantity += item.quantity || 0
-                accountData[account].totalAmount += (item.quantity || 0) * (item.amount || 0)
+        while (true) {
+            const { data, error } = await supabase
+                .from('daraz_orders')
+                .select(`
+                    items:daraz_order_items(
+                        seller_account,
+                        product_name,
+                        quantity,
+                        amount
+                    )
+                `)
+                .gte('order_date', fiscalYear.start_date)
+                .lte('order_date', fiscalYear.end_date)
+                .range(page * pageSize, (page + 1) * pageSize - 1)
+
+            if (error) {
+                console.error('Seller sales error:', error)
+                break
+            }
+
+            if (!data || data.length === 0) break
+
+            data.forEach(order => {
+                order.items?.forEach((item: any) => {
+                    const account = item.seller_account || 'Unknown'
+                    if (!accountData[account]) {
+                        accountData[account] = { orders: 0, quantity: 0, totalAmount: 0 }
+                    }
+                    accountData[account].orders++
+                    accountData[account].quantity += item.quantity || 0
+                    accountData[account].totalAmount += (item.quantity || 0) * (item.amount || 0)
+                })
             })
-        })
+
+            if (data.length < pageSize) break
+            page++
+        }
 
         // Fetch company names from online_stores
         const { data: stores } = await supabase
@@ -1769,5 +1799,92 @@ export async function getOrderStatusSummary() {
     } catch (error) {
         console.error('Error in getOrderStatusSummary:', error)
         return []
+    }
+}
+
+// Get sales breakdown for last 30 days (Daily Total Orders vs Seller Account)
+export async function getLast30DaysSales(fiscalYearId?: string) {
+    const supabase = await createClient()
+
+    try {
+        // Calculate start date (30 days ago)
+        const endDateObj = new Date()
+        const startDateObj = new Date()
+        startDateObj.setDate(endDateObj.getDate() - 30)
+
+        const startDate = startDateObj.toISOString().split('T')[0]
+        const endDate = endDateObj.toISOString().split('T')[0] // today
+
+        // Use batch fetching to get all relevant orders
+        let page = 0
+        const pageSize = 1000
+        const dailyData: { [date: string]: { [seller: string]: number } } = {}
+        const sellerAccounts = new Set<string>()
+
+        while (true) {
+            let query = supabase
+                .from('daraz_orders')
+                .select(`
+                    order_date,
+                    items:daraz_order_items(
+                        seller_account
+                    )
+                `)
+                .gte('order_date', startDate)
+                .lte('order_date', endDate)
+                .range(page * pageSize, (page + 1) * pageSize - 1)
+
+            // If fiscal year provided, we might want to restrict, but "Last 30 Days" usually implies absolute recent time.
+            // Ignoring FY for "Last 30 Days" chart as it's a recent trend view.
+
+            const { data, error } = await query
+
+            if (error) {
+                console.error('getLast30DaysSales query error:', error)
+                break
+            }
+
+            if (!data || data.length === 0) break
+
+            data.forEach(order => {
+                const date = order.order_date
+                if (!dailyData[date]) {
+                    dailyData[date] = {}
+                }
+
+                order.items?.forEach((item: any) => {
+                    const seller = item.seller_account || 'Unknown'
+                    sellerAccounts.add(seller)
+                    if (!dailyData[date][seller]) {
+                        dailyData[date][seller] = 0
+                    }
+                    dailyData[date][seller]++
+                })
+            })
+
+            if (data.length < pageSize) break
+            page++
+        }
+
+        // Fill in missing dates with 0
+        const result: { date: string, [seller: string]: number | string }[] = []
+        for (let d = new Date(startDateObj); d <= endDateObj; d.setDate(d.getDate() + 1)) {
+            const dateStr = d.toISOString().split('T')[0]
+            const dayData: any = { date: dateStr }
+
+            sellerAccounts.forEach(seller => {
+                dayData[seller] = dailyData[dateStr]?.[seller] || 0
+            })
+            result.push(dayData)
+        }
+
+        return {
+            data: result,
+            sellers: Array.from(sellerAccounts).sort()
+        }
+
+    } catch (error) {
+        console.error('getLast30DaysSales error:', error)
+        return { data: [], sellers: [] }
     }
 }
