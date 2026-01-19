@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { Plus, Search, X } from 'lucide-react'
+import { Card } from '@/components/ui-shim'
 import { useQuery } from '@tanstack/react-query'
 import { getPanVatBills, type PanVatBill } from '@/features/account/actions/pan-vat-bill-actions'
 import { format } from 'date-fns'
@@ -49,94 +50,93 @@ export function PanVatBillList({ onAddBill }: PanVatBillListProps) {
 
     return (
         <div className="space-y-4">
-            {/* Filters */}
-            <div className="bg-white dark:bg-zinc-900 rounded-lg border dark:border-zinc-800 p-4">
-                <div className="flex flex-wrap gap-4 items-end">
-                    {/* Fiscal Year Dropdown */}
-                    <div className="flex-1 min-w-[200px]">
-                        <label className="block text-sm font-medium mb-2">Fiscal Year</label>
-                        <select
-                            value={fiscalYearId}
-                            onChange={(e) => setFiscalYearId(e.target.value)}
-                            className="w-full px-3 py-2 border dark:border-zinc-700 rounded-md bg-white dark:bg-zinc-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        >
-                            <option value="all">All Fiscal Years</option>
-                            {fiscalYears.map((fy) => (
-                                <option key={fy.id} value={fy.id}>
-                                    {fy.name}
-                                </option>
-                            ))}
-                        </select>
-                    </div>
+            <Card className="overflow-hidden">
+                {/* Filters */}
+                <div className="p-3 border-b dark:border-zinc-800">
+                    <div className="flex flex-col md:flex-row gap-3">
+                        {/* Fiscal Year Dropdown */}
+                        <div className="flex-1">
+                            <select
+                                value={fiscalYearId}
+                                onChange={(e) => setFiscalYearId(e.target.value)}
+                                className="w-full px-3 py-1.5 text-[13px] border dark:border-zinc-700 rounded-md bg-white dark:bg-zinc-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            >
+                                <option value="all">All Fiscal Years</option>
+                                {fiscalYears.map((fy) => (
+                                    <option key={fy.id} value={fy.id}>
+                                        {fy.name}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
 
-                    {/* Search Box */}
-                    <div className="flex-1 min-w-[250px]">
-                        <label className="block text-sm font-medium mb-2">Search</label>
-                        <div className="relative">
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                        {/* Search Box */}
+                        <div className="flex-1 relative">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
                             <input
                                 type="text"
                                 value={search}
                                 onChange={(e) => setSearch(e.target.value)}
                                 placeholder="Search by supplier, buyer, or invoice..."
-                                className="w-full pl-10 pr-10 py-2 border dark:border-zinc-700 rounded-md bg-white dark:bg-zinc-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                className="w-full pl-9 pr-3 py-1.5 text-[13px] border dark:border-zinc-700 rounded-md bg-white dark:bg-zinc-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
                             />
                             {search && (
                                 <button
                                     onClick={() => setSearch('')}
                                     className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
                                 >
-                                    <X className="h-4 w-4" />
+                                    <X className="h-3.5 w-3.5" />
                                 </button>
                             )}
                         </div>
+
+                        {/* Clear Button */}
+                        {(fiscalYearId !== 'all' || search) && (
+                            <button
+                                onClick={handleClearFilters}
+                                className="flex items-center gap-1.5 px-3 py-1.5 text-[13px] border dark:border-zinc-700 rounded-md hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors whitespace-nowrap"
+                            >
+                                <X className="h-3.5 w-3.5" />
+                                Clear Filters
+                            </button>
+                        )}
                     </div>
-
-                    {/* Clear Button */}
-                    <button
-                        onClick={handleClearFilters}
-                        className="px-4 py-2 text-sm border dark:border-zinc-700 rounded-md hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors"
-                    >
-                        Clear Filters
-                    </button>
                 </div>
-            </div>
 
-            {/* Bills Table */}
-            <div className="bg-white dark:bg-zinc-900 rounded-lg border dark:border-zinc-800">
+                {/* Bills Table */}
                 <div className="overflow-x-auto">
-                    <table className="w-full">
+                    <table className="w-full text-left">
                         <thead className="bg-gray-50 dark:bg-zinc-800">
                             <tr>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">S.N</th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Date (AD)</th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Date (BS)</th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Invoice No</th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Supplier</th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Buyer</th>
-                                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Total Amount</th>
+                                <th className="px-3 py-2 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">S.N</th>
+                                <th className="px-3 py-2 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Date (AD)</th>
+                                <th className="px-3 py-2 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Date (BS)</th>
+                                <th className="px-3 py-2 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Invoice No</th>
+                                <th className="px-3 py-2 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Supplier</th>
+                                <th className="px-3 py-2 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Buyer</th>
+                                <th className="px-3 py-2 text-right text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Total Amount</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-200 dark:divide-zinc-800">
                             {isLoading ? (
                                 <tr>
-                                    <td colSpan={7} className="px-6 py-12 text-center text-gray-500">
+                                    <td colSpan={7} className="px-3 py-8 text-center text-gray-500 text-[13px]">
                                         Loading bills...
                                     </td>
                                 </tr>
                             ) : bills.length === 0 ? (
                                 <tr>
-                                    <td colSpan={7} className="px-6 py-12 text-center text-gray-500">
+                                    <td colSpan={7} className="px-3 py-8 text-center text-gray-500 text-[13px]">
                                         No bills found. Click "Add Bill" to create one.
                                     </td>
                                 </tr>
                             ) : (
                                 bills.map((bill, index) => (
                                     <tr key={bill.id} className="hover:bg-gray-50 dark:hover:bg-zinc-800/50">
-                                        <td className="px-6 py-4 text-sm">{index + 1}</td>
-                                        <td className="px-6 py-4 text-sm">{format(new Date(bill.issue_bill_date_ad), 'MMM dd, yyyy')}</td>
-                                        <td className="px-6 py-4 text-sm">{bill.issue_bill_date_bs}</td>
-                                        <td className="px-6 py-4 text-sm font-medium">
+                                        <td className="px-3 py-2 text-[13px] text-gray-500">{index + 1}</td>
+                                        <td className="px-3 py-2 text-[13px] font-medium text-gray-900 dark:text-gray-100">{format(new Date(bill.issue_bill_date_ad), 'MMM dd, yyyy')}</td>
+                                        <td className="px-3 py-2 text-[13px] text-gray-500 dark:text-gray-400">{bill.issue_bill_date_bs}</td>
+                                        <td className="px-3 py-2 text-[13px] font-medium">
                                             <button
                                                 onClick={() => setSelectedBillId(bill.id)}
                                                 className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 underline"
@@ -144,9 +144,9 @@ export function PanVatBillList({ onAddBill }: PanVatBillListProps) {
                                                 {bill.invoice_no}
                                             </button>
                                         </td>
-                                        <td className="px-6 py-4 text-sm">{bill.supplier_company_name || '-'}</td>
-                                        <td className="px-6 py-4 text-sm">{bill.buyer_company_name || '-'}</td>
-                                        <td className="px-6 py-4 text-sm text-right font-medium">
+                                        <td className="px-3 py-2 text-[13px] text-gray-900 dark:text-gray-100">{bill.supplier_company_name || '-'}</td>
+                                        <td className="px-3 py-2 text-[13px] text-gray-900 dark:text-gray-100">{bill.buyer_company_name || '-'}</td>
+                                        <td className="px-3 py-2 text-[13px] text-right font-medium text-gray-900 dark:text-gray-100">
                                             Rs. {bill.total_amount.toLocaleString('en-NP', { minimumFractionDigits: 2 })}
                                         </td>
                                     </tr>
@@ -155,7 +155,7 @@ export function PanVatBillList({ onAddBill }: PanVatBillListProps) {
                         </tbody>
                     </table>
                 </div>
-            </div>
+            </Card>
 
             {/* View Bill Modal */}
             {selectedBillId && (

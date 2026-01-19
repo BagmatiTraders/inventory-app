@@ -147,6 +147,9 @@ function DashboardLayout({
                                 {pathname === '/dashboard/mobile-uploads' && (
                                     <span className="font-bold text-lg whitespace-nowrap">Mobile Uploads</span>
                                 )}
+                                {pathname === '/dashboard/stock-analysis' && (
+                                    <span className="font-bold text-lg whitespace-nowrap">Stock Analysis</span>
+                                )}
                                 {pathname === '/dashboard/account' && (
                                     <span className="font-bold text-lg whitespace-nowrap">Account & Transaction</span>
                                 )}
@@ -173,6 +176,7 @@ function DashboardLayout({
                                     pathname !== '/dashboard/profile' &&
                                     pathname !== '/dashboard/sales/daraz/profit-tracker' &&
                                     pathname !== '/dashboard/mobile-uploads' &&
+                                    pathname !== '/dashboard/stock-analysis' &&
                                     pathname !== '/dashboard/account' && (
                                         <span className="font-bold text-lg text-black dark:text-white whitespace-nowrap">BAGMATI TRADERS</span>
                                     )}
@@ -270,6 +274,11 @@ function DashboardLayout({
                                 <div onClick={closeMobileMenu}>
                                     <NavItem href="/dashboard/inventory" icon={<Calculator size={20} />} isCollapsed={isCollapsed}>
                                         Inventory
+                                    </NavItem>
+                                </div>
+                                <div onClick={closeMobileMenu}>
+                                    <NavItem href="/dashboard/stock-analysis" icon={<BarChart2 size={20} />} isCollapsed={isCollapsed}>
+                                        Stock Analysis
                                     </NavItem>
                                 </div>
 

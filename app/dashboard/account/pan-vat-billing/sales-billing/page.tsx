@@ -1,38 +1,129 @@
 'use client'
 
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, Plus } from 'lucide-react'
 import Link from 'next/link'
+import { useState } from 'react'
+
+import { StockAnalysisPage } from '@/features/stock-analysis/components/StockAnalysisPage'
+import { AddSalesBillModal } from '@/features/sales/components/AddSalesBillModal'
+import { SalesBillList } from '@/features/sales/components/SalesBillList'
+import { SalesBillDetailModal } from '@/features/sales/components/SalesBillDetailModal'
+import { SalesBill } from '@/features/sales/actions/sales-bill-actions'
 
 export default function SalesBillingPage() {
+    const [activeTab, setActiveTab] = useState<'bill-entry' | 'stock-analysis' | 'sales-analysis'>('bill-entry')
+    const [isAddSalesBillModalOpen, setIsAddSalesBillModalOpen] = useState(false)
+    const [selectedBillId, setSelectedBillId] = useState<string | null>(null)
+    const [billToEdit, setBillToEdit] = useState<SalesBill | undefined>(undefined)
+
+    const handleEditBill = (bill: SalesBill) => {
+        setSelectedBillId(null)
+        setBillToEdit(bill)
+        setIsAddSalesBillModalOpen(true)
+    }
+
+    const handleCloseAddModal = () => {
+        setIsAddSalesBillModalOpen(false)
+        setBillToEdit(undefined)
+    }
+
     return (
-        <div className="min-h-full bg-gray-50 dark:bg-zinc-950">
+        <div className="flex flex-col h-full bg-gray-50 dark:bg-zinc-900">
             {/* Header */}
-            <div className="bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 px-6 py-6">
-                <div className="flex items-center gap-4 mb-2">
+            <div className="hidden md:flex sticky top-0 z-10 bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 px-3 py-1.5 items-center justify-between shadow-sm">
+                <div>
+                    <h1 className="text-[17px] font-bold">Sales Billing</h1>
+                    <p className="text-[13px] text-gray-500 dark:text-gray-400">Manage sales invoices and details</p>
+                </div>
+                <div className="flex gap-2">
                     <Link
                         href="/dashboard/account/pan-vat-billing"
-                        className="p-2 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-md transition-colors"
+                        className="flex items-center gap-1 px-2 py-1 text-[13px] bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700 rounded transition-colors"
                     >
-                        <ArrowLeft className="h-5 w-5" />
+                        <ArrowLeft size={12} />
+                        Back
                     </Link>
-                    <div>
-                        <h1 className="text-xl font-bold">Sales Billing</h1>
-                        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                            Manage sales invoices and PAN/VAT details
-                        </p>
-                    </div>
+                </div>
+            </div>
+
+            {/* Tab Bar */}
+            <div className="hidden md:flex sticky top-[44px] z-10 bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 px-3 py-1.5 shadow-sm items-center justify-between gap-4">
+                <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+                    <button
+                        onClick={() => setActiveTab('bill-entry')}
+                        className={`flex items-center gap-1 px-2 py-1 text-sm rounded transition-colors ${activeTab === 'bill-entry'
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700'
+                            }`}
+                    >
+                        Bill Entry
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('stock-analysis')}
+                        className={`flex items-center gap-1 px-2 py-1 text-sm rounded transition-colors ${activeTab === 'stock-analysis'
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700'
+                            }`}
+                    >
+                        Stock Analysis
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('sales-analysis')}
+                        className={`flex items-center gap-1 px-2 py-1 text-sm rounded transition-colors ${activeTab === 'sales-analysis'
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700'
+                            }`}
+                    >
+                        Sales Analysis
+                    </button>
+                </div>
+
+                {/* Add Buttons */}
+                <div className="flex items-center gap-2">
+                    {activeTab === 'bill-entry' && (
+                        <button
+                            onClick={() => {
+                                setBillToEdit(undefined)
+                                setIsAddSalesBillModalOpen(true)
+                            }}
+                            className="flex items-center gap-1 px-2 py-1 text-[13px] bg-blue-600 text-white hover:bg-blue-700 rounded transition-colors whitespace-nowrap"
+                        >
+                            <Plus size={14} />
+                            Add Sales Bill
+                        </button>
+                    )}
                 </div>
             </div>
 
             {/* Content */}
-            <div className="p-6">
-                <div className="bg-white dark:bg-zinc-900 rounded-lg border dark:border-zinc-800 p-8">
-                    <div className="text-center text-gray-500 dark:text-gray-400">
-                        <p className="text-lg">Sales Billing page content will be implemented here</p>
-                        <p className="text-sm mt-2">This page will manage sales invoices with PAN/VAT information</p>
+            <div className="flex-1 overflow-auto p-3">
+                {activeTab === 'bill-entry' ? (
+                    <SalesBillList onViewBill={setSelectedBillId} />
+                ) : activeTab === 'stock-analysis' ? (
+                    <StockAnalysisPage />
+                ) : (
+                    <div className="bg-white dark:bg-zinc-900 rounded-lg border dark:border-zinc-800 p-8 text-center text-gray-500">
+                        <p className="text-lg font-semibold">Sales Analysis</p>
+                        <p className="text-sm mt-2">Content to be implemented later.</p>
                     </div>
-                </div>
+                )}
             </div>
+
+            {/* Modals */}
+            {isAddSalesBillModalOpen && (
+                <AddSalesBillModal
+                    onClose={handleCloseAddModal}
+                    billToEdit={billToEdit}
+                />
+            )}
+
+            {selectedBillId && (
+                <SalesBillDetailModal
+                    billId={selectedBillId}
+                    onClose={() => setSelectedBillId(null)}
+                    onEdit={handleEditBill}
+                />
+            )}
         </div>
     )
 }
