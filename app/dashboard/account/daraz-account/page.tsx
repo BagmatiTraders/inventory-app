@@ -8,6 +8,7 @@ import { Card, Button } from '@/components/ui-shim'
 import { RefreshCw, Store, Calendar, ArrowDownToLine, AlertCircle } from 'lucide-react'
 import { format, subDays } from 'date-fns'
 import { toast } from 'sonner'
+import { AccountStatementView } from '@/features/account/components/AccountStatementView'
 
 export default function DarazAccountPage() {
     return (
@@ -18,7 +19,7 @@ export default function DarazAccountPage() {
 function DarazAccountContent() {
     const { data: stores, isLoading: isStoresLoading } = useOnlineStores()
     const [selectedStoreId, setSelectedStoreId] = useState<string>('')
-    const [activeTab, setActiveTab] = useState<'statement' | 'report'>('statement')
+    const [activeTab, setActiveTab] = useState<'statement' | 'report' | 'account-statement'>('statement')
 
     // Select first store by default
     useEffect(() => {
@@ -69,17 +70,26 @@ function DarazAccountContent() {
                         <button
                             onClick={() => setActiveTab('statement')}
                             className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'statement'
-                                    ? 'border-blue-600 text-blue-600 dark:text-blue-400'
-                                    : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+                                ? 'border-blue-600 text-blue-600 dark:text-blue-400'
+                                : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
                                 }`}
                         >
                             Statement
                         </button>
                         <button
+                            onClick={() => setActiveTab('account-statement')}
+                            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'account-statement'
+                                ? 'border-blue-600 text-blue-600 dark:text-blue-400'
+                                : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+                                }`}
+                        >
+                            Account Statement
+                        </button>
+                        <button
                             onClick={() => setActiveTab('report')}
                             className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'report'
-                                    ? 'border-blue-600 text-blue-600 dark:text-blue-400'
-                                    : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+                                ? 'border-blue-600 text-blue-600 dark:text-blue-400'
+                                : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
                                 }`}
                         >
                             Report
@@ -93,6 +103,8 @@ function DarazAccountContent() {
                 {selectedStoreId ? (
                     activeTab === 'statement' ? (
                         <StatementView storeId={selectedStoreId} />
+                    ) : activeTab === 'account-statement' ? (
+                        <AccountStatementView storeId={selectedStoreId} />
                     ) : (
                         <div className="flex flex-col items-center justify-center h-64 text-gray-500">
                             <AlertCircle className="w-12 h-12 mb-4 opacity-20" />
@@ -239,8 +251,8 @@ function StatementView({ storeId }: { storeId: string }) {
                                         <td className="px-4 py-3 text-center">
                                             <span
                                                 className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${row.status === 'Paid'
-                                                        ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                                                        : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
+                                                    ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                                                    : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
                                                     }`}
                                             >
                                                 {row.status}
