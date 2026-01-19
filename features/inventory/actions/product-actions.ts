@@ -99,8 +99,9 @@ export async function getProducts(params: {
         .from('products')
         // Select all fields + count of combo items (where product is PARENT)
         .select('*, product_combos!product_combos_parent_product_id_fkey(count)', { count: 'exact' })
-        // .eq('is_deleted', false) // Removed to show 'Inactive' products in the list
-        .order('is_deleted', { ascending: true }) // Active first (false), then Inactive (true)
+        .eq('is_deleted', false) // Only show non-deleted products
+    // .order('is_deleted', { ascending: true }) // No longer needed as we filter filtered
+
 
     // Apply product type filter
     if (productType !== 'all') {
@@ -186,6 +187,43 @@ export async function getAllProductOptions() {
     }
 
     return data || []
+}
+
+/**
+ * Get inactive products (Status = 'Inactive' AND is_deleted = false)
+ */
+export async function getInactiveProducts() {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) throw new Error('Not authenticated')
+
+    const { data, error } = await supabase
+        .from('products')
+        .select('*')
+        .eq('status', 'Inactive')
+        .eq('is_deleted', false)
+        .order('product_name', { ascending: true })
+
+    if (error) throw new Error(error.message)
+    return data as Product[]
+}
+
+/**
+ * Get deleted products (Trash) directly from products table
+ */
+export async function getDeletedProducts() {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) throw new Error('Not authenticated')
+
+    const { data, error } = await supabase
+        .from('products')
+        .select('*')
+        .eq('is_deleted', true)
+        .order('updated_at', { ascending: false })
+
+    if (error) throw new Error(error.message)
+    return data as Product[]
 }
 
 /**
@@ -400,6 +438,28 @@ export async function updateProduct(
  * - Admin: Direct delete → Restore Backup
  * - User: Create approval request
  */
+export async function toggleProductStatus(productId: string, currentStatus: string) {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) throw new Error('Not authenticated')
+
+    const newStatus = currentStatus === 'Active' ? 'Inactive' : 'Active'
+
+    const { error } = await supabase
+        .from('products')
+        .update({
+            status: newStatus,
+            updated_by: user.id,
+            updated_at: new Date().toISOString()
+        })
+        .eq('id', productId)
+
+    if (error) throw new Error(error.message)
+
+    revalidatePath('/dashboard/inventory/product-list')
+    return { status: newStatus, message: `Product marked as ${newStatus}` }
+}
+
 export async function deleteProduct(productId: string) {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
@@ -674,8 +734,9 @@ export async function getDeletedItems(resourceType?: string) {
 
 /**
  * Restore deleted product
+ * Accepts productId and restores it by setting is_deleted to false
  */
-export async function restoreProduct(deletedItemId: string) {
+export async function restoreProduct(productId: string) {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) throw new Error('Not authenticated')
@@ -691,23 +752,23 @@ export async function restoreProduct(deletedItemId: string) {
         throw new Error('Only admins can restore items')
     }
 
-    // Get deleted item
-    const { data: deletedItem } = await supabase
-        .from('deleted_items')
-        .select('*')
-        .eq('id', deletedItemId)
-        .single()
-
-    if (!deletedItem) throw new Error('Deleted item not found')
-    if (deletedItem.is_restored) throw new Error('Item already restored')
-
-    // Restore product
-    await supabase
+    // Restore product directly in products table
+    const { error: updateError } = await supabase
         .from('products')
-        .update({ is_deleted: false })
-        .eq('id', deletedItem.resource_id)
+        .update({
+            is_deleted: false,
+            // Optionally set status to Inactive upon restore, or keep previous status
+            // defaulting to Inactive is safer to avoid accidental live listing
+            status: 'Inactive',
+            updated_by: user.id,
+            updated_at: new Date().toISOString()
+        })
+        .eq('id', productId)
 
-    // Mark as restored
+    if (updateError) throw new Error(updateError.message)
+
+    // Try to mark corresponding entry in deleted_items as restored (if it exists)
+    // We try to find match by resource_id
     await supabase
         .from('deleted_items')
         .update({
@@ -715,12 +776,272 @@ export async function restoreProduct(deletedItemId: string) {
             restored_by: user.id,
             restored_at: new Date().toISOString()
         })
-        .eq('id', deletedItemId)
+        .eq('resource_id', productId)
+        .eq('resource_type', 'product')
+        .eq('is_restored', false)
 
     revalidatePath('/dashboard/inventory/product-list')
     revalidatePath('/dashboard/settings/backup')
     return { success: true }
 }
+
+/**
+ * Delete all pending approval requests (admin only)
+ */
+export async function deleteAllPendingApprovals() {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) throw new Error('Not authenticated')
+
+    // Check if user is admin
+    const { data: profile } = await supabase
+        .from('user_profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single()
+
+    if (profile?.role !== 'admin') {
+        throw new Error('Only admins can delete all approvals')
+    }
+
+    const { error } = await supabase
+        .from('approval_requests')
+        .delete()
+        .eq('resource_type', 'product')
+        .eq('status', 'pending')
+
+    if (error) throw new Error(error.message)
+
+    revalidatePath('/dashboard/settings/approvals')
+    return { success: true, message: 'All pending approval requests deleted' }
+}
+
+/**
+ * Delete all inactive products (hard delete - admin only)
+ */
+export async function deleteAllInactiveProducts() {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) throw new Error('Not authenticated')
+
+    // Check if user is admin
+    const { data: profile } = await supabase
+        .from('user_profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single()
+
+    if (profile?.role !== 'admin') {
+        throw new Error('Only admins can delete all inactive products')
+    }
+
+    // Get all inactive products to delete combos first
+    const { data: inactiveProducts } = await supabase
+        .from('products')
+        .select('id')
+        .eq('status', 'Inactive')
+        .eq('is_deleted', false)
+
+    if (inactiveProducts && inactiveProducts.length > 0) {
+        const productIds = inactiveProducts.map(p => p.id)
+
+        // Delete combo relationships first
+        await supabase
+            .from('product_combos')
+            .delete()
+            .in('parent_product_id', productIds)
+
+        // Mark products as deleted
+        await supabase
+            .from('products')
+            .update({ is_deleted: true })
+            .eq('status', 'Inactive')
+            .eq('is_deleted', false)
+    }
+
+    revalidatePath('/dashboard/inventory/product-list')
+    revalidatePath('/dashboard/settings/approvals')
+    return { success: true, message: `${inactiveProducts?.length || 0} inactive products moved to trash` }
+}
+
+/**
+ * Permanently delete all products in trash (hard delete - admin only)
+ */
+export async function permanentlyDeleteAllDeletedProducts() {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) throw new Error('Not authenticated')
+
+    // Check if user is admin
+    const { data: profile } = await supabase
+        .from('user_profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single()
+
+    if (profile?.role !== 'admin') {
+        throw new Error('Only admins can permanently delete products')
+    }
+
+    // Get all deleted products
+    const { data: deletedProducts, error: fetchError } = await supabase
+        .from('products')
+        .select('id')
+        .eq('is_deleted', true)
+
+    if (fetchError) throw new Error(`Failed to fetch deleted products: ${fetchError.message}`)
+
+    if (!deletedProducts || deletedProducts.length === 0) {
+        return { success: true, message: 'No products to delete' }
+    }
+
+    const productIds = deletedProducts.map(p => p.id)
+
+    // Check ALL tables that might reference products
+    const referencedProductIds = new Set<string>()
+
+    // Check purchases table
+    const { data: purchaseRefs } = await supabase
+        .from('purchases')
+        .select('product_id')
+        .in('product_id', productIds)
+
+    purchaseRefs?.forEach(p => referencedProductIds.add(p.product_id))
+
+    // Check sales/order items (if exists)
+    const { data: salesRefs } = await supabase
+        .from('order_items')
+        .select('product_id')
+        .in('product_id', productIds)
+
+    salesRefs?.forEach(p => referencedProductIds.add(p.product_id))
+
+    // Check daraz order items (if exists)
+    const { data: darazRefs } = await supabase
+        .from('daraz_order_items')
+        .select('product_id')
+        .in('product_id', productIds)
+
+    darazRefs?.forEach(p => referencedProductIds.add(p.product_id))
+
+    // Check marketplace order items (if exists)
+    const { data: marketplaceRefs } = await supabase
+        .from('marketplace_order_items')
+        .select('product_id')
+        .in('product_id', productIds)
+
+    marketplaceRefs?.forEach(p => referencedProductIds.add(p.product_id))
+
+    // Check stock adjustments (if exists)
+    const { data: stockRefs } = await supabase
+        .from('stock_adjustments')
+        .select('product_id')
+        .in('product_id', productIds)
+
+    stockRefs?.forEach(p => referencedProductIds.add(p.product_id))
+
+    // Check damaged stocks (if exists) 
+    const { data: damagedRefs } = await supabase
+        .from('damaged_stocks')
+        .select('product_id')
+        .in('product_id', productIds)
+
+    damagedRefs?.forEach(p => referencedProductIds.add(p.product_id))
+
+    const orphanedProductIds = productIds.filter(id => !referencedProductIds.has(id))
+
+    let deletedCount = 0
+    let keptCount = referencedProductIds.size
+
+    console.log('Deletion analysis:', {
+        total: productIds.length,
+        referenced: keptCount,
+        orphaned: orphanedProductIds.length,
+        orphanedIds: orphanedProductIds
+    })
+
+    // Only delete orphaned products (no foreign key references)
+    if (orphanedProductIds.length > 0) {
+        // Process in batches of 100 to avoid query limits
+        const BATCH_SIZE = 100
+        const batches = []
+
+        for (let i = 0; i < orphanedProductIds.length; i += BATCH_SIZE) {
+            batches.push(orphanedProductIds.slice(i, i + BATCH_SIZE))
+        }
+
+        console.log(`Processing ${batches.length} batches of up to ${BATCH_SIZE} products each`)
+
+        for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
+            const batch = batches[batchIndex]
+            console.log(`Deleting batch ${batchIndex + 1}/${batches.length} (${batch.length} products)...`)
+
+            // Delete combo relationships for this batch
+            const { error: comboError1 } = await supabase
+                .from('product_combos')
+                .delete()
+                .in('parent_product_id', batch)
+
+            if (comboError1) {
+                console.error(`Batch ${batchIndex + 1} - Error deleting parent combos:`, comboError1)
+            }
+
+            // Also delete as child in combos
+            const { error: comboError2 } = await supabase
+                .from('product_combos')
+                .delete()
+                .in('child_product_id', batch)
+
+            if (comboError2) {
+                console.error(`Batch ${batchIndex + 1} - Error deleting child combos:`, comboError2)
+            }
+
+            // Permanently delete this batch of products
+            const { error: deleteError, count } = await supabase
+                .from('products')
+                .delete({ count: 'exact' })
+                .in('id', batch)
+
+            if (deleteError) {
+                console.error(`Batch ${batchIndex + 1} - Delete error:`, deleteError)
+                throw new Error(`Failed to delete batch ${batchIndex + 1}: ${deleteError.message}`)
+            }
+
+            deletedCount += (count || 0)
+            console.log(`Batch ${batchIndex + 1} completed: ${count} products deleted`)
+        }
+
+        console.log(`Total deleted: ${deletedCount} products`)
+    }
+
+    revalidatePath('/dashboard/inventory/product-list')
+    revalidatePath('/dashboard/settings/approvals')
+
+    // Build informative message
+    let message = ''
+    if (deletedCount > 0) {
+        message += `✅ ${deletedCount} product${deletedCount > 1 ? 's' : ''} permanently deleted. `
+    }
+    if (keptCount > 0) {
+        message += `⚠️ ${keptCount} product${keptCount > 1 ? 's' : ''} kept (have transaction history).`
+    }
+    if (deletedCount === 0 && keptCount === 0) {
+        message = 'No products to delete.'
+    }
+    if (deletedCount === 0 && keptCount > 0) {
+        message = `All ${keptCount} product${keptCount > 1 ? 's' : ''} have transaction history and cannot be deleted. They will remain hidden.`
+    }
+
+    return {
+        success: true,
+        message: message.trim(),
+        details: {
+            deleted: deletedCount,
+            kept: keptCount,
+        }
+    }
+}
+
 
 // ============================================================================
 // CSV IMPORT/EXPORT

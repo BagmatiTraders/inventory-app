@@ -36,7 +36,9 @@ export default function DarazOrderViewPage() {
     const fromPage = searchParams.get('from')
     const backLink = fromPage === 'status-sync'
         ? '/dashboard/sales/daraz/status-sync'
-        : '/dashboard/sales/daraz/sales-entry'
+        : fromPage === 'order-list'
+            ? '/dashboard/sales/daraz/dashboard'
+            : '/dashboard/sales/daraz/sales-entry'
 
     return (
         <div className="min-h-screen bg-gray-50 dark:bg-zinc-950">
@@ -217,12 +219,52 @@ export default function DarazOrderViewPage() {
                                     </div>
                                 )}
 
+                                {order.delivery_failed_at && (
+                                    <div className="flex items-start gap-3">
+                                        <Calendar size={16} className="mt-0.5 text-red-400" />
+                                        <div className="text-sm">
+                                            <span className="font-medium text-red-600">Delivery Failed: </span>
+                                            {formatTimestamp(order.delivery_failed_at, order.delivery_failed_by_name, order.delivery_failed_by_email)}
+                                        </div>
+                                    </div>
+                                )}
+
                                 {order.failed_delivered_at && (
                                     <div className="flex items-start gap-3">
                                         <Calendar size={16} className="mt-0.5 text-red-400" />
                                         <div className="text-sm">
                                             <span className="font-medium text-red-600">Failed Delivered: </span>
-                                            {formatTimestamp(order.failed_delivered_at, order.failed_delivered_by_name, order.failed_delivered_by_email)}
+                                            {formatTimestamp(order.failed_delivered_at, order.fail_delivered_by_name, order.fail_delivered_by_email)}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {order.returning_to_seller_at && (
+                                    <div className="flex items-start gap-3">
+                                        <Calendar size={16} className="mt-0.5 text-orange-400" />
+                                        <div className="text-sm">
+                                            <span className="font-medium text-orange-600">Returning to Seller: </span>
+                                            {formatTimestamp(order.returning_to_seller_at, order.returning_to_seller_by_name, order.returning_to_seller_by_email)}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {order.customer_return_at && (
+                                    <div className="flex items-start gap-3">
+                                        <Calendar size={16} className="mt-0.5 text-purple-400" />
+                                        <div className="text-sm">
+                                            <span className="font-medium text-purple-600">Customer Return: </span>
+                                            {formatTimestamp(order.customer_return_at, order.customer_return_by_name, order.customer_return_by_email)}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {order.customer_return_delivered_at && (
+                                    <div className="flex items-start gap-3">
+                                        <Calendar size={16} className="mt-0.5 text-purple-400" />
+                                        <div className="text-sm">
+                                            <span className="font-medium text-purple-600">Customer Return Delivered: </span>
+                                            {formatTimestamp(order.customer_return_delivered_at, order.customer_return_delivered_by_name, order.customer_return_delivered_by_email)}
                                         </div>
                                     </div>
                                 )}
@@ -233,6 +275,16 @@ export default function DarazOrderViewPage() {
                                         <div className="text-sm">
                                             <span className="font-medium text-orange-600">Customer Returned: </span>
                                             {formatTimestamp(order.customer_returned_at, order.customer_returned_by_name, order.customer_returned_by_email)}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {order.cancelled_at && (
+                                    <div className="flex items-start gap-3">
+                                        <Calendar size={16} className="mt-0.5 text-gray-400" />
+                                        <div className="text-sm">
+                                            <span className="font-medium text-gray-600">Cancelled: </span>
+                                            {formatTimestamp(order.cancelled_at, order.cancelled_by_name, order.cancelled_by_email)}
                                         </div>
                                     </div>
                                 )}

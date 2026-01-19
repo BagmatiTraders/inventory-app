@@ -899,7 +899,7 @@ export default function DarazSalesEntryPage() {
                                                     </td>
                                                     <td className="px-1.5 py-0.5 align-top md:align-middle">
                                                         <button
-                                                            onClick={() => router.push(`/dashboard/sales/daraz/order/${order.id}`)}
+                                                            onClick={() => router.push(`/dashboard/sales/daraz/order/${order.id}?from=sales-entry`)}
                                                             onMouseEnter={() => queryClient.prefetchQuery({
                                                                 queryKey: ['daraz-order', order.id],
                                                                 queryFn: () => getDarazOrderById(order.id)
@@ -968,7 +968,7 @@ export default function DarazSalesEntryPage() {
                                                                 <Printer size={13} />
                                                             </button>
                                                             <button
-                                                                onClick={() => router.push(`/dashboard/sales/daraz/order/${order.id}`)}
+                                                                onClick={() => router.push(`/dashboard/sales/daraz/order/${order.id}?from=sales-entry`)}
                                                                 onMouseEnter={() => queryClient.prefetchQuery({
                                                                     queryKey: ['daraz-order', order.id],
                                                                     queryFn: () => getDarazOrderById(order.id)

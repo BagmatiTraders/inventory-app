@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { getProducts, exportProducts, deleteAllProducts } from '@/features/inventory/actions/product-actions'
+import { getProducts, exportProducts, deleteAllProducts, toggleProductStatus } from '@/features/inventory/actions/product-actions'
 import { ArrowLeft, Plus, Upload, Download, Search, X, Package, Trash2, Box } from 'lucide-react'
 import Link from 'next/link'
 import { Card } from '@/components/ui-shim'
@@ -96,6 +96,15 @@ export default function ProductListPage() {
         }
     }
 
+
+    const handleToggleStatus = async (productId: string, currentStatus: string) => {
+        try {
+            await toggleProductStatus(productId, currentStatus || 'Active')
+            // No need to reload, revalidatePath handles it
+        } catch (error: any) {
+            alert(`Error updating status: ${error.message}`)
+        }
+    }
 
     return (
         <div className="flex flex-col h-full bg-gray-50/50 dark:bg-zinc-950">
@@ -295,14 +304,21 @@ export default function ProductListPage() {
                                                     </span>
                                                 </td>
                                                 <td className="hidden md:table-cell px-4 py-3">
-                                                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium border ${(product.status === 'Active' || (!product.status && !product.is_deleted))
-                                                        ? 'bg-green-50 text-green-700 border-green-200 dark:bg-green-900/20 dark:text-green-400 dark:border-green-900/30'
-                                                        : 'bg-red-50 text-red-700 border-red-200 dark:bg-red-900/20 dark:text-red-400 dark:border-red-900/30'
-                                                        }`}>
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation()
+                                                            handleToggleStatus(product.id, product.status || (product.is_deleted ? 'Inactive' : 'Active'))
+                                                        }}
+                                                        className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium border cursor-pointer hover:opacity-80 transition-opacity ${(product.status === 'Active' || (!product.status && !product.is_deleted))
+                                                            ? 'bg-green-50 text-green-700 border-green-200 dark:bg-green-900/20 dark:text-green-400 dark:border-green-900/30'
+                                                            : 'bg-red-50 text-red-700 border-red-200 dark:bg-red-900/20 dark:text-red-400 dark:border-red-900/30'
+                                                            }`}
+                                                        title="Click to toggle status"
+                                                    >
                                                         <span className={`w-1.5 h-1.5 rounded-full mr-1.5 ${(product.status === 'Active' || (!product.status && !product.is_deleted)) ? 'bg-green-500' : 'bg-red-500'
                                                             }`}></span>
                                                         {product.status || (product.is_deleted ? 'Inactive' : 'Active')}
-                                                    </span>
+                                                    </button>
                                                 </td>
                                                 <td className="px-2 md:px-4 py-3 text-sm font-mono text-gray-500 dark:text-gray-400">
                                                     #{product.product_id}

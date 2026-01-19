@@ -270,7 +270,7 @@ export async function getAllDarazOrders(params: {
         // Checking schema mentally... we don't have product names in `daraz_orders_with_totals` usually. 
         // Let's implement Order Number, Tracking, Customer Name.
 
-        const searchFilter = `order_number.ilike.%${term}%,tracking_number.ilike.%${term}%,customer_name.ilike.%${term}%`
+        const searchFilter = `order_number.ilike.%${term}%,tracking_number.ilike.%${term}%,customer_name.ilike.%${term}%,first_product_name.ilike.%${term}%`
         query = query.or(searchFilter)
     }
 
@@ -491,7 +491,7 @@ export async function updateDarazOrderStatus(orderIds: string[], newStatus: stri
         updates.fail_delivered_by_email = userEmail
         updates.failed_delivered_at = now
     }
-    else if (newStatus === 'Returning To Seller') {
+    else if (newStatus === 'Returning To Seller' || newStatus === 'Returning to Seller') {
         updates.returning_to_seller_by = user.id
         updates.returning_to_seller_by_name = userName
         updates.returning_to_seller_by_email = userEmail
@@ -509,7 +509,7 @@ export async function updateDarazOrderStatus(orderIds: string[], newStatus: stri
         updates.customer_return_by_email = userEmail
         updates.customer_return_at = now
     }
-    else if (newStatus === 'Customer Return Delivered') {
+    else if (newStatus === 'Customer Return Delivered' || newStatus === 'Returned Delivered') {
         updates.customer_return_delivered_by = user.id
         updates.customer_return_delivered_by_name = userName
         updates.customer_return_delivered_by_email = userEmail
@@ -524,14 +524,11 @@ export async function updateDarazOrderStatus(orderIds: string[], newStatus: stri
     else if (newStatus === 'Shipped') {
         updates.shipped_by = user.id
         updates.shipped_at = now
-        // updates.shipped_by_name = userName // If column exists
     }
     else if (newStatus === 'Delivered') {
         updates.delivered_by = user.id
         updates.delivered_at = now
-        // updates.delivered_by_name = userName // If column exists
     }
-
 
     const { error } = await supabase
         .from('daraz_orders')

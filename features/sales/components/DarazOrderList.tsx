@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { getAllDarazOrders, deleteDarazOrder, updateDarazOrderStatus, getDarazOrderById, getAllFiscalYears, getActiveFiscalYear, syncDarazOrderProducts, syncProductInfoFromInventory } from '@/features/sales/actions/daraz-actions'
+import { getAllDarazOrders, deleteDarazOrder, updateDarazOrderStatus, getDarazOrderById, getAllFiscalYears, getActiveFiscalYear, syncDarazOrderProducts, syncProductInfoFromInventory, getUniqueSellerAccounts } from '@/features/sales/actions/daraz-actions'
 import { getUserRole, getUserDeletionStats, createDeletionRequest, softDeleteOrder } from '@/features/sales/actions/daraz-deletion-actions'
 import { Search, Printer, ArrowLeft, X, Trash2, Clock, RefreshCw } from 'lucide-react'
 import Link from 'next/link'
@@ -31,6 +31,7 @@ export function DarazOrderList({ isEmbedded = false }: DarazOrderListProps) {
     const [endDate, setEndDate] = useState('')
     const [selectedFiscalYear, setSelectedFiscalYear] = useState<string>('')
     const [timestampField, setTimestampField] = useState<string>('order_date')
+    const [sellerAccount, setSellerAccount] = useState<string>('all')
     const [userRole, setUserRole] = useState<'admin' | 'user' | null>(null)
     const [deletionModal, setDeletionModal] = useState<{ isOpen: boolean, order: any | null }>({ isOpen: false, order: null })
     const [adminDeleteModal, setAdminDeleteModal] = useState<{ isOpen: boolean, order: any | null }>({ isOpen: false, order: null })
@@ -39,6 +40,16 @@ export function DarazOrderList({ isEmbedded = false }: DarazOrderListProps) {
     const [isSyncingLinks, setIsSyncingLinks] = useState(false)
 
     const queryClient = useQueryClient()
+
+    // Debounce search input
+    useEffect(() => {
+        const timeoutId = setTimeout(() => {
+            setSearch(searchInput)
+            setPage(1)
+        }, 500) // 500ms delay
+
+        return () => clearTimeout(timeoutId)
+    }, [searchInput])
 
     // Fetch fiscal years
     const { data: fiscalYears } = useQuery({
@@ -129,7 +140,7 @@ export function DarazOrderList({ isEmbedded = false }: DarazOrderListProps) {
 
     // Fetch ALL orders
     const { data, isLoading, isFetching } = useQuery({
-        queryKey: ['all-daraz-orders', page, search, statusFilter, startDate, endDate, selectedFiscalYear, timestampField],
+        queryKey: ['all-daraz-orders', page, search, statusFilter, startDate, endDate, selectedFiscalYear, timestampField, sellerAccount],
         queryFn: () => getAllDarazOrders({
             page,
             limit: 50,
@@ -138,8 +149,15 @@ export function DarazOrderList({ isEmbedded = false }: DarazOrderListProps) {
             fromDate: startDate,
             toDate: endDate,
             fiscalYearId: selectedFiscalYear || undefined,
-            timestampField: timestampField || 'order_date'
+            timestampField: timestampField || 'order_date',
+            sellerAccount: sellerAccount !== 'all' ? sellerAccount : undefined
         })
+    })
+
+    // Fetch unique seller accounts
+    const { data: sellerAccounts } = useQuery({
+        queryKey: ['unique-seller-accounts'],
+        queryFn: getUniqueSellerAccounts,
     })
 
     const orders = data?.orders || []
@@ -336,18 +354,67 @@ export function DarazOrderList({ isEmbedded = false }: DarazOrderListProps) {
                         </select>
                     )}
 
-                    {/* Timestamp Field Selector */}
+                    {/* Comprehensive Status Filter */}
                     <select
                         value={timestampField}
-                        onChange={(e) => { setTimestampField(e.target.value); setPage(1); }}
+                        onChange={(e) => {
+                            const selectedField = e.target.value
+                            setTimestampField(selectedField)
+
+                            // Auto-set status filter and ensure proper timestamp field mapping
+                            const statusMap: Record<string, { status: string, timestampField: string }> = {
+                                'order_date': { status: 'all', timestampField: 'order_date' },
+                                'unpaid': { status: 'Unpaid', timestampField: 'order_date' },
+                                'pending': { status: 'Pending', timestampField: 'order_date' },
+                                'packed': { status: 'Packed', timestampField: 'order_date' },
+                                'ready_to_ship': { status: 'Ready to Ship', timestampField: 'order_date' },
+                                'shipped_at': { status: 'Shipped', timestampField: 'shipped_at' },
+                                'delivered_at': { status: 'Delivered', timestampField: 'delivered_at' },
+                                'returning_to_seller': { status: 'Returning to Seller', timestampField: 'order_date' },
+                                'returned_delivered': { status: 'Returned Delivered', timestampField: 'order_date' },
+                                'customer_return_at': { status: 'Customer Return', timestampField: 'customer_return_at' },
+                                'customer_return_delivered_at': { status: 'Customer Return Delivered', timestampField: 'customer_return_delivered_at' },
+                                'cancelled_at': { status: 'Cancel', timestampField: 'cancelled_at' }
+                            }
+
+                            const mapping = statusMap[selectedField] || { status: 'all', timestampField: 'order_date' }
+                            setStatusFilter(mapping.status)
+                            // Update timestampField if it's different from selection (for status-only filters)
+                            if (selectedField !== mapping.timestampField) {
+                                setTimestampField(mapping.timestampField)
+                            }
+                            setPage(1)
+                        }}
                         className="px-2 py-1.5 text-sm border dark:border-zinc-700 rounded focus:ring-1 focus:ring-blue-500 dark:bg-zinc-800 dark:text-gray-50"
-                        title="Select which date field to filter by"
+                        title="Select status to filter"
                     >
-                        <option value="order_date">Order Date</option>
-                        <option value="shipped_at">Shipped At</option>
-                        <option value="delivered_at">Delivered At</option>
-                        <option value="failed_delivered_at">Failed Delivered At</option>
-                        <option value="customer_returned_at">Customer Return At</option>
+                        <option value="order_date">All</option>
+                        <option value="unpaid">Unpaid</option>
+                        <option value="pending">Pending</option>
+                        <option value="packed">Packed</option>
+                        <option value="ready_to_ship">Ready to Ship</option>
+                        <option value="shipped_at">Shipped</option>
+                        <option value="delivered_at">Delivered</option>
+                        <option value="returning_to_seller">Returning to Seller</option>
+                        <option value="returned_delivered">Returned Delivered</option>
+                        <option value="customer_return_at">Customer Return</option>
+                        <option value="customer_return_delivered_at">Customer Return Delivered</option>
+                        <option value="cancelled_at">Cancelled</option>
+                    </select>
+
+                    {/* Seller Account Filter */}
+                    <select
+                        value={sellerAccount}
+                        onChange={(e) => { setSellerAccount(e.target.value); setPage(1); }}
+                        className="px-2 py-1.5 text-sm border dark:border-zinc-700 rounded focus:ring-1 focus:ring-blue-500 dark:bg-zinc-800 dark:text-gray-50"
+                        title="Filter by seller account"
+                    >
+                        <option value="all">All Accounts</option>
+                        {sellerAccounts?.map((account: string) => (
+                            <option key={account} value={account}>
+                                {account}
+                            </option>
+                        ))}
                     </select>
 
                     {/* Date Range Inputs */}
@@ -378,26 +445,6 @@ export function DarazOrderList({ isEmbedded = false }: DarazOrderListProps) {
                         </button>
                     )}
 
-                    {/* Status Filter */}
-                    <select
-                        value={statusFilter}
-                        onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
-                        className="px-2 py-1.5 text-sm border dark:border-zinc-700 rounded focus:ring-1 focus:ring-blue-500 dark:bg-zinc-800 dark:text-gray-50"
-                    >
-                        <option value="all">All Status</option>
-                        <option value="Unpaid">Unpaid</option>
-                        <option value="Pending">Pending</option>
-                        <option value="Packed">Packed</option>
-                        <option value="Ready to Ship">Ready to Ship</option>
-                        <option value="Shipped">Shipped</option>
-                        <option value="Delivered">Delivered</option>
-                        <option value="Returning to Seller">Returning to Seller</option>
-                        <option value="Returned Delivered">Returned Delivered</option>
-                        <option value="Customer Return">Customer Return</option>
-                        <option value="Customer Return Delivered">Customer Return Delivered</option>
-                        <option value="Cancel">Cancel</option>
-                    </select>
-
                     {/* Search Box */}
                     <div className="relative flex-1 min-w-[180px] max-w-sm">
                         <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
@@ -420,46 +467,6 @@ export function DarazOrderList({ isEmbedded = false }: DarazOrderListProps) {
                         )}
                     </div>
 
-                    {/* Search Button */}
-                    <button
-                        onClick={handleSearch}
-                        className="px-4 py-1.5 text-sm font-medium bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors whitespace-nowrap shadow-sm"
-                    >
-                        Search
-                    </button>
-
-                    {/* Sync Links Button */}
-                    <button
-                        onClick={async () => {
-                            alert('For best results, use the SQL script instead:\n\n1. Open Supabase SQL Editor\n2. Run: Database/sync_product_links.sql\n3. Refresh this page\n\nThis ensures all links are updated correctly.')
-                        }}
-                        className="flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded transition-colors whitespace-nowrap shadow-sm"
-                        title="Fix mismatching Product IDs by re-linking SKUs"
-                    >
-                        {isSyncingLinks ? 'Syncing...' : 'Sync Links'}
-                    </button>
-
-                    {/* Sync Products Button (Moved from Sales Entry) */}
-                    <button
-                        onClick={async () => {
-                            if (!confirm('This will match seller SKUs from your orders with products in the inventory and update product names/accounts.\n\nContinue?')) return
-                            try {
-                                const result = await syncProductInfoFromInventory()
-                                alert(result.message)
-                                if (result.success && result.updated > 0) {
-                                    queryClient.invalidateQueries({ queryKey: ['all-daraz-orders'] })
-                                }
-                            } catch (error: any) {
-                                alert(`Sync error: ${error.message}`)
-                            }
-                        }}
-                        className="flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded transition-colors whitespace-nowrap shadow-sm"
-                        title="Sync product names from inventory by matching seller SKUs"
-                    >
-                        <RefreshCw size={12} />
-                        Sync Products
-                    </button>
-
                     {/* Clear All Filters Button - Now next to Search */}
                     <button
                         onClick={() => {
@@ -467,6 +474,7 @@ export function DarazOrderList({ isEmbedded = false }: DarazOrderListProps) {
                             setStartDate('')
                             setEndDate('')
                             setStatusFilter('all')
+                            setSellerAccount('all')
                             setSearchInput('')
                             setSearch('')
                             setPage(1)
@@ -477,6 +485,14 @@ export function DarazOrderList({ isEmbedded = false }: DarazOrderListProps) {
                         <X size={14} strokeWidth={2.5} />
                         Clear All
                     </button>
+
+                    {/* Total Count Display */}
+                    {pagination && pagination.total > 0 && (
+                        <div className="flex items-center gap-2 px-3 py-1.5 text-sm font-semibold text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-zinc-800 rounded border border-gray-300 dark:border-zinc-600">
+                            <span className="text-gray-500 dark:text-gray-400">Total:</span>
+                            <span className="text-blue-600 dark:text-blue-400">{pagination.total}</span>
+                        </div>
+                    )}
                 </div>
 
                 {/* Compact Bulk Actions */}
@@ -596,7 +612,7 @@ export function DarazOrderList({ isEmbedded = false }: DarazOrderListProps) {
                                                 </td>
                                                 <td className="px-1.5 py-0.5 align-top md:align-middle">
                                                     <button
-                                                        onClick={() => router.push(`/dashboard/sales/daraz/order/${order.id}`)}
+                                                        onClick={() => router.push(`/dashboard/sales/daraz/order/${order.id}?from=order-list`)}
                                                         onMouseEnter={() => queryClient.prefetchQuery({
                                                             queryKey: ['daraz-order', order.id],
                                                             queryFn: () => getDarazOrderById(order.id)
