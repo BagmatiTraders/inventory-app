@@ -46,8 +46,8 @@ export async function getStockAnalysisData(filters?: {
             startDate = '2000-01-01'
             endDate = new Date().toISOString()
         } else {
-            const activeFy = await getActiveFiscalYear()
-            if (!activeFy) throw new Error('No active fiscal year found')
+            const { data: activeFy, error: fyError } = await getActiveFiscalYear()
+            if (fyError || !activeFy) throw new Error('No active fiscal year found')
             startDate = activeFy.start_date
             endDate = activeFy.end_date
         }

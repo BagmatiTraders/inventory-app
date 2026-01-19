@@ -62,7 +62,7 @@ export function SalesBillDetailModal({ billId, onClose, onEdit }: SalesBillDetai
 
                     {/* Row 2: Seller PAN/VAT (Center) */}
                     <div className="text-center text-sm text-gray-600 dark:text-gray-400">
-                        <span className="font-semibold">PAN/VAT No:</span> {seller?.pan_vat_number || 'N/A'}
+                        <span className="font-semibold">PAN/VAT No:</span> {seller?.pan_vat_details || 'N/A'}
                     </div>
 
                     {/* Row 3: Customer Name (Left) - Invoice No (Right) */}

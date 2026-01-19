@@ -6,7 +6,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useDashboard } from '@/app/dashboard/layout'
 import { getCompanyDetails } from '@/features/settings/actions/company-details-actions'
 import { getStockAnalysisData } from '@/features/stock-analysis/actions/stock-analysis-actions'
-import { updateSalesBill, type SalesBillItem, type SalesBill } from '@/features/sales/actions/sales-bill-actions'
+import { updateSalesBill, createSalesBill, type SalesBillItem, type SalesBill } from '@/features/sales/actions/sales-bill-actions'
 import { adToBS, bsToAD, formatNepaliCurrency } from '@/lib/utils/date-converter'
 
 interface AddSalesBillModalProps {
