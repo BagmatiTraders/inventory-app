@@ -147,6 +147,8 @@ export default async function DarazOrderReportPage({
                                 </TableRow>
                             ) : (
                                 orders.map((order) => {
+                                    if (!order) return null
+
                                     const profit = order.profit || 0
                                     const isPositive = profit > 0
 
