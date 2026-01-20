@@ -1,12 +1,24 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { CameraPreview } from '@capacitor-community/camera-preview'
-import { BarcodeScanner } from '@capacitor-community/barcode-scanner'
 import { registerBackHandler, unregisterBackHandler } from '@/components/CapacitorAppListener'
 import { X } from 'lucide-react'
 import { toast } from 'sonner'
 import { createPortal } from 'react-dom'
+
+// Dynamic imports for Capacitor to avoid SSR issues
+let CameraPreview: any
+let BarcodeScanner: any
+
+// Load Capacitor plugins only on client side
+if (typeof window !== 'undefined') {
+    import('@capacitor-community/camera-preview').then(module => {
+        CameraPreview = module.CameraPreview
+    })
+    import('@capacitor-community/barcode-scanner').then(module => {
+        BarcodeScanner = module.BarcodeScanner
+    })
+}
 
 interface BarcodeScannerModalProps {
     isOpen: boolean
@@ -57,6 +69,13 @@ export function BarcodeScannerModal({ isOpen, onClose, onScan }: BarcodeScannerM
 
     const startScanning = async () => {
         try {
+            // Check if Capacitor modules are loaded
+            if (!BarcodeScanner || !CameraPreview) {
+                toast.error('Barcode scanner not available. Please use a mobile device.')
+                onClose()
+                return
+            }
+
             console.log('[BarcodeScanner] Starting camera...')
             setCameraActive(true)
             setScanning(true)
@@ -160,10 +179,14 @@ export function BarcodeScannerModal({ isOpen, onClose, onScan }: BarcodeScannerM
             console.log('[BarcodeScanner] Stopping scanner...')
 
             // Stop barcode scanning
-            await BarcodeScanner.stopScan()
+            if (BarcodeScanner) {
+                await BarcodeScanner.stopScan()
+            }
 
             // Stop camera preview
-            await CameraPreview.stop()
+            if (CameraPreview) {
+                await CameraPreview.stop()
+            }
 
             console.log('[BarcodeScanner] Scanner stopped successfully')
         } catch (error: any) {
@@ -178,7 +201,9 @@ export function BarcodeScannerModal({ isOpen, onClose, onScan }: BarcodeScannerM
     const restoreBackground = () => {
         document.body.classList.remove('camera-active')
         toggleAppVisibility(false)
-        BarcodeScanner.showBackground() // Restore app background
+        if (BarcodeScanner) {
+            BarcodeScanner.showBackground() // Restore app background
+        }
     }
 
     const handleClose = async () => {
