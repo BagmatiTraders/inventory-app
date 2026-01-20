@@ -19,7 +19,7 @@ export function BarcodeScannerModal({ isOpen, onClose, onScan }: BarcodeScannerM
     const [cameraActive, setCameraActive] = useState(false)
 
     const videoRef = useRef<HTMLVideoElement>(null)
-    const codeReaderRef = useRef<BrowserMultiMultiFormatReader | null>(null)
+    const codeReaderRef = useRef<BrowserMultiFormatReader | null>(null)
     const streamRef = useRef<MediaStream | null>(null)
 
     useEffect(() => {
