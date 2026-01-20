@@ -1,24 +1,10 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { registerBackHandler, unregisterBackHandler } from '@/components/CapacitorAppListener'
+import { useState, useEffect, useRef } from 'react'
 import { X } from 'lucide-react'
 import { toast } from 'sonner'
 import { createPortal } from 'react-dom'
-
-// Dynamic imports for Capacitor to avoid SSR issues
-let CameraPreview: any
-let BarcodeScanner: any
-
-// Load Capacitor plugins only on client side
-if (typeof window !== 'undefined') {
-    import('@capacitor-community/camera-preview').then(module => {
-        CameraPreview = module.CameraPreview
-    })
-    import('@capacitor-community/barcode-scanner').then(module => {
-        BarcodeScanner = module.BarcodeScanner
-    })
-}
+import { BrowserMultiFormatReader, NotFoundException } from '@zxing/library'
 
 interface BarcodeScannerModalProps {
     isOpen: boolean
@@ -27,29 +13,23 @@ interface BarcodeScannerModalProps {
 }
 
 export function BarcodeScannerModal({ isOpen, onClose, onScan }: BarcodeScannerModalProps) {
-    const [cameraActive, setCameraActive] = useState(false)
     const [scanning, setScanning] = useState(false)
     const [mounted, setMounted] = useState(false)
     const [error, setError] = useState<string | null>(null)
+    const [cameraActive, setCameraActive] = useState(false)
+
+    const videoRef = useRef<HTMLVideoElement>(null)
+    const codeReaderRef = useRef<BrowserMultiFormatReader | null>(null)
+    const streamRef = useRef<MediaStream | null>(null)
 
     useEffect(() => {
         setMounted(true)
+        codeReaderRef.current = new BrowserMultiFormatReader()
+
         return () => {
             stopScanning()
         }
     }, [])
-
-    // Handle Android back button
-    useEffect(() => {
-        if (!isOpen || !cameraActive) return
-
-        registerBackHandler(() => {
-            handleClose()
-            return true
-        })
-
-        return () => unregisterBackHandler()
-    }, [isOpen, cameraActive])
 
     // Start camera and scanning when modal opens
     useEffect(() => {
@@ -60,53 +40,33 @@ export function BarcodeScannerModal({ isOpen, onClose, onScan }: BarcodeScannerM
         }
     }, [isOpen])
 
-    const toggleAppVisibility = (hide: boolean) => {
-        const appContent = document.getElementById('app-content')
-        if (appContent) {
-            appContent.style.visibility = hide ? 'hidden' : 'visible'
-        }
-    }
-
     const startScanning = async () => {
         try {
-            // Check if Capacitor modules are loaded
-            if (!BarcodeScanner || !CameraPreview) {
-                toast.error('Barcode scanner not available. Please use a mobile device.')
-                onClose()
-                return
-            }
-
             console.log('[BarcodeScanner] Starting camera...')
-            setCameraActive(true)
             setScanning(true)
             setError(null)
+            setCameraActive(true)
 
-            toggleAppVisibility(true)
-            document.body.classList.add('camera-active')
-
-            // Check and request camera permission
-            const status = await BarcodeScanner.checkPermission({ force: true })
-            if (!status.granted) {
-                throw new Error('Camera permission denied')
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                throw new Error('Camera not supported on this device')
             }
 
-            // Prepare scanner (makes background transparent)
-            await BarcodeScanner.prepare()
-
-            // Start camera preview in background
-            await CameraPreview.start({
-                toBack: true,
-                position: 'rear',
-                x: 0,
-                y: 0,
-                width: window.screen.width,
-                height: window.screen.height,
-                rotateWhenOrientationChanged: false,
-                disableAudio: true
+            // Request camera access
+            const stream = await navigator.mediaDevices.getUserMedia({
+                video: { facingMode: 'environment' } // Use back camera on mobile
             })
 
-            // Start continuous barcode scanning
-            startBarcodeDetection()
+            streamRef.current = stream
+
+            if (videoRef.current) {
+                videoRef.current.srcObject = stream
+                await videoRef.current.play()
+            }
+
+            // Start barcode detection
+            if (codeReaderRef.current && videoRef.current) {
+                startBarcodeDetection()
+            }
 
             console.log('[BarcodeScanner] Camera started successfully!')
         } catch (error: any) {
@@ -117,17 +77,23 @@ export function BarcodeScannerModal({ isOpen, onClose, onScan }: BarcodeScannerM
     }
 
     const startBarcodeDetection = async () => {
-        try {
-            // Start scanning (this returns a promise that resolves when a barcode is detected)
-            const result = await BarcodeScanner.startScan()
+        if (!codeReaderRef.current || !videoRef.current) return
 
-            if (result.hasContent) {
-                const barcode = result.content || ''
+        try {
+            const result = await codeReaderRef.current.decodeOnceFromVideoDevice(undefined, videoRef.current)
+
+            if (result) {
+                const barcode = result.getText()
                 console.log('[BarcodeScanner] Barcode detected:', barcode)
                 await handleBarcodeDetected(barcode)
             }
         } catch (error: any) {
-            if (error?.message !== 'scan canceled') {
+            if (error instanceof NotFoundException) {
+                // No barcode found, try again
+                if (scanning && cameraActive) {
+                    setTimeout(() => startBarcodeDetection(), 100)
+                }
+            } else {
                 console.error('[BarcodeScanner] Scan error:', error)
                 setError(error?.message || 'Scanning failed')
             }
@@ -173,37 +139,28 @@ export function BarcodeScannerModal({ isOpen, onClose, onScan }: BarcodeScannerM
     }
 
     const stopScanning = async () => {
-        if (!cameraActive) return
+        console.log('[BarcodeScanner] Stopping scanner...')
 
-        try {
-            console.log('[BarcodeScanner] Stopping scanner...')
+        setScanning(false)
+        setCameraActive(false)
 
-            // Stop barcode scanning
-            if (BarcodeScanner) {
-                await BarcodeScanner.stopScan()
-            }
-
-            // Stop camera preview
-            if (CameraPreview) {
-                await CameraPreview.stop()
-            }
-
-            console.log('[BarcodeScanner] Scanner stopped successfully')
-        } catch (error: any) {
-            console.error('[BarcodeScanner] Error stopping scanner:', error)
-        } finally {
-            setCameraActive(false)
-            setScanning(false)
-            restoreBackground()
+        // Stop video stream
+        if (streamRef.current) {
+            streamRef.current.getTracks().forEach(track => track.stop())
+            streamRef.current = null
         }
-    }
 
-    const restoreBackground = () => {
-        document.body.classList.remove('camera-active')
-        toggleAppVisibility(false)
-        if (BarcodeScanner) {
-            BarcodeScanner.showBackground() // Restore app background
+        // Stop video element
+        if (videoRef.current) {
+            videoRef.current.srcObject = null
         }
+
+        // Reset code reader
+        if (codeReaderRef.current) {
+            codeReaderRef.current.reset()
+        }
+
+        console.log('[BarcodeScanner] Scanner stopped successfully')
     }
 
     const handleClose = async () => {
@@ -224,7 +181,15 @@ export function BarcodeScannerModal({ isOpen, onClose, onScan }: BarcodeScannerM
     if (!mounted || !isOpen) return null
 
     return createPortal(
-        <div className="fixed inset-0 z-[9999] bg-transparent">
+        <div className="fixed inset-0 z-[9999] bg-black">
+            {/* Video Preview */}
+            <video
+                ref={videoRef}
+                className="absolute inset-0 w-full h-full object-cover"
+                playsInline
+                muted
+            />
+
             {/* SCANNER OVERLAY */}
             {cameraActive && (
                 <div className="absolute inset-0 z-50 pointer-events-none">
