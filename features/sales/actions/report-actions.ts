@@ -241,9 +241,16 @@ export async function getDarazOrderDetailsForReport(orderNumber: string) {
 
     // Polyfill online_stores.seller_account if missing (using first item's seller_account)
     const sellerAccount = order.items?.[0]?.seller_account || 'Unknown'
+
+    // Filter enriched items to only show delivered ones in the Profit Tracker Detail View
+    const deliveredEnrichedItems = enrichedItems.filter((i: any) => {
+        const iStatus = (i.item_status || '').toLowerCase()
+        return iStatus === 'delivered' || (!iStatus && order.order_status === 'Delivered')
+    })
+
     const enrichedOrder = {
         ...order,
-        items: enrichedItems,
+        items: deliveredEnrichedItems,
         online_stores: { seller_account: sellerAccount }
     }
 
@@ -277,10 +284,13 @@ export async function getProfitTrackerData(params: GetOrderReportParams) {
                 seller_sku,
                 amount,
                 quantity,
-                product_id
+                amount,
+                quantity,
+                product_id,
+                item_status
             )
         `, { count: 'exact' })
-        .eq('order_status', 'Delivered')
+        .in('order_status', ['Delivered', 'Customer Return Delivered'])
 
     // Search by order number or invoice number
     if (search && search.trim()) {
@@ -340,12 +350,24 @@ export async function getProfitTrackerData(params: GetOrderReportParams) {
     }
 
     // Transform data for UI
+    // Filter for Delivered Items ONLY
     let formattedData = (data || []).map((order: any) => {
-        const financials = calculateOrderFinancials(order, priceMap)
+        // Filter for Delivered Items ONLY
+        const deliveredItems = order.items?.filter((i: any) => {
+            const iStatus = (i.item_status || '').toLowerCase()
+            return iStatus === 'delivered' || (!iStatus && order.order_status === 'Delivered')
+        }) || []
+
+        // Recalculate Financials based on valid Items only
+        const orderForCalc = { ...order, items: deliveredItems }
+        const financials = calculateOrderFinancials(orderForCalc, priceMap)
 
         // Sync Status Logic
         let isSyncedFee = order.daraz_fees !== null && order.daraz_fees !== undefined
         const syncStatus = isSyncedFee ? 'synced' : 'not_synced'
+
+        // If no delivered items, we return null (will filter out later)
+        if (deliveredItems.length === 0) return null
 
         return {
             order_primary_id: order.id,
@@ -355,7 +377,7 @@ export async function getProfitTrackerData(params: GetOrderReportParams) {
             delivered_at: order.delivered_at,
             created_at: order.created_at,
             seller_account: financials.sellerAccount,
-            products: order.items?.map((i: any) => {
+            products: deliveredItems.map((i: any) => {
                 let purchasePrice = 0
                 if (i.purchase_cost && i.purchase_cost > 0) {
                     purchasePrice = i.purchase_cost
@@ -367,7 +389,7 @@ export async function getProfitTrackerData(params: GetOrderReportParams) {
                 return {
                     product_name: i.product_name,
                     seller_sku: i.seller_sku,
-                    product_id: priceInfo?.product_code || i.product_id, // Show product_code if available
+                    product_id: priceInfo?.product_code || i.product_id,
                     purchase_price: purchasePrice,
                     quantity: i.quantity || 1
                 }
@@ -379,7 +401,7 @@ export async function getProfitTrackerData(params: GetOrderReportParams) {
             profit_percentage: financials.revenue > 0 ? ((financials.netProfit / financials.revenue) * 100) : 0,
             sync_status: syncStatus
         }
-    })
+    }).filter(Boolean)
 
     return {
         data: formattedData,
@@ -406,10 +428,11 @@ export async function getDailyProfitStats(params: GetOrderReportParams) {
                 purchase_cost,
                 amount,
                 quantity,
-                product_id
+                product_id,
+                item_status
             )
         `)
-        .eq('order_status', 'Delivered')
+        .in('order_status', ['Delivered', 'Customer Return Delivered'])
 
     // Apply same filters as main table
     if (search && search.trim()) {
@@ -467,25 +490,47 @@ export async function getDailyProfitStats(params: GetOrderReportParams) {
 
     data?.forEach((order: any) => {
         if (!order.delivered_at) return
+
+        // Filter for Delivered Items
+        const deliveredItems = order.items?.filter((i: any) => {
+            const iStatus = (i.item_status || '').toLowerCase()
+            return iStatus === 'delivered' || (!iStatus && order.order_status === 'Delivered')
+        }) || []
+
+        if (deliveredItems.length === 0) return
+
         const dateKey = new Date(order.delivered_at).toISOString().split('T')[0] // YYYY-MM-DD local approx (server time)
 
-        // Calculate Order Profit
-        const totalPurchaseCost = order.items?.reduce((sum: number, item: any) => {
+        // Calculate Order Profit using ONLY delivered items
+        const totalPurchaseCost = deliveredItems.reduce((sum: number, item: any) => {
             if (item.purchase_cost && item.purchase_cost > 0) {
                 return sum + (item.purchase_cost * (item.quantity || 1))
             }
             const productCode = item.product_details?.product_id
-            const priceInfo = priceMap[productCode]
-            const purchasePrice = priceInfo?.last_price || priceInfo?.est_price || 0
+            const priceInfo = priceMap[productCode] // Note: code vs id usage in original was shaky, but validItems have product_id. 
+            // Original code used item.product_details?.product_id but item struct has product_id directly in select?
+            // Line 409 selects product_id. Reference code line 477 uses item.product_details?.product_id.
+            // Let's stick to item.product_id as per select.
+            // Wait, calculateOrderFinancials uses priceMap[item.product_id]. 
+            // The daily stats code (original) used item.product_details?.product_id (line 477).
+            // But line 404 select does NOT include product_details! 
+            // I should fix this to use item.product_id to be safe, matching data fetch.
+
+            const pid = item.product_id
+            // Map uses string product_id (UUID) -> {product_code, ...}
+            // But Map keys in line 459 are p.product_id (UUID).
+            // So looking up by item.product_id is correct.
+            const pInfo = priceMap[pid]
+            const purchasePrice = pInfo?.last_price || pInfo?.est_price || 0
             return sum + (purchasePrice * (item.quantity || 1))
         }, 0) || 0
 
-        const revenue = order.items?.reduce((sum: number, item: any) => sum + ((item.amount || 0) * (item.quantity || 1)), 0) || 0
+        const revenue = deliveredItems.reduce((sum: number, item: any) => sum + ((item.amount || 0) * (item.quantity || 1)), 0) || 0
         const totalFee = order.daraz_fees || 0
         const otherFee = 30
         const netProfit = revenue - totalFee - otherFee - totalPurchaseCost
 
-        const seller = order.items?.[0]?.seller_account || 'Unknown'
+        const seller = deliveredItems[0]?.seller_account || 'Unknown'
 
         // Init Day
         if (!dailyStats[dateKey]) {
@@ -555,33 +600,29 @@ export async function syncOrderPurchaseCost(orderNumber: string) {
             const transactions = await fetchDarazFinanceTransactions(targetId, order.store_id, order.order_date)
 
             // Helper to get fee total from transactions by keywords
-            // CRITICAL: Only sum NEGATIVE amounts (fees are negative in Finance API)
+            // CRITICAL: Sum ALL amounts (positive and negative) to handle reversals/refunds
+            // Fees are negative in API. We want Cost (Positive). So we negate the sum.
             const getFinanceTotal = (keywords: string[]) => {
                 if (!transactions || !transactions.length) return 0
                 return transactions
                     .filter((t: any) => {
-                        const amt = parseFloat(t.amount || 0)
-                        if (amt >= 0) return false  // SKIP positive amounts (not fees!)
-
                         const name = (t.fee_name || '').toLowerCase()
                         const type = (t.transaction_type || t.fee_type || '').toLowerCase()
                         return keywords.some(k => name.includes(k) || type.includes(k))
                     })
-                    .reduce((sum: number, t: any) => sum + Math.abs(parseFloat(t.amount || 0)), 0)
+                    .reduce((sum: number, t: any) => sum - parseFloat(t.amount || 0), 0)
             }
 
             const hasFinance = transactions && transactions.length > 0
 
             // 1. Free Shipping Max Fee (search for SPECIFIC fee name, not generic 'shipping')
-            const val_free_ship_raw = getFinanceTotal(['free shipping', 'free_shipping'])
-            const val_free_ship = hasFinance && val_free_ship_raw > 0
-                ? val_free_ship_raw
+            const val_free_ship = hasFinance
+                ? getFinanceTotal(['free shipping', 'free_shipping'])
                 : (revenue * 0.0339)
 
             // 2. Co-funded Voucher Max (search for SPECIFIC fee name)
-            const val_voucher_raw = getFinanceTotal(['co-funded', 'cofunded', 'co_funded'])
-            const val_voucher = hasFinance && val_voucher_raw > 0
-                ? val_voucher_raw
+            const val_voucher = hasFinance
+                ? getFinanceTotal(['co-funded', 'cofunded', 'co_funded'])
                 : (revenue * 0.02)
 
             // 3. Other fees from Finance API (always from API)

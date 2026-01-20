@@ -15,6 +15,7 @@ import { ImportDarazOrdersModal } from '@/features/sales/components/ImportDarazO
 import { DeletionReasonModal } from '@/features/sales/components/DeletionReasonModal'
 import { AdminDeleteConfirm } from '@/features/sales/components/AdminDeleteConfirm'
 import { AuditTrailHover } from '@/features/sales/components/AuditTrailHover'
+import { PartialReturnModal } from '@/features/sales/components/PartialReturnModal'
 // DarazInvoice removed
 
 import { toast } from 'sonner'
@@ -38,6 +39,15 @@ export default function DarazSalesEntryPage() {
     const [deletionModal, setDeletionModal] = useState<{ isOpen: boolean, order: any | null }>({ isOpen: false, order: null })
     const [adminDeleteModal, setAdminDeleteModal] = useState<{ isOpen: boolean, order: any | null }>({ isOpen: false, order: null })
     const [isSubmittingDeletion, setIsSubmittingDeletion] = useState(false)
+
+    // Partial Return State
+    const [isPartialReturnOpen, setIsPartialReturnOpen] = useState(false)
+    const [selectedOrderForReturn, setSelectedOrderForReturn] = useState<any>(null)
+
+    const handleOpenPartialReturn = (order: any) => {
+        setSelectedOrderForReturn(order)
+        setIsPartialReturnOpen(true)
+    }
 
 
     const queryClient = useQueryClient()
@@ -303,6 +313,25 @@ export default function DarazSalesEntryPage() {
         if (selectedOrders.length === 0 || !bulkStatus) {
             toast.error('Please select orders and a status')
             return
+        }
+
+        // Intercept "Customer Return Delivered" for Partial Returns
+        if (bulkStatus === 'Customer Return Delivered') {
+            const targets = orders.filter(o => selectedOrders.includes(o.id))
+            const multiItemOrder = targets.find(o => (o.total_quantity || 0) > 1)
+
+            if (multiItemOrder) {
+                if (selectedOrders.length > 1) {
+                    toast.warning('Please process multi-item returns one at a time to ensure accuracy.')
+                    return
+                }
+
+                // Open Partial Return Modal for the single selected multi-item order
+                handleOpenPartialReturn(multiItemOrder)
+                // Reset bulk status to avoid confusion
+                setBulkStatus('')
+                return
+            }
         }
 
         try {
@@ -875,6 +904,7 @@ export default function DarazSalesEntryPage() {
                                                 <th className="hidden md:table-cell px-1.5 py-1 text-right text-[13px] font-bold uppercase text-gray-900 dark:text-gray-100 w-16">Qty</th>
                                                 <th className="hidden md:table-cell px-1.5 py-1 text-right text-[13px] font-bold uppercase text-gray-900 dark:text-gray-100 w-24">Amount</th>
                                                 <th className="hidden md:table-cell px-1.5 py-1 text-left text-[13px] font-bold uppercase text-gray-900 dark:text-gray-100 w-24">Status</th>
+
                                                 <th className="hidden md:table-cell px-1.5 py-1 text-center text-[13px] font-bold uppercase text-gray-900 dark:text-gray-100 w-29">Actions</th>
                                             </tr>
                                         </thead>
@@ -958,6 +988,7 @@ export default function DarazSalesEntryPage() {
                                                             </span>
                                                         </AuditTrailHover>
                                                     </td>
+
                                                     <td className="hidden md:table-cell px-1.5 py-0.5">
                                                         <div className="flex items-center justify-center gap-0.5">
                                                             <button
@@ -977,6 +1008,8 @@ export default function DarazSalesEntryPage() {
                                                             >
                                                                 View
                                                             </button>
+
+
 
                                                             <button
                                                                 onClick={() => handleDelete(order.id, order.order_number)}
@@ -1072,6 +1105,12 @@ export default function DarazSalesEntryPage() {
                 onClose={() => setAdminDeleteModal({ isOpen: false, order: null })}
                 onConfirm={handleAdminDeleteConfirm}
                 isDeleting={isSubmittingDeletion}
+            />
+
+            <PartialReturnModal
+                isOpen={isPartialReturnOpen}
+                order={selectedOrderForReturn}
+                onClose={() => setIsPartialReturnOpen(false)}
             />
 
         </div >

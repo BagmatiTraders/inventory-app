@@ -8,6 +8,7 @@ import { ArrowLeft, Edit, Calendar, Printer } from 'lucide-react'
 import Link from 'next/link'
 import { Card } from '@/components/ui-shim'
 import { EditDarazOrderModal } from '@/features/sales/components/EditDarazOrderModal'
+import { PartialReturnModal } from '@/features/sales/components/PartialReturnModal'
 // DarazInvoice removed
 
 
@@ -16,6 +17,7 @@ export default function DarazOrderViewPage() {
     const router = useRouter()
     const orderId = params.orderId as string
     const [isEditModalOpen, setIsEditModalOpen] = useState(false)
+    const [isPartialReturnOpen, setIsPartialReturnOpen] = useState(false)
 
 
     const { data: order, isLoading } = useQuery({
@@ -144,7 +146,9 @@ export default function DarazOrderViewPage() {
                                             <th className="px-4 py-3 text-left text-xs font-medium text-gray-900 dark:text-gray-100">#</th>
                                             <th className="px-4 py-3 text-left text-xs font-medium text-gray-900 dark:text-gray-100">Seller SKU</th>
                                             <th className="px-4 py-3 text-left text-xs font-medium text-gray-900 dark:text-gray-100">Product Name</th>
+                                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-900 dark:text-gray-100">Product ID</th>
                                             <th className="px-4 py-3 text-left text-xs font-medium text-gray-900 dark:text-gray-100">Seller Account</th>
+                                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-900 dark:text-gray-100">Status</th>
                                             <th className="px-4 py-3 text-right text-xs font-medium text-gray-900 dark:text-gray-100">Qty</th>
                                             <th className="px-4 py-3 text-right text-xs font-medium text-gray-900 dark:text-gray-100">Amount</th>
                                             <th className="px-4 py-3 text-right text-xs font-medium text-gray-900 dark:text-gray-100">Total</th>
@@ -156,7 +160,22 @@ export default function DarazOrderViewPage() {
                                                 <td className="px-4 py-3 text-sm">{idx + 1}</td>
                                                 <td className="px-4 py-3 text-sm font-mono">{item.seller_sku}</td>
                                                 <td className="px-4 py-3 text-sm">{item.product_name}</td>
+                                                <td className="px-4 py-3 text-sm font-mono text-gray-600 dark:text-gray-400">
+                                                    {item.product?.product_id ? `#${item.product.product_id}` : '-'}
+                                                </td>
                                                 <td className="px-4 py-3 text-sm">{item.seller_account}</td>
+                                                <td className="px-4 py-3 text-sm">
+                                                    <span className={`inline-block px-2 py-0.5 text-xs font-medium rounded ${!item.item_status || item.item_status === 'Pending' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-200' :
+                                                        ['Shipped', 'Ready to Ship', 'Packed'].includes(item.item_status) ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-200' :
+                                                            ['Delivered', 'Completed'].includes(item.item_status) ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-200' :
+                                                                ['Cancelled', 'Cancel'].includes(item.item_status) ? 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-200' :
+                                                                    ['Returning to Seller', 'Customer Return', 'Returned'].includes(item.item_status) ? 'bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-200' :
+                                                                        ['Returned Delivered', 'Customer Return Delivered'].includes(item.item_status) ? 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-200' :
+                                                                            'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-200'
+                                                        }`}>
+                                                        {item.item_status || order.order_status}
+                                                    </span>
+                                                </td>
                                                 <td className="px-4 py-3 text-sm text-right">{item.quantity}</td>
                                                 <td className="px-4 py-3 text-sm text-right">Rs. {item.amount.toLocaleString()}</td>
                                                 <td className="px-4 py-3 text-sm text-right font-medium">Rs. {item.total_amount.toLocaleString()}</td>
@@ -299,12 +318,23 @@ export default function DarazOrderViewPage() {
             {/* Edit Modal */}
             {
                 order && (
-                    <EditDarazOrderModal
-                        isOpen={isEditModalOpen}
-                        onClose={() => setIsEditModalOpen(false)}
-                        orderId={orderId}
-                        orderData={order}
-                    />
+                    <>
+                        <EditDarazOrderModal
+                            isOpen={isEditModalOpen}
+                            onClose={() => setIsEditModalOpen(false)}
+                            orderId={orderId}
+                            orderData={order}
+                            onTriggerPartialReturn={() => {
+                                setIsEditModalOpen(false)
+                                setIsPartialReturnOpen(true)
+                            }}
+                        />
+                        <PartialReturnModal
+                            order={order}
+                            isOpen={isPartialReturnOpen}
+                            onClose={() => setIsPartialReturnOpen(false)}
+                        />
+                    </>
                 )
             }
 

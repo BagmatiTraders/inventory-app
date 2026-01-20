@@ -277,6 +277,7 @@ export async function POST(request: NextRequest) {
                         quantity: 1,
                         amount: item.item_price || item.price || 0,
                         status: itemStatus,
+                        item_status: itemStatus,
                         item_sequence: sequence++
                     })
                 }
@@ -285,7 +286,9 @@ export async function POST(request: NextRequest) {
                     // Aggregate Logic (Strict 1:1 or basic sum)
                     const aggregatedItems = new Map<string, any>()
                     orderItemsPayload.forEach(p => {
-                        const key = p.seller_sku + '_' + p.amount
+                        // Include status in key to separate Partial Returns (e.g. 1 Delivered, 1 Returned)
+                        const key = `${p.seller_sku}_${p.amount}_${p.status}`
+
                         if (aggregatedItems.has(key)) {
                             const existing = aggregatedItems.get(key)
                             existing.quantity += 1

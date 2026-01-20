@@ -11,9 +11,10 @@ interface EditDarazOrderModalProps {
     onClose: () => void
     orderId: string
     orderData: any
+    onTriggerPartialReturn?: () => void
 }
 
-export function EditDarazOrderModal({ isOpen, onClose, orderId, orderData }: EditDarazOrderModalProps) {
+export function EditDarazOrderModal({ isOpen, onClose, orderId, orderData, onTriggerPartialReturn }: EditDarazOrderModalProps) {
     const queryClient = useQueryClient()
     const [isSaving, setIsSaving] = useState(false)
 
@@ -74,6 +75,17 @@ export function EditDarazOrderModal({ isOpen, onClose, orderId, orderData }: Edi
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
+
+        // Intercept Partial Return
+        if (orderStatus === 'Customer Return Delivered') {
+            const currentTotalQty = items.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0)
+            if (currentTotalQty > 1 && onTriggerPartialReturn) {
+                if (window.confirm('This is a multi-item order. Do you want to process a Partial Return?')) {
+                    onTriggerPartialReturn()
+                    return
+                }
+            }
+        }
 
         try {
             setIsSaving(true)

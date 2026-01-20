@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { getAllDarazOrders, deleteDarazOrder, updateDarazOrderStatus, getDarazOrderById, getAllFiscalYears, getActiveFiscalYear, syncDarazOrderProducts, syncProductInfoFromInventory, getUniqueSellerAccounts } from '@/features/sales/actions/daraz-actions'
 import { getUserRole, getUserDeletionStats, createDeletionRequest, softDeleteOrder } from '@/features/sales/actions/daraz-deletion-actions'
-import { Search, Printer, ArrowLeft, X, Trash2, Clock, RefreshCw } from 'lucide-react'
+import { Search, Printer, ArrowLeft, X, Trash2, Clock, RefreshCw, Split } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Card } from '@/components/ui-shim'
@@ -12,6 +12,8 @@ import { DeletionReasonModal } from '@/features/sales/components/DeletionReasonM
 import { AdminDeleteConfirm } from '@/features/sales/components/AdminDeleteConfirm'
 import { AuditTrailHover } from '@/features/sales/components/AuditTrailHover'
 import { toast } from 'sonner'
+
+import { PartialReturnModal } from '@/features/sales/components/PartialReturnModal'
 
 interface DarazOrderListProps {
     isEmbedded?: boolean
@@ -35,6 +37,7 @@ export function DarazOrderList({ isEmbedded = false }: DarazOrderListProps) {
     const [userRole, setUserRole] = useState<'admin' | 'user' | null>(null)
     const [deletionModal, setDeletionModal] = useState<{ isOpen: boolean, order: any | null }>({ isOpen: false, order: null })
     const [adminDeleteModal, setAdminDeleteModal] = useState<{ isOpen: boolean, order: any | null }>({ isOpen: false, order: null })
+    const [partialReturnModal, setPartialReturnModal] = useState<{ isOpen: boolean, order: any | null }>({ isOpen: false, order: null })
 
     const [isSubmittingDeletion, setIsSubmittingDeletion] = useState(false)
     const [isSyncingLinks, setIsSyncingLinks] = useState(false)
@@ -557,6 +560,7 @@ export function DarazOrderList({ isEmbedded = false }: DarazOrderListProps) {
                                     <th className="hidden md:table-cell px-1.5 py-1 text-right text-xs font-bold uppercase text-gray-900 dark:text-gray-100 w-16">Qty</th>
                                     <th className="hidden md:table-cell px-1.5 py-1 text-right text-xs font-bold uppercase text-gray-900 dark:text-gray-100 w-24">Amount</th>
                                     <th className="hidden md:table-cell px-1.5 py-1 text-left text-xs font-bold uppercase text-gray-900 dark:text-gray-100 w-24">Status</th>
+                                    <th className="hidden md:table-cell px-1.5 py-1 text-left text-xs font-bold uppercase text-gray-900 dark:text-gray-100 w-48">Item Statuses</th>
                                     <th className="hidden md:table-cell px-1.5 py-1 text-center text-xs font-bold uppercase text-gray-900 dark:text-gray-100 w-29">Actions</th>
                                 </tr>
                             </thead>
@@ -678,7 +682,47 @@ export function DarazOrderList({ isEmbedded = false }: DarazOrderListProps) {
                                                             }`}>
                                                             {order.order_status}
                                                         </span>
+                                                        {(new Set(order.item_statuses || []).size > 1) && (
+                                                            <span className="ml-1 inline-flex items-center justify-center p-0.5 rounded bg-gray-100 dark:bg-zinc-800 text-gray-500" title="Partial/Mixed Status">
+                                                                <Split size={12} />
+                                                            </span>
+                                                        )}
                                                     </AuditTrailHover>
+                                                </td>
+                                                <td className="hidden md:table-cell px-1.5 py-0.5">
+                                                    <div className="flex flex-wrap gap-1">
+                                                        {(order.item_statuses || []).length > 0 ? (
+                                                            <>
+                                                                <span className="text-xs text-gray-500 font-mono hidden">[</span>
+                                                                {(order.item_statuses || []).map((rawStatus: string, sIdx: number) => {
+                                                                    let status = rawStatus;
+                                                                    if (status === 'ready_to_ship') status = 'Ready to Ship';
+                                                                    else if (status === 'returned_delivered') status = 'Returned Delivered'; // Keep standard
+                                                                    else if (status === 'customer_return_delivered') status = 'Customer Return Delivered';
+                                                                    else if (status === 'returning_to_seller') status = 'Returning to Seller';
+                                                                    else if (status === 'customer_return') status = 'Customer Return';
+
+                                                                    return (
+                                                                        <span key={sIdx} className={`px-1 py-0.5 text-[10px] font-medium rounded border ${status === 'Pending' ? 'bg-yellow-50 text-yellow-700 border-yellow-200' :
+                                                                            status === 'Packed' ? 'bg-indigo-50 text-indigo-700 border-indigo-200' :
+                                                                                status === 'Ready to Ship' ? 'bg-green-50 text-green-700 border-green-200' :
+                                                                                    status === 'Shipped' ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                                                                                        status === 'Delivered' ? 'bg-green-50 text-green-700 border-green-200' :
+                                                                                            ['Returning to Seller', 'Customer Return', 'returned', 'returning_to_seller'].includes(status) ? 'bg-orange-50 text-orange-700 border-orange-200' :
+                                                                                                ['Returned Delivered', 'Customer Return Delivered', 'customer_return_delivered', 'returned_delivered'].includes(status) ? 'bg-orange-100 text-orange-800 border-orange-300' :
+                                                                                                    (status === 'Cancel' || status === 'Cancelled') ? 'bg-red-50 text-red-700 border-red-200' :
+                                                                                                        'bg-gray-50 text-gray-600 border-gray-200'
+                                                                            }`}>
+                                                                            "{status}"
+                                                                        </span>
+                                                                    )
+                                                                })}
+                                                                <span className="text-xs text-gray-500 font-mono hidden">]</span>
+                                                            </>
+                                                        ) : (
+                                                            <span className="text-gray-400 text-xs">-</span>
+                                                        )}
+                                                    </div>
                                                 </td>
                                                 <td className="hidden md:table-cell px-1.5 py-0.5">
                                                     <div className="flex items-center justify-between gap-0.5">
@@ -761,6 +805,16 @@ export function DarazOrderList({ isEmbedded = false }: DarazOrderListProps) {
                 onClose={() => setAdminDeleteModal({ isOpen: false, order: null })}
                 onConfirm={handleAdminDeleteConfirm}
                 isDeleting={isSubmittingDeletion}
+            />
+
+            <PartialReturnModal
+                isOpen={partialReturnModal.isOpen}
+                order={partialReturnModal.order}
+                onClose={() => {
+                    setPartialReturnModal({ isOpen: false, order: null })
+                    // Invalidate query to refresh list data (item statuses)
+                    queryClient.invalidateQueries({ queryKey: ['all-daraz-orders'] })
+                }}
             />
         </div>
     )

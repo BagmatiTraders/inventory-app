@@ -9,6 +9,7 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@capacitor-community/barcode-scanner": "^4.0.1",
     "@capacitor-community/camera-preview": "^7.0.2",
     "@capacitor/android": "^8.0.0",
     "@capacitor/app": "^8.0.0",

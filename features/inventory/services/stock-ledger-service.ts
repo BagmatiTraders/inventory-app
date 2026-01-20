@@ -109,10 +109,10 @@ export async function getStockLedger(page = 1, limit = 100, search = ''): Promis
             supabase.from('damaged_stocks').select('product_id, quantity').eq('status', 'Damaged').in('product_id', chunkIds),
             supabase.from('purchases').select('product_id, quantity').in('product_id', chunkIds),
             supabase.from('daraz_order_items')
-                .select('product_id, quantity, order:daraz_orders!inner(order_status)')
+                .select('product_id, quantity, item_status, order:daraz_orders!inner(order_status)')
                 .in('product_id', chunkIds),
             supabase.from('marketplace_order_items')
-                .select('product_id, quantity, order:marketplace_orders!inner(order_status)')
+                .select('product_id, quantity, item_status, order:marketplace_orders!inner(order_status)')
                 .in('product_id', chunkIds),
             supabase.from('store_sales_items')
                 .select('product_id, qty')
@@ -254,12 +254,36 @@ export async function getStockLedger(page = 1, limit = 100, search = ''): Promis
         // Daraz
         const darazItems = darazMap.get(pid) || []
         darazItems.forEach((item: any) => {
-            const status = item.order?.order_status
+            const sRaw = item.item_status || item.order?.order_status
+            const status = sRaw ? sRaw.toString().trim().toLowerCase() : ''
             const qty = item.quantity || 0
-            if (['Shipped', 'Delivered', 'Returning to Seller', 'Customer Return'].includes(status)) {
+
+            // Sales: Count EVERYTHING that left the warehouse (Shipped/Delivered + Transit Returns + Completed Returns)
+            // Normalized to lowercase to handle casing issues (e.g. 'Returned' vs 'returned')
+            const salesStatuses = [
+                'shipped', 'delivered',
+                'returning to seller', 'returning_to_seller',
+                'customer return', 'customer_return',
+                'returned',
+                'returned delivered', 'returned_delivered',
+                'customer return delivered', 'customer_return_delivered',
+                'return delivered',
+                'fail delivered', 'delivery failed'
+            ]
+            if (salesStatuses.includes(status)) {
                 sales += qty
             }
-            if (['Returned Delivered', 'Customer Return'].includes(status)) {
+
+            // Sales Return: Count ONLY items that have PHYSICALLY returned to inventory
+            // User Request: Return Delivered, Customer Return Delivered, returned
+            const returnStatuses = [
+                'returned delivered', 'returned_delivered',
+                'customer return delivered', 'customer_return_delivered',
+                'return delivered',
+                'returned',
+                'fail delivered', 'delivery failed'
+            ]
+            if (returnStatuses.includes(status)) {
                 salesReturn += qty
             }
         })
@@ -267,12 +291,17 @@ export async function getStockLedger(page = 1, limit = 100, search = ''): Promis
         // Marketplace
         const marketplaceItems = marketplaceMap.get(pid) || []
         marketplaceItems.forEach((item: any) => {
-            const status = item.order?.order_status
+            const sRaw = item.order?.order_status
+            const status = sRaw ? sRaw.toString().trim().toLowerCase() : ''
             const qty = item.quantity || 0
-            if (['Shipped', 'Delivered'].includes(status)) {
+
+            // Sales: Shipped/Delivered + Returns
+            if (['shipped', 'delivered', 'fail delivered', 'delivery failed', 'returned to seller'].includes(status)) {
                 sales += qty
             }
-            if (status === 'Fail Delivered') {
+
+            // Sales Return: Completed Returns
+            if (['fail delivered', 'delivery failed', 'returned to seller'].includes(status)) {
                 salesReturn += qty
             }
         })
@@ -416,10 +445,10 @@ export async function getProductStockDetails(productId: string): Promise<StockLe
 
         // Sales Data
         supabase.from('daraz_order_items')
-            .select('quantity, order:daraz_orders!inner(order_status)')
+            .select('quantity, item_status, order:daraz_orders!inner(order_status)')
             .eq('product_id', productId),
         supabase.from('marketplace_order_items')
-            .select('quantity, order:marketplace_orders!inner(order_status)')
+            .select('quantity, item_status, order:marketplace_orders!inner(order_status)')
             .eq('product_id', productId),
         supabase.from('store_sales_items')
             .select('qty')
@@ -481,12 +510,25 @@ export async function getProductStockDetails(productId: string): Promise<StockLe
 
     darazItems.data?.forEach((item: any) => {
         const qty = item.quantity || 0
-        const status = item.order?.order_status
-        if (status === 'Shipped') darazShipped += qty
-        else if (status === 'Delivered') darazDelivered += qty
-        else if (status === 'Returning to Seller') darazReturning += qty
-        else if (status === 'Customer Return') darazCustomerReturn += qty
-        else if (status === 'Returned Delivered') darazReturnedDelivered += qty
+        const sRaw = item.item_status || item.order?.order_status
+        const status = sRaw ? sRaw.toString().trim().toLowerCase() : ''
+
+        // Count in detailed buckets for UI
+        if (status === 'shipped') {
+            darazShipped += qty
+        }
+        else if (status === 'delivered') {
+            darazDelivered += qty
+        }
+        else if (['returning to seller', 'returning_to_seller'].includes(status)) {
+            darazReturning += qty
+        }
+        else if (['customer return', 'customer_return'].includes(status)) {
+            darazCustomerReturn += qty
+        }
+        else if (['returned delivered', 'returned_delivered', 'customer return delivered', 'customer_return_delivered', 'return delivered', 'returned', 'fail delivered', 'delivery failed'].includes(status)) {
+            darazReturnedDelivered += qty // Bucket "Returned Delivered" for display totals
+        }
     })
 
     let marketplaceShipped = 0
@@ -495,10 +537,12 @@ export async function getProductStockDetails(productId: string): Promise<StockLe
 
     marketplaceItems.data?.forEach((item: any) => {
         const qty = item.quantity || 0
-        const status = item.order?.order_status
-        if (status === 'Shipped') marketplaceShipped += qty
-        else if (status === 'Delivered') marketplaceDelivered += qty
-        else if (status === 'Fail Delivered') marketplaceFailDelivered += qty
+        const sRaw = item.order?.order_status
+        const status = sRaw ? sRaw.toString().trim().toLowerCase() : ''
+
+        if (status === 'shipped') marketplaceShipped += qty
+        else if (status === 'delivered') marketplaceDelivered += qty
+        else if (['fail delivered', 'delivery failed', 'returned to seller'].includes(status)) marketplaceFailDelivered += qty
     })
 
     // 5. Calculate Auto Adjust
@@ -507,7 +551,9 @@ export async function getProductStockDetails(productId: string): Promise<StockLe
     const processAutoAdjust = (items: any[], qtyKey: string, hasOrder: boolean) => {
         items?.forEach((item: any) => {
             const parentSoldQty = item[qtyKey] || 0
-            const status = item.order?.order_status
+            const sRaw = item.order?.order_status
+            const status = sRaw ? sRaw.toString().trim().toLowerCase() : ''
+
             // The query returns product_combos array. Find the entry for THIS child product.
             const comboEntry = item.product?.product_combos?.find((c: any) => c.child_product_id === productId)
             const quantityInCombo = comboEntry?.quantity || 0
@@ -516,10 +562,10 @@ export async function getProductStockDetails(productId: string): Promise<StockLe
             if (!hasOrder) {
                 // Store sales: reduce stock
                 autoAdjust -= totalStockChange
-            } else if (['Shipped', 'Delivered', 'Returning to Seller'].includes(status)) {
+            } else if (['shipped', 'delivered', 'returning to seller', 'returning_to_seller'].includes(status)) {
                 // Sales: reduce stock
                 autoAdjust -= totalStockChange
-            } else if (['Fail Delivered', 'Returned Delivered', 'Customer Return', 'Customer Return Delivered'].includes(status)) {
+            } else if (['fail delivered', 'delivery failed', 'returned delivered', 'returned_delivered', 'customer return', 'customer_return', 'customer return delivered', 'customer_return_delivered', 'return delivered', 'returned'].includes(status)) {
                 // Returns: increase stock
                 autoAdjust += totalStockChange
             }
@@ -535,11 +581,12 @@ export async function getProductStockDetails(productId: string): Promise<StockLe
     const isComboOrVariation = product.product_type === 'combo' || product.product_type === 'variation'
 
     // Sales Sum (Green items) for formula: Sales
-    const totalSalesForFormula = datSum(darazShipped, darazDelivered, darazReturning, darazCustomerReturn) +
-        datSum(marketplaceShipped, marketplaceDelivered) + storeSales
+    // Must include Shipped, Delivered, ALL Returning (Transit), AND Returned items (to offset the Return Add-back)
+    const totalSalesForFormula = datSum(darazShipped, darazDelivered, darazReturning, darazCustomerReturn, darazReturnedDelivered) +
+        datSum(marketplaceShipped, marketplaceDelivered, marketplaceFailDelivered) + storeSales
 
     // Sales Return Sum (Red items) for formula: Sales Return
-    const totalReturnsForFormula = datSum(darazReturnedDelivered, darazCustomerReturn) + marketplaceFailDelivered
+    const totalReturnsForFormula = datSum(darazReturnedDelivered) + marketplaceFailDelivered
 
     const storeStock = openingStock + manualAdjustment
 

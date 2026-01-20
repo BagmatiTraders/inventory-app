@@ -96,7 +96,7 @@ export default function ProfitTrackerOrderPage() {
         const status = (order.statuses?.[0] || order.order_status || 'pending').toLowerCase() // Map order_status
 
         // Fetch finance for delivered, completed, shipped, returned, and failed orders
-        if (['delivered', 'completed', 'shipped', 'returned', 'failed'].includes(status)) {
+        if (['delivered', 'completed', 'shipped', 'returned', 'failed', 'customer return delivered'].includes(status)) {
             setLoadingFinance(true)
             const fetchFinance = async () => {
                 try {
@@ -178,7 +178,7 @@ export default function ProfitTrackerOrderPage() {
             name: item.product_name,
             sku: item.seller_sku,
             shop_sku: item.seller_sku,
-            status: item.status || order.order_status || 'pending',
+            status: (item.item_status || item.status || order.order_status || 'pending').toLowerCase(),
             item_price: item.amount,
             qty: item.quantity,
             matched_product_code: item.product?.product_id || null,
@@ -203,6 +203,13 @@ export default function ProfitTrackerOrderPage() {
         const itemsDetail = typeof order.items_detail === 'string' ? JSON.parse(order.items_detail || '[]') : order.items_detail || []
         items = itemsDetail
     }
+
+    // Filter Items for Profit Tracker: Show Only Delivered Items
+    // If an item is returned (partial return), it should not be in the profit calc/list
+    items = items.filter((i: any) => {
+        const iStatus = (i.status || '').toLowerCase()
+        return iStatus === 'delivered' || (!iStatus && order.order_status === 'Delivered')
+    })
 
     const status = (order.statuses?.[0] || order.order_status || 'pending').toLowerCase()
 
@@ -248,7 +255,7 @@ export default function ProfitTrackerOrderPage() {
                 const type = (t.transaction_type || t.fee_type || '').toLowerCase()
                 return feeTypeKeywords.some(k => name.includes(k) || type.includes(k))
             })
-            .reduce((sum, t) => sum + Math.abs(parseFloat(t.amount || 0)), 0)
+            .reduce((sum, t) => sum - parseFloat(t.amount || 0), 0)
 
         return total
     }
@@ -265,8 +272,8 @@ export default function ProfitTrackerOrderPage() {
     }
 
     // --- Calculated Financial Values ---
-    const isFinanceVisible = ['delivered', 'completed', 'shipped', 'returned', 'failed'].includes(status)
-    const isDelivered = status === 'delivered' // Keep for backwards compatibility if needed, but likely replace usages
+    const isFinanceVisible = ['delivered', 'completed', 'shipped', 'returned', 'failed', 'customer return delivered'].includes(status)
+    const isDelivered = status === 'delivered' || status === 'customer return delivered' // Allow calc for mixed status orders
 
     // 1. Product Price (Always from Items)
     // 1. Product Price (Always from Items - Multiply by Quantity)
@@ -568,8 +575,8 @@ export default function ProfitTrackerOrderPage() {
                                 <CardContent className="p-3">
                                     {/* Calculations */}
                                     {(() => {
-                                        // Only show Net Profit if Delivered
-                                        if (status !== 'delivered') {
+                                        // Only show Net Profit if Delivered (or mixed delivered)
+                                        if (!isDelivered) {
                                             return (
                                                 <div className="text-center py-6 text-gray-500 text-xs">
                                                     Profit calculation available for delivered orders only.

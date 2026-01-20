@@ -3,10 +3,11 @@
 import { useState, useEffect, useRef } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { getAllDarazOrders, getUniqueSellerAccounts, getOrderStatusSummary } from '@/features/sales/actions/daraz-actions'
-import { RefreshCw, Search, X, Eye, ChevronLeft, ChevronRight } from 'lucide-react'
+import { RefreshCw, Search, X, Eye, ChevronLeft, ChevronRight, Camera } from 'lucide-react'
 import { Card, Button } from '@/components/ui-shim'
 import { toast } from 'sonner'
 import Link from 'next/link'
+import { BarcodeScannerModal } from '@/components/BarcodeScannerModal'
 
 export function OrderStatusSyncTable() {
     const [sellerAccountFilter, setSellerAccountFilter] = useState('all')
@@ -16,6 +17,7 @@ export function OrderStatusSyncTable() {
     const [refreshProgress, setRefreshProgress] = useState({ current: 0, total: 0 })
     const [page, setPage] = useState(1)
     const [limit, setLimit] = useState(50) // Default 50 as requested
+    const [isScannerOpen, setIsScannerOpen] = useState(false)
 
     const queryClient = useQueryClient()
 
@@ -136,6 +138,37 @@ export function OrderStatusSyncTable() {
         }
     }
 
+    // Handle barcode scan
+    const handleBarcodeScan = async (barcode: string): Promise<boolean> => {
+        try {
+            console.log('[OrderStatusSyncTable] Barcode scanned:', barcode)
+
+            // Check if barcode matches any order_number or tracking_number
+            const result = await getAllDarazOrders({
+                page: 1,
+                limit: 1,
+                search: barcode,
+                status: 'all',
+                sellerAccount: 'all'
+            })
+
+            if (result.orders && result.orders.length > 0) {
+                // Order found! Set search input and trigger search
+                console.log('[OrderStatusSyncTable] Order found:', result.orders[0].order_number)
+                setSearchInput(barcode)
+                setPage(1)
+                return true
+            } else {
+                // Order not found
+                console.log('[OrderStatusSyncTable] Order not found for barcode:', barcode)
+                return false
+            }
+        } catch (error) {
+            console.error('[OrderStatusSyncTable] Error checking barcode:', error)
+            throw error
+        }
+    }
+
     return (
         <div className="p-0 md:p-6 space-y-4">
 
@@ -204,7 +237,7 @@ export function OrderStatusSyncTable() {
                         </Button>
                     </div>
 
-                    {/* Row 2: Search Order + Clear Button */}
+                    {/* Row 2: Search Order + Camera + Clear Button */}
                     <div className="flex gap-2">
                         <div className="relative flex-1">
                             <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 h-3 w-3 text-gray-400" />
@@ -213,8 +246,15 @@ export function OrderStatusSyncTable() {
                                 value={searchInput}
                                 onChange={(e) => setSearchInput(e.target.value)}
                                 placeholder="Search Order Number"
-                                className="w-full pl-8 pr-3 py-1.5 border rounded-md text-xs dark:bg-zinc-800 dark:border-zinc-700"
+                                className="w-full pl-8 pr-10 py-1.5 border rounded-md text-xs dark:bg-zinc-800 dark:border-zinc-700"
                             />
+                            <button
+                                onClick={() => setIsScannerOpen(true)}
+                                className="absolute right-2 top-1/2 transform -translate-y-1/2 p-1 text-blue-600 hover:text-blue-700 active:scale-95 transition-transform"
+                                title="Scan barcode"
+                            >
+                                <Camera className="h-4 w-4" />
+                            </button>
                         </div>
                         {(sellerAccountFilter !== 'all' || statusFilter !== 'all' || searchInput) && (
                             <Button
@@ -592,6 +632,13 @@ export function OrderStatusSyncTable() {
                     </div>
                 )}
             </Card>
+
+            {/* Barcode Scanner Modal (Mobile Only) */}
+            <BarcodeScannerModal
+                isOpen={isScannerOpen}
+                onClose={() => setIsScannerOpen(false)}
+                onScan={handleBarcodeScan}
+            />
 
             {/* Mobile Quick View FAB & Modal */}
             <QuickViewFab sellerAccounts={sellerAccounts} />

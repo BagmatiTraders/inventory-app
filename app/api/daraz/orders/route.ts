@@ -601,8 +601,10 @@ export async function GET(request: NextRequest) {
                             quantity: 1,
                             amount: item.item_price || item.price || 0,
                             status: itemStatus,
+                            item_status: itemStatus, // Add item_status here
                             item_sequence: sequence++,
-                            aggregation_key: `${savedOrder.id}_${sku || shopSku}_${item.item_price || item.price || 0}`
+                            // INCLUDE STATUS IN KEY to functionality separate partial returns
+                            aggregation_key: `${savedOrder.id}_${sku || shopSku}_${item.item_price || item.price || 0}_${itemStatus}`
                         })
                     }
                 }

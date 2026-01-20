@@ -175,14 +175,37 @@ export async function getDarazOrders(params: GetDarazOrdersParams) {
     if (error) throw error
 
     // Transform and Aggegrate
+    // Fetch items for these orders to get statuses
+    const orderIds = data?.map((o: any) => o.id) || []
+    const { data: allItems } = await supabase
+        .from('daraz_order_items')
+        .select('order_id, item_status, quantity')
+        .in('order_id', orderIds)
+
     const orders = data?.map((order: any) => {
-        // View already has totals and flattened user fields.
-        // We just need to ensure `items` is present if the frontend expects it.
-        // It does NOT iterate items. So items: [] is safe.
+        const orderItems = allItems?.filter((i: any) => i.order_id === order.id) || []
+
+        // Calculate item statuses - use item_status if set, otherwise fallback to main order status
+        // We create an array representing each unit? Or each line item?
+        // User screenshot implies line items or maybe exploded units.
+        // Let's stick to line items statuses for now as that's what we have.
+        // If an item has qty 2, it's one line. But if split, it becomes 2 lines.
+        // So mapping orderItems is correct.
+        // Calculate item statuses - use item_status if set, otherwise fallback to main order status
+        // Expand based on item quantity to show one status badge per unit
+        const itemStatuses: string[] = []
+        orderItems.forEach((i: any) => {
+            const status = i.item_status || order.order_status
+            const qty = i.quantity || 1
+            for (let k = 0; k < qty; k++) {
+                itemStatuses.push(status)
+            }
+        })
 
         return {
             ...order,
-            items: [] // Return empty items array as the View doesn't have it, but frontend checks length sometimes?
+            items: orderItems,
+            item_statuses: itemStatuses
         }
     }) || []
 
@@ -232,7 +255,9 @@ export async function getAllDarazOrders(params: {
     }
 
     if (status && status !== 'all') {
-        query = query.eq('order_status', status)
+        // Match either the main status OR if the statuses array (if exists) contains the status
+        // Using raw PostgREST syntax string for mixed logic
+        query = query.or(`order_status.eq."${status}",statuses.cs.{${status}}`)
     }
 
     if (sellerAccount && sellerAccount !== 'all') {
@@ -324,6 +349,8 @@ export async function getAllDarazOrders(params: {
             item_sequence,
             product_id,
             product_name,
+            item_status,
+            quantity,
             product:products(product_id)
         `)
         .in('order_id', orderIds)
@@ -341,10 +368,26 @@ export async function getAllDarazOrders(params: {
 
     const enrichedOrders = (data || []).map((order: any) => {
         const firstItem = itemsMap.get(order.id)
+
+        // Calculate item statuses for this order
+        // Calculate item statuses for this order
+        const orderItems = allItems?.filter((i: any) => i.order_id === order.id) || []
+
+        // Expand statuses based on quantity
+        const itemStatuses: string[] = []
+        orderItems.forEach((i: any) => {
+            const status = i.item_status || order.order_status
+            const qty = i.quantity || 1
+            for (let k = 0; k < qty; k++) {
+                itemStatuses.push(status)
+            }
+        })
+
         return {
             ...order,
             product_name: firstItem?.product_name || 'N/A',
-            first_product_code: (firstItem?.product as any)?.product_id || null
+            first_product_code: (firstItem?.product as any)?.product_id || null,
+            item_statuses: itemStatuses
         }
     })
 
@@ -373,7 +416,7 @@ export async function getDarazOrderById(orderId: string) {
 
     const { data: items, error: itemsError } = await supabase
         .from('daraz_order_items')
-        .select('*')
+        .select('*, product:products(product_id)')
         .eq('order_id', orderId)
         .order('item_sequence')
 
@@ -1467,14 +1510,14 @@ export async function syncProductInfoFromInventory() {
             if (page >= 50) break
         }
 
-        // Create a map of seller_sku -> { product_name, seller_account }
-        const skuMap = new Map<string, { product_name: string, seller_account: string }>()
+        // Create a map of seller_sku -> { product_id, product_name, seller_account }
+        const skuMap = new Map<string, { product_id: string, product_name: string, seller_account: string }>()
 
         allProducts.forEach(product => {
-            if (product.seller_sku1) skuMap.set(product.seller_sku1.toLowerCase(), { product_name: product.product_name, seller_account: product.seller_account1 || '' })
-            if (product.seller_sku2) skuMap.set(product.seller_sku2.toLowerCase(), { product_name: product.product_name, seller_account: product.seller_account2 || '' })
-            if (product.seller_sku3) skuMap.set(product.seller_sku3.toLowerCase(), { product_name: product.product_name, seller_account: product.seller_account3 || '' })
-            if (product.seller_sku4) skuMap.set(product.seller_sku4.toLowerCase(), { product_name: product.product_name, seller_account: product.seller_account4 || '' })
+            if (product.seller_sku1) skuMap.set(product.seller_sku1.toLowerCase(), { product_id: product.id, product_name: product.product_name, seller_account: product.seller_account1 || '' })
+            if (product.seller_sku2) skuMap.set(product.seller_sku2.toLowerCase(), { product_id: product.id, product_name: product.product_name, seller_account: product.seller_account2 || '' })
+            if (product.seller_sku3) skuMap.set(product.seller_sku3.toLowerCase(), { product_id: product.id, product_name: product.product_name, seller_account: product.seller_account3 || '' })
+            if (product.seller_sku4) skuMap.set(product.seller_sku4.toLowerCase(), { product_id: product.id, product_name: product.product_name, seller_account: product.seller_account4 || '' })
         })
 
         console.log('Total products loaded:', allProducts.length)
@@ -1522,7 +1565,7 @@ export async function syncProductInfoFromInventory() {
             const batchIds = orderIds.slice(i, i + BATCH_SIZE)
             const { data: batchItems, error: itemsError } = await supabase
                 .from('daraz_order_items')
-                .select('id, seller_sku, product_name, seller_account, order_id')
+                .select('id, seller_sku, product_name, seller_account, order_id, product_id')
                 .in('order_id', batchIds)
 
             if (itemsError) throw itemsError
@@ -1533,7 +1576,7 @@ export async function syncProductInfoFromInventory() {
         console.log('SKU map size:', skuMap.size)
 
         let updatedCount = 0
-        const updates: Array<{ id: string, product_name: string, seller_account: string }> = []
+        const updates: Array<{ id: string, product_name: string, seller_account: string, product_id: string }> = []
 
         // Find items that need updating (Check all items against inventory map)
         orderItems?.forEach((item: any) => {
@@ -1542,7 +1585,7 @@ export async function syncProductInfoFromInventory() {
             if (sellerSku && skuMap.has(sellerSku)) {
                 const productInfo = skuMap.get(sellerSku)!
 
-                // Check if update is needed (if name or account differs)
+                // Check if update is needed (if name or account differs OR if product_id is missing/wrong)
                 // Normalize strings for comparison (handle nulls/undefined)
                 const currentName = (item.product_name || '').trim()
                 const newName = (productInfo.product_name || '').trim()
@@ -1550,17 +1593,19 @@ export async function syncProductInfoFromInventory() {
                 const currentAccount = (item.seller_account || '').trim()
                 const newAccount = (productInfo.seller_account || '').trim()
 
-                // If either Name OR Account is different, we sync it
-                // This covers: 1. Empty/Missing info, 2. "Product Not Found" placeholder, 3. "Unknown Product", 4. Outdated info
-                if (currentName !== newName || currentAccount !== newAccount) {
+                // If either Name OR Account is different OR product_id is different, we sync it
+                // This covers: 1. Empty/Missing info, 2. "Product Not Found" placeholder, 3. "Unknown Product", 4. Outdated info, 5. Missing FK
+                if (currentName !== newName || currentAccount !== newAccount || item.product_id !== productInfo.product_id) {
                     console.log(`Syncing item ${item.id} (${sellerSku}):`)
                     console.log(`  Name: ${currentName} -> ${newName}`)
                     console.log(`  Account: ${currentAccount} -> ${newAccount}`)
+                    console.log(`  ID: ${item.product_id} -> ${productInfo.product_id}`)
 
                     updates.push({
                         id: item.id,
                         product_name: productInfo.product_name,
-                        seller_account: productInfo.seller_account
+                        seller_account: productInfo.seller_account,
+                        product_id: productInfo.product_id
                     })
                 }
             } else {
@@ -1608,6 +1653,7 @@ export async function syncProductInfoFromInventory() {
             const { error } = await supabase
                 .from('daraz_order_items')
                 .update({
+                    product_id: update.product_id, // Fix FK link
                     product_name: update.product_name,
                     seller_account: update.seller_account
                 })
