@@ -19,7 +19,7 @@ export function BarcodeScannerModal({ isOpen, onClose, onScan }: BarcodeScannerM
     const [cameraActive, setCameraActive] = useState(false)
 
     const videoRef = useRef<HTMLVideoElement>(null)
-    const codeReaderRef = useRef<BrowserMultiFormatReader | null>(null)
+    const codeReaderRef = useRef<BrowserMultiMultiFormatReader | null>(null)
     const streamRef = useRef<MediaStream | null>(null)
 
     useEffect(() => {
@@ -30,6 +30,33 @@ export function BarcodeScannerModal({ isOpen, onClose, onScan }: BarcodeScannerM
             stopScanning()
         }
     }, [])
+
+    // Handle browser back button when camera is open
+    useEffect(() => {
+        if (!isOpen) return
+
+        // Add a history entry when camera opens
+        const historyState = { scannerOpen: true }
+        window.history.pushState(historyState, '')
+
+        const handlePopState = (event: PopStateEvent) => {
+            // If camera is open and back button pressed, close camera
+            if (cameraActive) {
+                event.preventDefault()
+                handleClose()
+            }
+        }
+
+        window.addEventListener('popstate', handlePopState)
+
+        return () => {
+            window.removeEventListener('popstate', handlePopState)
+            // Remove the history entry we added if camera closes normally
+            if (window.history.state?.scannerOpen) {
+                window.history.back()
+            }
+        }
+    }, [isOpen, cameraActive])
 
     // Start camera and scanning when modal opens
     useEffect(() => {
