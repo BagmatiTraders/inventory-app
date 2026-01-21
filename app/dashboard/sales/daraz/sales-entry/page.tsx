@@ -17,6 +17,7 @@ import { DeletionReasonModal } from '@/features/sales/components/DeletionReasonM
 import { AdminDeleteConfirm } from '@/features/sales/components/AdminDeleteConfirm'
 import { AuditTrailHover } from '@/features/sales/components/AuditTrailHover'
 import { PartialReturnModal } from '@/features/sales/components/PartialReturnModal'
+import { QuickPlanButton } from '@/features/sales/components/QuickPlanButton'
 // DarazInvoice removed
 
 import { toast } from 'sonner'
@@ -1080,6 +1081,9 @@ export default function DarazSalesEntryPage() {
                                                         <div className="flex items-center justify-center gap-0.5">
                                                             {/* Stock Indicator */}
                                                             <StockIndicator orderId={order.id} />
+
+                                                            {/* Quick Plan Button */}
+                                                            <QuickPlanButton order={order} />
 
                                                             <button
                                                                 onClick={() => window.open(`/print/daraz-invoice/${order.id}`, '_blank')}

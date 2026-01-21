@@ -8,10 +8,30 @@ import { getAllProductOptions, getProductBySku } from '@/features/inventory/acti
 import { toast } from 'sonner'
 import Select from 'react-select'
 
-export function AddPlanModal({ onPlanAdded, trigger }: { onPlanAdded: () => void, trigger?: React.ReactNode }) {
+export function AddPlanModal({
+    onPlanAdded,
+    trigger,
+    prefilledProductId,
+    onSuccess,
+    isOpen: externalIsOpen,
+    onClose: externalOnClose
+}: {
+    onPlanAdded: () => void
+    trigger?: React.ReactNode
+    prefilledProductId?: string
+    onSuccess?: () => void
+    isOpen?: boolean
+    onClose?: () => void
+}) {
     const router = useRouter()
-    const [open, setOpen] = useState(false)
+    const [internalOpen, setInternalOpen] = useState(false)
     const [loading, setLoading] = useState(false)
+
+    // Use external control if provided, otherwise use internal state
+    const open = externalIsOpen !== undefined ? externalIsOpen : internalOpen
+    const setOpen = externalOnClose ? (value: boolean) => {
+        if (!value) externalOnClose()
+    } : setInternalOpen
 
     // Form State
     const [date, setDate] = useState(new Date().toISOString().split('T')[0])
@@ -58,6 +78,16 @@ export function AddPlanModal({ onPlanAdded, trigger }: { onPlanAdded: () => void
             .catch(err => console.error("Failed to load products", err))
             .finally(() => setLoadingProducts(false))
     }, [])
+
+    // Handle prefilled product when modal opens
+    useEffect(() => {
+        if (prefilledProductId && productOptions.length > 0 && open) {
+            const option = productOptions.find(opt => opt.value === prefilledProductId)
+            if (option) {
+                handleProductChange(option)
+            }
+        }
+    }, [prefilledProductId, productOptions, open])
 
     const handleProductChange = (option: any) => {
         if (option) {
@@ -166,8 +196,14 @@ export function AddPlanModal({ onPlanAdded, trigger }: { onPlanAdded: () => void
             toast.success("Plan added successfully")
             resetForm() // Reset immediately after success
             setOpen(false)
-            router.refresh()
-            onPlanAdded()
+
+            // Use custom callback if provided, otherwise use default behavior
+            if (onSuccess) {
+                onSuccess()
+            } else {
+                router.refresh()
+                onPlanAdded()
+            }
         } catch (error: any) {
             toast.error(error.message)
         } finally {
@@ -177,16 +213,16 @@ export function AddPlanModal({ onPlanAdded, trigger }: { onPlanAdded: () => void
 
     return (
         <>
-            {trigger ? (
-                <div onClick={() => setOpen(true)}>{trigger}</div>
-            ) : (
+            {!externalIsOpen && trigger ? (
+                <div onClick={() => setInternalOpen(true)}>{trigger}</div>
+            ) : !externalIsOpen && !trigger ? (
                 <button
-                    onClick={() => setOpen(true)}
+                    onClick={() => setInternalOpen(true)}
                     className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 flex items-center gap-2 text-sm font-medium"
                 >
                     <Plus size={16} /> Add List
                 </button>
-            )}
+            ) : null}
 
             {open && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -222,7 +258,7 @@ export function AddPlanModal({ onPlanAdded, trigger }: { onPlanAdded: () => void
                                     value={productId ? { label: productName, value: productId } : null}
                                     className="text-sm"
                                     placeholder={loadingProducts ? "Loading products..." : "Search product..."}
-                                    isDisabled={loadingProducts}
+                                    isDisabled={loadingProducts || !!prefilledProductId}
                                     styles={{
                                         control: (base) => ({
                                             ...base,

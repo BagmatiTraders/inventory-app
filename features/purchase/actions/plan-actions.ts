@@ -104,6 +104,21 @@ export async function getProductPurchaseStats(productId: string): Promise<Produc
 }
 
 /**
+ * Check if product already has a plan for the given date
+ */
+export async function checkProductPlan(productId: string, planDate: string): Promise<boolean> {
+    const supabase = await createClient()
+
+    const { count } = await supabase
+        .from('purchase_plans')
+        .select('*', { count: 'exact', head: true })
+        .eq('product_id', productId)
+        .eq('plan_date', planDate)
+
+    return (count && count > 0) ? true : false
+}
+
+/**
  * Create Plan
  */
 export async function createPurchasePlan(data: {
@@ -154,6 +169,7 @@ export async function createPurchasePlan(data: {
 
     revalidatePath('/dashboard/purchase/daily-purchase-list')
 }
+
 
 /**
  * Update Plan Status
