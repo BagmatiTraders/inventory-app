@@ -6,7 +6,8 @@ import { getDarazOrders, getDarazOrderById, deleteDarazOrder, updateDarazOrderSt
 import { syncOrderStatusesFromDarazData } from '@/features/sales/actions/daraz-sync-status'
 import { getUserRole, getUserDeletionStats, createDeletionRequest, softDeleteOrder } from '@/features/sales/actions/daraz-deletion-actions'
 import { getOnlineStores } from '@/features/settings/actions/settingsActions'
-import { Search, Plus, Upload, Download, Printer, List, X, ArrowLeft, Trash2, Clock, RefreshCw, Filter, FileX, ChevronUp, ChevronDown } from 'lucide-react'
+import { getOrdersStockInfo } from '@/features/sales/actions/get-order-stock-info'
+import { Search, Plus, Upload, Download, Printer, List, X, ArrowLeft, Trash2, Clock, RefreshCw, Filter, FileX, ChevronUp, ChevronDown, Package } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Card } from '@/components/ui-shim'
@@ -85,6 +86,19 @@ export default function DarazSalesEntryPage() {
 
     const orders = data?.orders || []
     const pagination = data?.pagination
+
+    // Fetch stock info for current page orders
+    const orderIds = orders.map(o => o.id)
+    const { data: stockInfoData } = useQuery({
+        queryKey: ['order-stock-info', orderIds],
+        queryFn: () => getOrdersStockInfo(orderIds),
+        enabled: orderIds.length > 0,
+        staleTime: 2 * 60 * 1000, // 2 minutes
+        placeholderData: {}
+    })
+
+    const stockInfo = stockInfoData || {}
+
 
     // Calculate customer frequency
     const customerCounts = orders.reduce((acc: { [key: string]: number }, order) => {
@@ -604,6 +618,79 @@ export default function DarazSalesEntryPage() {
         return 'hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors'
     }
 
+    // Stock Indicator Component
+    const StockIndicator = ({ orderId }: { orderId: string }) => {
+        const orderStockInfo = stockInfo[orderId]
+        const [showTooltip, setShowTooltip] = useState(false)
+
+        if (!orderStockInfo || orderStockInfo.total_count === 0) {
+            return null // No products or no stock data yet
+        }
+
+        const { products, in_stock_count, total_count } = orderStockInfo
+
+        // Helper to get stock color
+        const getStockColor = (stock: number) => {
+            if (stock > 10) return 'text-green-600 dark:text-green-400'
+            if (stock > 0) return 'text-yellow-600 dark:text-yellow-400'
+            return 'text-red-600 dark:text-red-400'
+        }
+
+        // For single product
+        if (total_count === 1) {
+            const stock = products[0].total_stock
+            return (
+                <div className={`flex items-center gap-1 text-[11px] font-medium ${getStockColor(stock)}`} title={`Stock: ${stock}`}>
+                    <Package size={12} />
+                    <span>{stock}</span>
+                </div>
+            )
+        }
+
+        // For multiple products - show summary with tooltip
+        const allInStock = in_stock_count === total_count
+        const someInStock = in_stock_count > 0 && in_stock_count < total_count
+        const noneInStock = in_stock_count === 0
+
+        const badgeColor = allInStock
+            ? 'text-green-600 dark:text-green-400'
+            : someInStock
+                ? 'text-yellow-600 dark:text-yellow-400'
+                : 'text-red-600 dark:text-red-400'
+
+        return (
+            <div
+                className="relative"
+                onMouseEnter={() => setShowTooltip(true)}
+                onMouseLeave={() => setShowTooltip(false)}
+            >
+                <div className={`flex items-center gap-1 text-[11px] font-medium cursor-help ${badgeColor}`}>
+                    <Package size={12} />
+                    <span>{in_stock_count}/{total_count}</span>
+                </div>
+
+                {/* Tooltip */}
+                {showTooltip && (
+                    <div className="absolute z-50 bottom-full mb-2 right-0 bg-white dark:bg-zinc-800 border dark:border-zinc-700 rounded-lg shadow-lg p-2 min-w-[180px]">
+                        <div className="text-[11px] font-bold mb-1 text-gray-700 dark:text-gray-300">Stock Details:</div>
+                        <div className="space-y-1">
+                            {products.map((product, idx) => (
+                                <div key={idx} className="flex justify-between items-center text-[10px]">
+                                    <span className="truncate max-w-[120px] text-gray-600 dark:text-gray-400" title={product.product_name}>
+                                        {product.product_name}
+                                    </span>
+                                    <span className={`font-medium ml-2 ${getStockColor(product.total_stock)}`}>
+                                        {product.total_stock}
+                                    </span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+            </div>
+        )
+    }
+
     return (
         <div className="flex flex-col h-full bg-gray-50 dark:bg-zinc-900">
             {/* Compact Header */}
@@ -991,6 +1078,9 @@ export default function DarazSalesEntryPage() {
 
                                                     <td className="hidden md:table-cell px-1.5 py-0.5">
                                                         <div className="flex items-center justify-center gap-0.5">
+                                                            {/* Stock Indicator */}
+                                                            <StockIndicator orderId={order.id} />
+
                                                             <button
                                                                 onClick={() => window.open(`/print/daraz-invoice/${order.id}`, '_blank')}
                                                                 className={`p-0.5 hover:bg-gray-100 dark:hover:bg-zinc-700 rounded ${order.is_printed ? 'text-green-600 dark:text-green-400' : 'text-gray-600 dark:text-gray-400'}`}

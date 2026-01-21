@@ -276,11 +276,6 @@ function DashboardLayout({
                                         Inventory
                                     </NavItem>
                                 </div>
-                                <div onClick={closeMobileMenu}>
-                                    <NavItem href="/dashboard/stock-analysis" icon={<BarChart2 size={20} />} isCollapsed={isCollapsed}>
-                                        Stock Analysis
-                                    </NavItem>
-                                </div>
 
                                 <div onClick={closeMobileMenu}>
                                     <NavItem href="/dashboard/sales" icon={<ShoppingCart size={20} />} isCollapsed={isCollapsed}>
