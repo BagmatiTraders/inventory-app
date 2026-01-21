@@ -38,8 +38,12 @@ export function QuickPlanButton({ order }: QuickPlanButtonProps) {
             if (orderItems.length === 1) {
                 const productId = orderItems[0].product_id
 
+                // Skip if product_id is null (product not in inventory yet)
                 if (!productId) {
-                    toast.error('Product not found in inventory')
+                    toast.error('Product not found in inventory', {
+                        description: 'Please add this product to inventory first.'
+                    })
+                    setIsChecking(false)
                     return
                 }
 
@@ -50,6 +54,7 @@ export function QuickPlanButton({ order }: QuickPlanButtonProps) {
                     toast.error('Product Already Planned', {
                         description: 'This product already has a purchase plan for today.'
                     })
+                    setIsChecking(false)
                     return
                 }
 
@@ -71,7 +76,9 @@ export function QuickPlanButton({ order }: QuickPlanButtonProps) {
         setShowProductSelection(false)
 
         if (!productId) {
-            toast.error('Product not found in inventory')
+            toast.error('Product not found in inventory', {
+                description: 'Please add this product to inventory first.'
+            })
             return
         }
 
