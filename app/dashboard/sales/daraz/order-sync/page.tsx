@@ -462,7 +462,7 @@ export default function OrderSyncPage() {
 }
 
 function StoreCard({ store, onSyncSuccess }: { store: any, onSyncSuccess: (orders: any[]) => void }) {
-    const [status, setStatus] = useState<'idle' | 'linking' | 'syncing' | 'syncing-pending' | 'success' | 'error'>('idle')
+    const [status, setStatus] = useState<'idle' | 'linking' | 'syncing' | 'syncing-pending' | 'syncing-shipped' | 'success' | 'error'>('idle')
     const [message, setMessage] = useState('')
 
     const handleConnect = async () => {
@@ -482,12 +482,15 @@ function StoreCard({ store, onSyncSuccess }: { store: any, onSyncSuccess: (order
         }
     }
 
-    const handleSync = async (mode: 'all' | 'pending') => {
+    const handleSync = async (mode: 'all' | 'pending' | 'shipped') => {
         try {
-            setStatus(mode === 'all' ? 'syncing' : 'syncing-pending')
+            if (mode === 'all') setStatus('syncing')
+            else if (mode === 'pending') setStatus('syncing-pending')
+            else if (mode === 'shipped') setStatus('syncing-shipped')
+
             setMessage('')
 
-            const url = `/api/daraz/orders?storeId=${store.id}${mode === 'pending' ? '&status=pending' : ''}`
+            const url = `/api/daraz/orders?storeId=${store.id}${mode !== 'all' ? `&status=${mode}` : ''}`
             const response = await fetch(url)
 
             if (response.status === 401) {
@@ -525,6 +528,7 @@ function StoreCard({ store, onSyncSuccess }: { store: any, onSyncSuccess: (order
 
     const handleSyncAll = () => handleSync('all')
     const handleSyncPending = () => handleSync('pending')
+    const handleSyncShipped = () => handleSync('shipped')
 
     return (
         <div className="flex flex-col gap-3 p-4 border rounded-lg bg-white dark:bg-zinc-900 shadow-sm border-gray-200 dark:border-zinc-800">
@@ -554,7 +558,7 @@ function StoreCard({ store, onSyncSuccess }: { store: any, onSyncSuccess: (order
                     variant="default"
                     size="sm"
                     className="w-full bg-orange-600 hover:bg-orange-700 text-white"
-                    disabled={status === 'syncing' || status === 'syncing-pending' || status === 'linking'}
+                    disabled={status === 'syncing' || status === 'syncing-pending' || status === 'syncing-shipped' || status === 'linking'}
                 >
                     {status === 'syncing' ? (
                         <RefreshCw className="animate-spin mr-2 h-4 w-4" />
@@ -565,11 +569,26 @@ function StoreCard({ store, onSyncSuccess }: { store: any, onSyncSuccess: (order
                 </Button>
 
                 <Button
+                    onClick={handleSyncShipped}
+                    variant="outline"
+                    size="sm"
+                    className="w-full text-indigo-700 border-indigo-300 hover:bg-indigo-50 bg-indigo-50/50"
+                    disabled={status === 'syncing' || status === 'syncing-pending' || status === 'syncing-shipped' || status === 'linking'}
+                >
+                    {status === 'syncing-shipped' ? (
+                        <RefreshCw className="animate-spin mr-2 h-4 w-4" />
+                    ) : (
+                        <RefreshCw className="mr-2 h-4 w-4" />
+                    )}
+                    Sync Shipped Only
+                </Button>
+
+                <Button
                     onClick={handleSyncPending}
                     variant="outline"
                     size="sm"
                     className="w-full text-yellow-700 border-yellow-300 hover:bg-yellow-50 bg-yellow-50/50"
-                    disabled={status === 'syncing' || status === 'syncing-pending' || status === 'linking'}
+                    disabled={status === 'syncing' || status === 'syncing-pending' || status === 'syncing-shipped' || status === 'linking'}
                 >
                     {status === 'syncing-pending' ? (
                         <RefreshCw className="animate-spin mr-2 h-4 w-4" />

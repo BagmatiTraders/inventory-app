@@ -9,12 +9,20 @@ interface ProductSelectionModalProps {
         product_id: string
         product_name: string
         quantity?: number
+        stock?: number
     }>
     onProductSelect: (productId: string) => void
 }
 
 export function ProductSelectionModal({ isOpen, onClose, products, onProductSelect }: ProductSelectionModalProps) {
     if (!isOpen) return null
+
+    const getStockColor = (stock: number | undefined) => {
+        if (stock === undefined || stock === null) return 'text-gray-500 dark:text-gray-400'
+        if (stock > 10) return 'text-green-600 dark:text-green-400'
+        if (stock > 0) return 'text-yellow-600 dark:text-yellow-400'
+        return 'text-red-600 dark:text-red-400'
+    }
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -42,14 +50,19 @@ export function ProductSelectionModal({ isOpen, onClose, products, onProductSele
                                 className="w-full text-left p-3 border dark:border-zinc-700 rounded-lg hover:bg-gray-50 dark:hover:bg-zinc-800 transition-colors"
                             >
                                 <div className="flex justify-between items-center">
-                                    <span className="font-medium text-gray-900 dark:text-gray-100">
+                                    <span className="font-medium text-gray-900 dark:text-gray-100 flex-1 pr-2">
                                         {product.product_name}
                                     </span>
-                                    {product.quantity && (
-                                        <span className="text-sm text-gray-500 dark:text-gray-400">
-                                            Qty: {product.quantity}
+                                    <div className="flex items-center gap-2 text-sm">
+                                        {product.quantity && (
+                                            <span className="text-gray-500 dark:text-gray-400">
+                                                Qty: {product.quantity}
+                                            </span>
+                                        )}
+                                        <span className={`font-medium ${getStockColor(product.stock)}`}>
+                                            Stock: {product.stock ?? 'N/A'}
                                         </span>
-                                    )}
+                                    </div>
                                 </div>
                             </button>
                         ))

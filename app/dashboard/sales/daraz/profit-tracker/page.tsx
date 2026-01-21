@@ -110,24 +110,53 @@ function ProfitTrackerContent({ isEmbedded = false }: { isEmbedded?: boolean }) 
     const orders = profitData?.data || []
     const totalCount = profitData?.totalCount || 0
     const totalPages = profitData?.totalPages || 0
-    const stats = dailyStats || {}
+    const rawStatsList: any[] = Array.isArray(dailyStats) ? dailyStats : []
     const isLoading = isOrdersLoading || isStatsLoading
+
+    // Client-Side Aggregation of Stats
+    // We process the raw list from backend to match Frontend/Local Timezone grouping
+    const stats: Record<string, { statsBySeller: Record<string, { profit: number, missing: number }>, totalProfit: number }> = {}
+
+    rawStatsList.forEach((stat: any) => {
+        if (!stat.date) return
+        const dateKey = format(new Date(stat.date), 'yyyy-MM-dd') // Local Time Grouping
+
+        if (!stats[dateKey]) {
+            stats[dateKey] = { statsBySeller: {}, totalProfit: 0 }
+        }
+
+        const seller = stat.seller || 'Unknown'
+        if (!stats[dateKey].statsBySeller[seller]) {
+            stats[dateKey].statsBySeller[seller] = { profit: 0, missing: 0 }
+        }
+
+        stats[dateKey].totalProfit += stat.profit
+        stats[dateKey].statsBySeller[seller].profit += stat.profit
+        stats[dateKey].statsBySeller[seller].missing += stat.missing
+    })
 
     // Grouping Logic
     const groupedOrders = orders.reduce((groups: any, order: any) => {
-        const dateKey = order.delivered_at ? format(new Date(order.delivered_at), 'yyyy-MM-dd') : 'Unknown Date'
+        // Priority: delivered_by_daraz > delivered_at
+        const dateRaw = order.delivered_by_daraz || order.delivered_at
+        const dateKey = dateRaw ? format(new Date(dateRaw), 'yyyy-MM-dd') : 'Unknown Date'
+
         if (!groups[dateKey]) {
-            const globalDayStats = stats[dateKey] || { statsBySeller: {}, totalProfit: 0 }
+            // Use aggregated stats for this day
+            const dayStats = stats[dateKey] || { statsBySeller: {}, totalProfit: 0 }
+
             groups[dateKey] = {
                 orders: [],
-                totalProfit: globalDayStats.totalProfit || 0,
-                dateLabel: order.delivered_at ? format(new Date(order.delivered_at), 'EEEE, MMMM d, yyyy') : 'Unknown Date',
-                statsBySeller: globalDayStats.statsBySeller || {}
+                totalProfit: dayStats.totalProfit || 0,
+                dateLabel: dateRaw ? format(new Date(dateRaw), 'EEEE, MMMM d, yyyy') : 'Unknown Date',
+                statsBySeller: dayStats.statsBySeller || {}
             }
         }
         groups[dateKey].orders.push(order)
         return groups
     }, {})
+
+
 
     const sortedDateKeys = Object.keys(groupedOrders).sort((a, b) => {
         if (a === 'Unknown Date') return 1
@@ -215,7 +244,7 @@ function ProfitTrackerContent({ isEmbedded = false }: { isEmbedded?: boolean }) 
                                 <TableRow>
                                     <TableHead className="w-16">S.N</TableHead>
                                     <TableHead className="w-[100px]">Sync Status</TableHead>
-                                    <TableHead>Delivered At</TableHead>
+                                    <TableHead>Delivered Date</TableHead>
                                     <TableHead>Order Number</TableHead>
                                     <TableHead>Seller Account</TableHead>
                                     <TableHead>Product Name</TableHead>
@@ -309,11 +338,13 @@ function ProfitTrackerContent({ isEmbedded = false }: { isEmbedded?: boolean }) 
                                                             </TableCell>
                                                             <TableCell>
                                                                 <div className="flex flex-col">
-                                                                    <span className="font-medium text-gray-900 dark:text-gray-100">
-                                                                        {order.delivered_at ? format(new Date(order.delivered_at), 'MM/dd/yyyy') : '-'}
+                                                                    <span className={`font-medium text-gray-900 dark:text-gray-100 ${!order.delivered_by_daraz && order.delivered_at ? 'underline decoration-wavy decoration-2 decoration-amber-500 font-bold' : ''}`}
+                                                                        title={!order.delivered_by_daraz && order.delivered_at ? 'Using Sync Time (Official Time Missing)' : 'Official Delivery Time'}
+                                                                    >
+                                                                        {(order.delivered_by_daraz || order.delivered_at) ? format(new Date(order.delivered_by_daraz || order.delivered_at), 'MM/dd/yyyy') : '-'}
                                                                     </span>
                                                                     <span className="text-xs text-gray-400">
-                                                                        {order.delivered_at ? format(new Date(order.delivered_at), 'h:mm a') : ''}
+                                                                        {(order.delivered_by_daraz || order.delivered_at) ? format(new Date(order.delivered_by_daraz || order.delivered_at), 'h:mm a') : ''}
                                                                     </span>
                                                                 </div>
                                                             </TableCell>

@@ -179,7 +179,7 @@ export async function getDarazOrders(params: GetDarazOrdersParams) {
     const orderIds = data?.map((o: any) => o.id) || []
     const { data: allItems } = await supabase
         .from('daraz_order_items')
-        .select('order_id, item_status, quantity')
+        .select('order_id, item_status, quantity, product_id, product_name')
         .in('order_id', orderIds)
 
     const orders = data?.map((order: any) => {

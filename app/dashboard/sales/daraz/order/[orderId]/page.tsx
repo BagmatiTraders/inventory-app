@@ -1,14 +1,16 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
 import { getDarazOrderById } from '@/features/sales/actions/daraz-actions'
-import { ArrowLeft, Edit, Calendar, Printer } from 'lucide-react'
+import { getUserRole } from '@/features/sales/actions/daraz-deletion-actions'
+import { ArrowLeft, Edit, Calendar, Printer, Trash2, Clock } from 'lucide-react'
 import Link from 'next/link'
 import { Card } from '@/components/ui-shim'
 import { EditDarazOrderModal } from '@/features/sales/components/EditDarazOrderModal'
 import { PartialReturnModal } from '@/features/sales/components/PartialReturnModal'
+import { DeletionReasonModal } from '@/features/sales/components/DeletionReasonModal'
 // DarazInvoice removed
 
 
@@ -18,6 +20,8 @@ export default function DarazOrderViewPage() {
     const orderId = params.orderId as string
     const [isEditModalOpen, setIsEditModalOpen] = useState(false)
     const [isPartialReturnOpen, setIsPartialReturnOpen] = useState(false)
+    const [isDeletionModalOpen, setIsDeletionModalOpen] = useState(false)
+    const [userRole, setUserRole] = useState<'admin' | 'user' | null>(null)
 
 
     const { data: order, isLoading } = useQuery({
@@ -27,6 +31,24 @@ export default function DarazOrderViewPage() {
         staleTime: 2 * 60 * 1000,
         gcTime: 5 * 60 * 1000
     })
+
+    // Check user role on mount
+    useEffect(() => {
+        getUserRole().then(role => setUserRole(role))
+    }, [])
+
+    const handleDelete = async (reason: string) => {
+        // Import the deletion action when needed
+        const { createDeletionRequest } = await import('@/features/sales/actions/daraz-deletion-actions')
+
+        try {
+            await createDeletionRequest(orderId, order?.order_number || '', reason)
+            setIsDeletionModalOpen(false)
+            router.push('/dashboard/sales/daraz/sales-entry')
+        } catch (error) {
+            console.error('Delete failed:', error)
+        }
+    }
 
     const formatTimestamp = (timestamp: string | null, userName: string | null, userEmail: string | null) => {
         if (!timestamp) return null
@@ -41,6 +63,7 @@ export default function DarazOrderViewPage() {
         : fromPage === 'order-list'
             ? '/dashboard/sales/daraz/dashboard'
             : '/dashboard/sales/daraz/sales-entry'
+
 
     return (
         <div className="min-h-screen bg-gray-50 dark:bg-zinc-950">
@@ -59,20 +82,35 @@ export default function DarazOrderViewPage() {
                             {order && <p className="text-sm text-gray-500">{order.invoice_number}</p>}
                         </div>
                     </div>
-                    <button
-                        onClick={() => setIsEditModalOpen(true)}
-                        className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors"
-                    >
-                        <Edit size={16} />
-                        Edit Order
-                    </button>
-                    <button
-                        onClick={() => window.open(`/print/daraz-invoice/${orderId}`, '_blank')}
-                        className="flex items-center gap-2 px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded transition-colors"
-                    >
-                        <Printer size={16} />
-                        Print Invoice
-                    </button>
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={() => setIsEditModalOpen(true)}
+                            className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors"
+                        >
+                            <Edit size={16} />
+                            Edit Order
+                        </button>
+
+                        {/* Delete button - only for admins */}
+                        {userRole === 'admin' && (
+                            <button
+                                onClick={() => setIsDeletionModalOpen(true)}
+                                className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded transition-colors"
+                                disabled={order?.pending_deletion}
+                            >
+                                <Trash2 size={16} />
+                                Delete
+                            </button>
+                        )}
+
+                        <button
+                            onClick={() => window.open(`/print/daraz-invoice/${orderId}`, '_blank')}
+                            className="flex items-center gap-2 px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded transition-colors"
+                        >
+                            <Printer size={16} />
+                            Print Invoice
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -80,7 +118,9 @@ export default function DarazOrderViewPage() {
             <div className="max-w-7xl mx-auto px-4 py-6">
                 {isLoading ? (
                     <Card className="p-8 text-center text-gray-500">Loading...</Card>
-                ) : order ? (
+                ) : !order ? (
+                    <div className="p-8 text-center text-red-500">Error loading order or not found.</div>
+                ) : (
                     <div className="space-y-6">
                         {/* Order Information Card */}
                         <Card className="p-6">
@@ -104,7 +144,6 @@ export default function DarazOrderViewPage() {
                                 </div>
                             </div>
                         </Card>
-
                         {/* Customer & Status Card */}
                         <Card className="p-6">
                             <h2 className="text-lg font-semibold mb-4">Customer & Status</h2>
@@ -238,6 +277,16 @@ export default function DarazOrderViewPage() {
                                     </div>
                                 )}
 
+                                {order.delivered_by_daraz && (
+                                    <div className="flex items-start gap-3">
+                                        <Clock size={16} className="mt-0.5 text-green-600" />
+                                        <div className="text-sm">
+                                            <span className="font-medium text-green-800">Delivered by Daraz: </span>
+                                            {formatTimestamp(order.delivered_by_daraz, null, null)}
+                                        </div>
+                                    </div>
+                                )}
+
                                 {order.delivery_failed_at && (
                                     <div className="flex items-start gap-3">
                                         <Calendar size={16} className="mt-0.5 text-red-400" />
@@ -310,10 +359,8 @@ export default function DarazOrderViewPage() {
                             </div>
                         </Card>
                     </div>
-                ) : (
-                    <Card className="p-8 text-center text-gray-500">Order not found</Card>
                 )}
-            </div>
+            </div >
 
             {/* Edit Modal */}
             {
@@ -334,10 +381,16 @@ export default function DarazOrderViewPage() {
                             isOpen={isPartialReturnOpen}
                             onClose={() => setIsPartialReturnOpen(false)}
                         />
+                        <DeletionReasonModal
+                            isOpen={isDeletionModalOpen}
+                            onClose={() => setIsDeletionModalOpen(false)}
+                            orderNumber={order.order_number}
+                            onSubmit={handleDelete}
+                        />
                     </>
                 )
             }
 
-        </div>
+        </div >
     )
 }

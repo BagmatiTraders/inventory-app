@@ -9,9 +9,10 @@ import { toast } from 'sonner'
 
 interface QuickPlanButtonProps {
     order: any
+    stockInfo?: any
 }
 
-export function QuickPlanButton({ order }: QuickPlanButtonProps) {
+export function QuickPlanButton({ order, stockInfo }: QuickPlanButtonProps) {
     const [showProductSelection, setShowProductSelection] = useState(false)
     const [showPlanModal, setShowPlanModal] = useState(false)
     const [selectedProductId, setSelectedProductId] = useState<string | null>(null)
@@ -110,18 +111,23 @@ export function QuickPlanButton({ order }: QuickPlanButtonProps) {
                 className="p-0.5 hover:bg-gray-100 dark:hover:bg-zinc-700 rounded text-blue-600 dark:text-blue-400 disabled:opacity-50"
                 title="Quick Purchase Plan"
             >
-                <Plus size={13} />
+                <Plus size={16} />
             </button>
 
             {/* Product Selection Modal for multi-product orders */}
             <ProductSelectionModal
                 isOpen={showProductSelection}
                 onClose={() => setShowProductSelection(false)}
-                products={orderItems.map((item: any) => ({
-                    product_id: item.product_id,
-                    product_name: item.product_name || 'Unknown Product',
-                    quantity: item.quantity
-                }))}
+                products={orderItems.map((item: any) => {
+                    // Get stock for this product from stockInfo
+                    const productStock = stockInfo?.products?.find((p: any) => p.product_id === item.product_id)
+                    return {
+                        product_id: item.product_id,
+                        product_name: item.product_name || 'Unknown Product',
+                        quantity: item.quantity,
+                        stock: productStock?.total_stock
+                    }
+                })}
                 onProductSelect={handleProductSelect}
             />
 

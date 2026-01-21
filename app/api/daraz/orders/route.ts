@@ -95,17 +95,22 @@ export async function GET(request: NextRequest) {
         const statusParam = searchParams.get('status')
 
         // 2. Prepare Base Params
-        // Default to last 7 days for now to keep it light
+        // Default to last 7 days for "All" sync to keep it light.
+        // For specific status sync (Pending/Shipped), use longer window (e.g., 60 days) to catch stuck/old active orders.
         const createdAfter = new Date()
-        createdAfter.setDate(createdAfter.getDate() - 7)
+        if (statusParam && statusParam !== 'all') {
+            createdAfter.setDate(createdAfter.getDate() - 60)
+        } else {
+            createdAfter.setDate(createdAfter.getDate() - 7)
+        }
 
         let allOrders: any[] = []
         const API_LIMIT = 50 // Max limit per request
         let offset = 0
         let hasMore = true
 
-        // User Request: Limit "Sync All" to ~150 orders for speed. Keep "Sync Pending" deeper.
-        const MAX_SYNC_LIMIT = (statusParam === 'pending') ? 1000 : 150
+        // User Request: Limit "Sync All" to ~150 orders for speed. Keep "Sync Pending/Shipped" deeper.
+        const MAX_SYNC_LIMIT = (statusParam === 'pending' || statusParam === 'shipped') ? 2000 : 150
 
         console.log(`Starting sync for store ${storeId}. Status: ${statusParam || 'ALL'} (Limit: ${MAX_SYNC_LIMIT})`)
 
@@ -430,6 +435,11 @@ export async function GET(request: NextRequest) {
                 if (salesStatus === 'Returning To Seller') commonPayload.returning_to_seller_at = eventTime
                 if (salesStatus === 'Customer Return Delivered') commonPayload.customer_return_delivered_at = eventTime
                 if (salesStatus === 'Cancel' || salesStatus === 'Cancelled') commonPayload.cancelled_at = eventTime
+
+                // Capture official Daraz delivery timestamp
+                if (salesStatus === 'Delivered') {
+                    commonPayload.delivered_by_daraz = o.updated_at ? new Date(o.updated_at).toISOString() : eventTime
+                }
 
                 if (existingOrderObj) {
                     const updatePayload = {

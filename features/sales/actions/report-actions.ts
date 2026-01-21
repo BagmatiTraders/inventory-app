@@ -10,6 +10,7 @@ export interface OrderReportItem {
     invoice_number: string | null
     order_status: string
     delivered_at: string | null
+    delivered_by_daraz?: string | null
     created_at: string
     seller_account: string | null
     total_revenue: number | null
@@ -273,7 +274,9 @@ export async function getProfitTrackerData(params: GetOrderReportParams) {
             order_number,
             invoice_number,
             order_status,
+            order_status,
             delivered_at,
+            delivered_by_daraz,
             created_at,
             daraz_fees,
             items:daraz_order_items(
@@ -375,6 +378,7 @@ export async function getProfitTrackerData(params: GetOrderReportParams) {
             invoice_number: order.invoice_number,
             order_status: order.order_status,
             delivered_at: order.delivered_at,
+            delivered_by_daraz: order.delivered_by_daraz,
             created_at: order.created_at,
             seller_account: financials.sellerAccount,
             products: deliveredItems.map((i: any) => {
@@ -416,12 +420,14 @@ export async function getDailyProfitStats(params: GetOrderReportParams) {
     const { search, startDate, endDate, syncStatus = 'all' } = params
     const supabase = await createClient()
 
+
     // 1. Fetch ALL matching orders (Minimal fields for calculation)
     let query = supabase
         .from('daraz_orders')
         .select(`
             order_number,
             delivered_at,
+            delivered_by_daraz,
             daraz_fees,
             items:daraz_order_items(
                 seller_account,
@@ -448,13 +454,48 @@ export async function getDailyProfitStats(params: GetOrderReportParams) {
     if (startDate) query = query.gte('delivered_at', startDate)
     if (endDate) query = query.lte('delivered_at', endDate)
 
-    // No Pagination (.range) here!
-    const { data, error } = await query
+    let allOrders: any[] = []
+    let page = 0
+    const pageSize = 1000
+    let hasMore = true
 
-    if (error) {
-        console.error('Error fetching global stats:', error)
-        return {}
+
+
+    while (hasMore) {
+        const from = page * pageSize
+        const to = from + pageSize - 1
+
+        const { data, error } = await query.range(from, to)
+
+        if (error) {
+            console.error('Error fetching global stats chunk:', error)
+            break
+        }
+
+        if (data) {
+            allOrders = [...allOrders, ...data]
+
+            if (data.length < pageSize) {
+                hasMore = false
+            } else {
+                page++
+            }
+        } else {
+            hasMore = false
+        }
+
+        // Safety break to prevent infinite loops if DB is huge (max 20k for now)
+        if (allOrders.length > 20000) {
+            break
+        }
     }
+
+
+
+
+    const data = allOrders
+
+
 
     // 2. Fetch Prices for calculation if needed (Heavy, but necessary for accuracy)
     // To optimize, we might rely on what we can get. 
@@ -483,13 +524,15 @@ export async function getDailyProfitStats(params: GetOrderReportParams) {
         })
     }
 
-    // 3. Process & Aggregate
-    // Map key: "YYYY-MM-DD"
-    // Value: { statsBySeller: { [seller]: { profit, missing } }, totalProfit }
-    const dailyStats: Record<string, { statsBySeller: Record<string, { profit: number, missing: number }>, totalProfit: number }> = {}
+    // 3. Process & Return Raw List
+    // We return a list of stats so the Frontend can aggregate by its User Local Timezone
+    // to matches the UI grouping perfectly.
+    const statsList: any[] = []
 
     data?.forEach((order: any) => {
-        if (!order.delivered_at) return
+        // Priority: delivered_by_daraz > delivered_at
+        const dateRaw = order.delivered_by_daraz || order.delivered_at
+        if (!dateRaw) return
 
         // Filter for Delivered Items
         const deliveredItems = order.items?.filter((i: any) => {
@@ -499,29 +542,14 @@ export async function getDailyProfitStats(params: GetOrderReportParams) {
 
         if (deliveredItems.length === 0) return
 
-        const dateKey = new Date(order.delivered_at).toISOString().split('T')[0] // YYYY-MM-DD local approx (server time)
-
         // Calculate Order Profit using ONLY delivered items
         const totalPurchaseCost = deliveredItems.reduce((sum: number, item: any) => {
             if (item.purchase_cost && item.purchase_cost > 0) {
                 return sum + (item.purchase_cost * (item.quantity || 1))
             }
-            const productCode = item.product_details?.product_id
-            const priceInfo = priceMap[productCode] // Note: code vs id usage in original was shaky, but validItems have product_id. 
-            // Original code used item.product_details?.product_id but item struct has product_id directly in select?
-            // Line 409 selects product_id. Reference code line 477 uses item.product_details?.product_id.
-            // Let's stick to item.product_id as per select.
-            // Wait, calculateOrderFinancials uses priceMap[item.product_id]. 
-            // The daily stats code (original) used item.product_details?.product_id (line 477).
-            // But line 404 select does NOT include product_details! 
-            // I should fix this to use item.product_id to be safe, matching data fetch.
-
-            const pid = item.product_id
-            // Map uses string product_id (UUID) -> {product_code, ...}
-            // But Map keys in line 459 are p.product_id (UUID).
-            // So looking up by item.product_id is correct.
-            const pInfo = priceMap[pid]
-            const purchasePrice = pInfo?.last_price || pInfo?.est_price || 0
+            const productCode = item.product_id
+            const priceInfo = priceMap[productCode]
+            const purchasePrice = priceInfo?.last_price || priceInfo?.est_price || 0
             return sum + (purchasePrice * (item.quantity || 1))
         }, 0) || 0
 
@@ -532,27 +560,15 @@ export async function getDailyProfitStats(params: GetOrderReportParams) {
 
         const seller = deliveredItems[0]?.seller_account || 'Unknown'
 
-        // Init Day
-        if (!dailyStats[dateKey]) {
-            dailyStats[dateKey] = { statsBySeller: {}, totalProfit: 0 }
-        }
-
-        // Init Seller
-        if (!dailyStats[dateKey].statsBySeller[seller]) {
-            dailyStats[dateKey].statsBySeller[seller] = { profit: 0, missing: 0 }
-        }
-
-        // Add
-        dailyStats[dateKey].totalProfit += netProfit
-        dailyStats[dateKey].statsBySeller[seller].profit += netProfit
-
-        // Count Missing (Order Level)
-        if (totalPurchaseCost <= 0) {
-            dailyStats[dateKey].statsBySeller[seller].missing += 1
-        }
+        statsList.push({
+            date: dateRaw, // ISO String
+            seller,
+            profit: netProfit,
+            missing: totalPurchaseCost <= 0 ? 1 : 0
+        })
     })
 
-    return dailyStats
+    return statsList
 }
 
 // Sync/Lock Purchase Cost for an Order

@@ -81,13 +81,24 @@ export function AddPlanModal({
 
     // Handle prefilled product when modal opens
     useEffect(() => {
-        if (prefilledProductId && productOptions.length > 0 && open) {
+        if (prefilledProductId && productOptions.length > 0 && open && !productId) {
             const option = productOptions.find(opt => opt.value === prefilledProductId)
             if (option) {
-                handleProductChange(option)
+                setProductId(option.value)
+                setProductName(option.label)
+                // Auto-fill seller sku
+                const p = option.product
+                setSellerSku(p.seller_sku1 || p.seller_sku2 || '')
             }
         }
-    }, [prefilledProductId, productOptions, open])
+    }, [prefilledProductId, productOptions, open, productId])
+
+    // Reset form when modal closes
+    useEffect(() => {
+        if (!open) {
+            resetForm()
+        }
+    }, [open])
 
     const handleProductChange = (option: any) => {
         if (option) {

@@ -620,9 +620,14 @@ export default function DarazSalesEntryPage() {
     }
 
     // Stock Indicator Component
-    const StockIndicator = ({ orderId }: { orderId: string }) => {
+    const StockIndicator = ({ orderId, order }: { orderId: string, order: any }) => {
         const orderStockInfo = stockInfo[orderId]
         const [showTooltip, setShowTooltip] = useState(false)
+
+        // Hide stock for shipped orders
+        if (order?.order_status?.toLowerCase() === 'shipped') {
+            return null
+        }
 
         if (!orderStockInfo || orderStockInfo.total_count === 0) {
             return null // No products or no stock data yet
@@ -642,7 +647,7 @@ export default function DarazSalesEntryPage() {
             const stock = products[0].total_stock
             return (
                 <div className={`flex items-center gap-1 text-[11px] font-medium ${getStockColor(stock)}`} title={`Stock: ${stock}`}>
-                    <Package size={12} />
+                    <Package size={16} />
                     <span>{stock}</span>
                 </div>
             )
@@ -666,7 +671,7 @@ export default function DarazSalesEntryPage() {
                 onMouseLeave={() => setShowTooltip(false)}
             >
                 <div className={`flex items-center gap-1 text-[11px] font-medium cursor-help ${badgeColor}`}>
-                    <Package size={12} />
+                    <Package size={18} />
                     <span>{in_stock_count}/{total_count}</span>
                 </div>
 
@@ -1058,9 +1063,21 @@ export default function DarazSalesEntryPage() {
                                                         </div>
                                                     </td>
                                                     <td className={`hidden md:table-cell px-1.5 py-0.5 text-[15px] truncate ${getCustomerClass(order.customer_name, order.order_date)}`} title={order.customer_name}>{order.customer_name}</td>
-                                                    <td className={`hidden md:table-cell px-1.5 py-0.5 text-[15px] truncate ${order.first_product_name === 'Product Not Found' ? 'text-red-600 dark:text-red-400 font-bold' : 'text-gray-700 dark:text-gray-300'}`} title={order.first_product_name}>
-                                                        {order.first_product_name}
-                                                        {order.item_count > 1 && <span className="text-gray-500 dark:text-gray-400 text-xs"> +{order.item_count - 1} Product{order.item_count - 1 > 1 ? 's' : ''}</span>}
+                                                    <td
+                                                        className={`hidden md:table-cell px-1.5 py-0.5 text-[15px] ${order.first_product_name === 'Product Not Found' ? 'text-red-600 dark:text-red-400 font-bold' : 'text-gray-700 dark:text-gray-300'} ${order.item_count > 1 ? 'cursor-help' : ''}`}
+                                                        title={order.items && order.items.length > 1
+                                                            ? order.items.map((item: any) => item.product_name || 'Unknown Product').join('\n')
+                                                            : order.first_product_name
+                                                        }
+                                                    >
+                                                        <div className="flex flex-col">
+                                                            <span className="truncate">{order.first_product_name}</span>
+                                                            {order.item_count > 1 && (
+                                                                <span className="text-xs font-bold text-blue-600 dark:text-blue-400">
+                                                                    (+{order.item_count - 1} more)
+                                                                </span>
+                                                            )}
+                                                        </div>
                                                     </td>
                                                     {/* <td className="hidden md:table-cell px-1.5 py-0.5 text-sm text-gray-600 dark:text-gray-400">
                                                         {order.first_product_code ? `#${order.first_product_code}` : '-'}
@@ -1080,10 +1097,10 @@ export default function DarazSalesEntryPage() {
                                                     <td className="hidden md:table-cell px-1.5 py-0.5">
                                                         <div className="flex items-center justify-center gap-0.5">
                                                             {/* Stock Indicator */}
-                                                            <StockIndicator orderId={order.id} />
+                                                            <StockIndicator orderId={order.id} order={order} />
 
                                                             {/* Quick Plan Button */}
-                                                            <QuickPlanButton order={order} />
+                                                            <QuickPlanButton order={order} stockInfo={stockInfo[order.id]} />
 
                                                             <button
                                                                 onClick={() => window.open(`/print/daraz-invoice/${order.id}`, '_blank')}
@@ -1092,33 +1109,7 @@ export default function DarazSalesEntryPage() {
                                                             >
                                                                 <Printer size={13} />
                                                             </button>
-                                                            <button
-                                                                onClick={() => router.push(`/dashboard/sales/daraz/order/${order.id}?from=sales-entry`)}
-                                                                onMouseEnter={() => queryClient.prefetchQuery({
-                                                                    queryKey: ['daraz-order', order.id],
-                                                                    queryFn: () => getDarazOrderById(order.id)
-                                                                })}
-                                                                className="px-1 py-0.5 text-[13px] text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded"
-                                                            >
-                                                                View
-                                                            </button>
 
-
-
-                                                            <button
-                                                                onClick={() => handleDelete(order.id, order.order_number)}
-                                                                className="px-1 py-0.5 text-[13px] text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded"
-                                                                disabled={order.pending_deletion}
-                                                            >
-                                                                {order.pending_deletion ? (
-                                                                    <span className="flex items-center gap-0.5 text-yellow-600">
-                                                                        <Clock size={10} />
-                                                                        Pending
-                                                                    </span>
-                                                                ) : (
-                                                                    'Del'
-                                                                )}
-                                                            </button>
                                                             <button
                                                                 onClick={async () => {
                                                                     if (confirm('Sync products for this order?')) {

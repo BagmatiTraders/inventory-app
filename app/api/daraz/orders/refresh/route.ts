@@ -197,6 +197,14 @@ export async function POST(request: NextRequest) {
             order_source: 'sync'
         }
 
+        // Capture official Daraz delivery timestamp
+        if (newStatus === 'Delivered') {
+            const eventTime = order.updated_at ? new Date(order.updated_at).toISOString() : new Date().toISOString()
+            upsertPayload.delivered_by_daraz = eventTime
+            // Also set delivered_at (Sync Time) so it shows in reports immediately
+            upsertPayload.delivered_at = eventTime
+        }
+
         // If updating, preserve certain fields?
         if (existingOrder) {
             // Keep original created_at or source if needed?
