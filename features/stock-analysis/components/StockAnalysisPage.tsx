@@ -7,16 +7,24 @@ import { StockAnalysisTable } from './StockAnalysisTable'
 import { Card } from '@/components/ui-shim'
 import { getStockAnalysisData } from '../actions/stock-analysis-actions'
 import { useFiscalYears, useActiveFiscalYear } from '@/features/settings/hooks/useFiscalYears'
+import { getCompanyDetails } from '@/features/settings/actions/company-details-actions'
 import { useEffect } from 'react'
 
 export function StockAnalysisPage() {
     // defaults
     const [fiscalYearId, setFiscalYearId] = useState<string>('all')
+    const [companyId, setCompanyId] = useState<string>('all')
     const [search, setSearch] = useState('')
 
     // Fetch fiscal years
     const { data: fiscalYears = [] } = useFiscalYears()
     const { data: activeFy } = useActiveFiscalYear()
+
+    // Fetch company details
+    const { data: companies = [] } = useQuery({
+        queryKey: ['company-details'],
+        queryFn: getCompanyDetails,
+    })
 
     // Initialize with active FY
     useEffect(() => {
@@ -27,9 +35,10 @@ export function StockAnalysisPage() {
 
     // Data query
     const { data: stockData = [], isLoading, refetch, isRefetching } = useQuery({
-        queryKey: ['stock-analysis', fiscalYearId, search],
+        queryKey: ['stock-analysis', fiscalYearId, companyId, search],
         queryFn: () => getStockAnalysisData({
             fiscalYearId,
+            companyId: companyId !== 'all' ? companyId : undefined,
             search: search || undefined
         }),
     })
@@ -40,6 +49,7 @@ export function StockAnalysisPage() {
         } else {
             setFiscalYearId('all') // fallback
         }
+        setCompanyId('all')
         setSearch('')
     }
 
@@ -48,6 +58,22 @@ export function StockAnalysisPage() {
             {/* Filters */}
             <div className="p-3 border-b dark:border-zinc-800">
                 <div className="flex flex-col md:flex-row gap-3">
+                    {/* Company Name Dropdown */}
+                    <div className="flex-1">
+                        <select
+                            value={companyId}
+                            onChange={(e) => setCompanyId(e.target.value)}
+                            className="w-full px-3 py-1.5 text-[13px] border dark:border-zinc-700 rounded-md bg-white dark:bg-zinc-800 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-shadow"
+                        >
+                            <option value="all">All Companies</option>
+                            {companies.map((company) => (
+                                <option key={company.id} value={company.id}>
+                                    {company.company_name}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+
                     {/* Fiscal Year Filter */}
                     <div className="flex-1">
                         <select
@@ -86,7 +112,7 @@ export function StockAnalysisPage() {
 
                     {/* Action Buttons */}
                     <div className="flex gap-2">
-                        {(fiscalYearId !== 'all' || search) && (
+                        {(companyId !== 'all' || fiscalYearId !== 'all' || search) && (
                             <button
                                 onClick={handleClearFilters}
                                 className="flex items-center gap-1.5 px-3 py-1.5 text-[13px] border dark:border-zinc-700 rounded-md hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors whitespace-nowrap"

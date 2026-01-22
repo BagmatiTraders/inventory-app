@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { X, Plus, Trash2, Search } from 'lucide-react'
 import { createPanVatBill, updatePanVatBill, type CreatePanVatBillParams, type PanVatBillItem, type PanVatBill } from '@/features/account/actions/pan-vat-bill-actions'
 import { getPanVatCompanies } from '@/features/account/actions/pan-vat-company-actions'
@@ -33,6 +33,17 @@ export function AddPanVatBillModal({ onClose, bill }: AddPanVatBillModalProps) {
     // Line items state
     const [lineItems, setLineItems] = useState<Omit<PanVatBillItem, 'id'>[]>([{ hs_code: '', particulars: '', quantity: 0, rate: 0, amount: 0, line_order: 0 }
     ])
+
+    // Refs for custom tab order
+    const supplierRef = useRef<HTMLInputElement>(null)
+    const invoiceRef = useRef<HTMLInputElement>(null)
+    const buyerRef = useRef<HTMLInputElement>(null)
+    const hsCodeRefs = useRef<(HTMLInputElement | null)[]>([])
+    const particularsRefs = useRef<(HTMLInputElement | null)[]>([])
+    const quantityRefs = useRef<(HTMLInputElement | null)[]>([])
+    const rateRefs = useRef<(HTMLInputElement | null)[]>([])
+    const addRowRef = useRef<HTMLButtonElement>(null)
+    const saveRef = useRef<HTMLButtonElement>(null)
 
     // Initialize form with bill data if editing
     useEffect(() => {
@@ -81,6 +92,18 @@ export function AddPanVatBillModal({ onClose, bill }: AddPanVatBillModalProps) {
         queryKey: ['company-details'],
         queryFn: getCompanyDetails,
     })
+
+    // Set default buyer to "Bagmati Traders & Suppliers" if exists (only in add mode)
+    useEffect(() => {
+        if (!isEditMode && buyers.length > 0 && !buyerSearch) {
+            const defaultBuyer = buyers.find(
+                b => b.company_name === 'Bagmati Traders & Suppliers'
+            )
+            if (defaultBuyer) {
+                selectBuyer(defaultBuyer)
+            }
+        }
+    }, [buyers, isEditMode])
 
     // Filter suppliers based on search
     const filteredSuppliers = suppliers.filter(s =>
@@ -138,6 +161,22 @@ export function AddPanVatBillModal({ onClose, bill }: AddPanVatBillModalProps) {
         setShowBuyerDropdown(false)
     }
 
+    // Handle Enter key for supplier dropdown
+    const handleSupplierKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+        if (e.key === 'Enter' && showSupplierDropdown && filteredSuppliers.length > 0) {
+            e.preventDefault()
+            selectSupplier(filteredSuppliers[0])
+        }
+    }
+
+    // Handle Enter key for buyer dropdown
+    const handleBuyerKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+        if (e.key === 'Enter' && showBuyerDropdown && filteredBuyers.length > 0) {
+            e.preventDefault()
+            selectBuyer(filteredBuyers[0])
+        }
+    }
+
     // Handle line item change
     const handleLineItemChange = (index: number, field: keyof PanVatBillItem, value: any) => {
         const newItems = [...lineItems]
@@ -152,11 +191,45 @@ export function AddPanVatBillModal({ onClose, bill }: AddPanVatBillModalProps) {
     }
 
     // Add new line item
-    const addLineItem = () => {
+    const addLineItem = (focusNewRow: boolean = false) => {
+        const newIndex = lineItems.length
         setLineItems([
             ...lineItems,
-            { hs_code: '', particulars: '', quantity: 0, rate: 0, amount: 0, line_order: lineItems.length }
+            { hs_code: '', particulars: '', quantity: 0, rate: 0, amount: 0, line_order: newIndex }
         ])
+        if (focusNewRow) {
+            // Focus the new row's H.S Code field after state update
+            setTimeout(() => {
+                hsCodeRefs.current[newIndex]?.focus()
+            }, 50)
+        }
+    }
+
+    // Handle Enter key on Add Row button
+    const handleAddRowKeyDown = (e: React.KeyboardEvent<HTMLButtonElement>) => {
+        if (e.key === 'Enter') {
+            e.preventDefault()
+            addLineItem(true)
+        }
+    }
+
+    // Handle Tab on Rate field (last item) to go to Add Row button
+    const handleRateKeyDown = (e: React.KeyboardEvent<HTMLInputElement>, index: number) => {
+        if (e.key === 'Tab' && !e.shiftKey && index === lineItems.length - 1) {
+            e.preventDefault()
+            addRowRef.current?.focus()
+        }
+    }
+
+    // Handle Tab on Add Row to go to Save Bill
+    const handleAddRowTabKeyDown = (e: React.KeyboardEvent<HTMLButtonElement>) => {
+        if (e.key === 'Tab' && !e.shiftKey) {
+            e.preventDefault()
+            saveRef.current?.focus()
+        } else if (e.key === 'Enter') {
+            e.preventDefault()
+            addLineItem(true)
+        }
     }
 
     // Remove line item
@@ -285,12 +358,15 @@ export function AddPanVatBillModal({ onClose, bill }: AddPanVatBillModalProps) {
                                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                                     <input
                                         type="text"
+                                        ref={supplierRef}
+                                        tabIndex={1}
                                         value={supplierSearch}
                                         onChange={(e) => {
                                             setSupplierSearch(e.target.value)
                                             setShowSupplierDropdown(true)
                                         }}
                                         onFocus={() => setShowSupplierDropdown(true)}
+                                        onKeyDown={handleSupplierKeyDown}
                                         placeholder="Search supplier..."
                                         className="w-full pl-10 pr-3 py-2 border dark:border-zinc-700 rounded-md bg-white dark:bg-zinc-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
                                     />
@@ -318,6 +394,7 @@ export function AddPanVatBillModal({ onClose, bill }: AddPanVatBillModalProps) {
                                     type="text"
                                     value={formData.supplier_pan_vat}
                                     readOnly
+                                    tabIndex={-1}
                                     className="w-full px-3 py-2 border dark:border-zinc-700 rounded-md bg-gray-50 dark:bg-zinc-800 cursor-not-allowed"
                                     placeholder="Auto-filled"
                                 />
@@ -330,6 +407,8 @@ export function AddPanVatBillModal({ onClose, bill }: AddPanVatBillModalProps) {
                                 </label>
                                 <input
                                     type="text"
+                                    ref={invoiceRef}
+                                    tabIndex={2}
                                     value={formData.invoice_no}
                                     onChange={(e) => setFormData({ ...formData, invoice_no: e.target.value })}
                                     className="w-full px-3 py-2 border dark:border-zinc-700 rounded-md bg-white dark:bg-zinc-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -349,12 +428,15 @@ export function AddPanVatBillModal({ onClose, bill }: AddPanVatBillModalProps) {
                                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                                     <input
                                         type="text"
+                                        ref={buyerRef}
+                                        tabIndex={3}
                                         value={buyerSearch}
                                         onChange={(e) => {
                                             setBuyerSearch(e.target.value)
                                             setShowBuyerDropdown(true)
                                         }}
                                         onFocus={() => setShowBuyerDropdown(true)}
+                                        onKeyDown={handleBuyerKeyDown}
                                         placeholder="Search buyer..."
                                         className="w-full pl-10 pr-3 py-2 border dark:border-zinc-700 rounded-md bg-white dark:bg-zinc-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
                                     />
@@ -382,6 +464,7 @@ export function AddPanVatBillModal({ onClose, bill }: AddPanVatBillModalProps) {
                                     type="text"
                                     value={formData.buyer_pan_vat}
                                     readOnly
+                                    tabIndex={-1}
                                     className="w-full px-3 py-2 border dark:border-zinc-700 rounded-md bg-gray-50 dark:bg-zinc-800 cursor-not-allowed"
                                     placeholder="Auto-filled"
                                 />
@@ -395,7 +478,10 @@ export function AddPanVatBillModal({ onClose, bill }: AddPanVatBillModalProps) {
                             <h3 className="text-base font-semibold">Line Items</h3>
                             <button
                                 type="button"
-                                onClick={addLineItem}
+                                ref={addRowRef}
+                                tabIndex={100}
+                                onClick={() => addLineItem()}
+                                onKeyDown={handleAddRowTabKeyDown}
                                 className="flex items-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm"
                             >
                                 <Plus className="h-4 w-4" />
@@ -421,6 +507,8 @@ export function AddPanVatBillModal({ onClose, bill }: AddPanVatBillModalProps) {
                                             <td className="px-2 py-2">
                                                 <input
                                                     type="text"
+                                                    ref={el => { hsCodeRefs.current[index] = el }}
+                                                    tabIndex={10 + (index * 4)}
                                                     value={item.hs_code || ''}
                                                     onChange={(e) => handleLineItemChange(index, 'hs_code', e.target.value)}
                                                     className="w-24 px-2 py-1 border dark:border-zinc-700 rounded text-sm bg-white dark:bg-zinc-800"
@@ -429,6 +517,8 @@ export function AddPanVatBillModal({ onClose, bill }: AddPanVatBillModalProps) {
                                             <td className="px-2 py-2">
                                                 <input
                                                     type="text"
+                                                    ref={el => { particularsRefs.current[index] = el }}
+                                                    tabIndex={11 + (index * 4)}
                                                     value={item.particulars}
                                                     onChange={(e) => handleLineItemChange(index, 'particulars', e.target.value)}
                                                     className="w-full min-w-[200px] px-2 py-1 border dark:border-zinc-700 rounded text-sm bg-white dark:bg-zinc-800"
@@ -439,6 +529,8 @@ export function AddPanVatBillModal({ onClose, bill }: AddPanVatBillModalProps) {
                                                 <input
                                                     type="number"
                                                     step="0.01"
+                                                    ref={el => { quantityRefs.current[index] = el }}
+                                                    tabIndex={12 + (index * 4)}
                                                     value={item.quantity}
                                                     onChange={(e) => handleLineItemChange(index, 'quantity', parseFloat(e.target.value) || 0)}
                                                     className="w-24 px-2 py-1 border dark:border-zinc-700 rounded text-sm bg-white dark:bg-zinc-800"
@@ -449,8 +541,11 @@ export function AddPanVatBillModal({ onClose, bill }: AddPanVatBillModalProps) {
                                                 <input
                                                     type="number"
                                                     step="0.01"
+                                                    ref={el => { rateRefs.current[index] = el }}
+                                                    tabIndex={13 + (index * 4)}
                                                     value={item.rate}
                                                     onChange={(e) => handleLineItemChange(index, 'rate', parseFloat(e.target.value) || 0)}
+                                                    onKeyDown={(e) => handleRateKeyDown(e, index)}
                                                     className="w-28 px-2 py-1 border dark:border-zinc-700 rounded text-sm bg-white dark:bg-zinc-800"
                                                     required
                                                 />
@@ -517,6 +612,8 @@ export function AddPanVatBillModal({ onClose, bill }: AddPanVatBillModalProps) {
                         </button>
                         <button
                             type="submit"
+                            ref={saveRef}
+                            tabIndex={101}
                             disabled={isSubmitting}
                             className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         >

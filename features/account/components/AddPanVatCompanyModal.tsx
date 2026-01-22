@@ -2,16 +2,17 @@
 
 import { useState, useEffect } from 'react'
 import { X, Search } from 'lucide-react'
-import { createPanVatCompany, type CreatePanVatCompanyParams } from '@/features/account/actions/pan-vat-company-actions'
+import { createPanVatCompany, updatePanVatCompany, type CreatePanVatCompanyParams, type PanVatCompany } from '@/features/account/actions/pan-vat-company-actions'
 import { getSuppliers } from '@/features/suppliers/actions/supplier-actions'
 
 interface AddPanVatCompanyModalProps {
     isOpen: boolean
     onClose: () => void
     onSuccess: () => void
+    company?: PanVatCompany | null
 }
 
-export function AddPanVatCompanyModal({ isOpen, onClose, onSuccess }: AddPanVatCompanyModalProps) {
+export function AddPanVatCompanyModal({ isOpen, onClose, onSuccess, company }: AddPanVatCompanyModalProps) {
     const [formData, setFormData] = useState<CreatePanVatCompanyParams>({
         company_name: '',
         pan_vat_no: '',
@@ -27,6 +28,20 @@ export function AddPanVatCompanyModal({ isOpen, onClose, onSuccess }: AddPanVatC
     const [supplierSearch, setSupplierSearch] = useState('')
     const [showSupplierDropdown, setShowSupplierDropdown] = useState(false)
     const [isLoadingSuppliers, setIsLoadingSuppliers] = useState(false)
+
+    // Pre-fill form data when editing
+    useEffect(() => {
+        if (company) {
+            setFormData({
+                company_name: company.company_name,
+                pan_vat_no: company.pan_vat_no,
+                supplier_id: company.supplier_id,
+                supplier_name: company.supplier_name,
+                remarks: company.remarks,
+            })
+            setSupplierSearch(company.supplier_name || '')
+        }
+    }, [company])
 
     // Load suppliers when search changes
     useEffect(() => {
@@ -73,11 +88,17 @@ export function AddPanVatCompanyModal({ isOpen, onClose, onSuccess }: AddPanVatC
 
         setIsSubmitting(true)
         try {
-            await createPanVatCompany(formData)
+            if (company) {
+                // Update existing company
+                await updatePanVatCompany({ ...formData, id: company.id })
+            } else {
+                // Create new company
+                await createPanVatCompany(formData)
+            }
             onSuccess()
             handleClose()
         } catch (err: any) {
-            setError(err.message || 'Failed to create company')
+            setError(err.message || (company ? 'Failed to update company' : 'Failed to create company'))
         } finally {
             setIsSubmitting(false)
         }
@@ -113,7 +134,7 @@ export function AddPanVatCompanyModal({ isOpen, onClose, onSuccess }: AddPanVatC
             <div className="bg-white dark:bg-zinc-900 rounded-lg shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
                 {/* Header */}
                 <div className="flex items-center justify-between p-6 border-b dark:border-zinc-800">
-                    <h2 className="text-xl font-bold">Add Pan/Vat Company</h2>
+                    <h2 className="text-xl font-bold">{company ? 'Edit' : 'Add'} Pan/Vat Company</h2>
                     <button
                         onClick={handleClose}
                         className="p-2 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-md transition-colors"
@@ -238,7 +259,7 @@ export function AddPanVatCompanyModal({ isOpen, onClose, onSuccess }: AddPanVatC
                             disabled={isSubmitting}
                             className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                            {isSubmitting ? 'Adding...' : 'Add Company'}
+                            {isSubmitting ? (company ? 'Updating...' : 'Adding...') : (company ? 'Update Company' : 'Add Company')}
                         </button>
                     </div>
                 </form>

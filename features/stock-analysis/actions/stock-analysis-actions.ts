@@ -16,6 +16,7 @@ export interface StockAnalysisItem {
 
 export async function getStockAnalysisData(filters?: {
     fiscalYearId?: string
+    companyId?: string
     search?: string
 }): Promise<StockAnalysisItem[]> {
     const supabase = await createClient()
@@ -63,10 +64,16 @@ export async function getStockAnalysisData(filters?: {
             *,
             pan_vat_bills!inner (
                 issue_bill_date_ad,
+                buyer_company_id,
                 is_deleted
             )
         `)
         .eq('pan_vat_bills.is_deleted', false)
+
+    // Filter by company (buyer)
+    if (filters?.companyId && filters.companyId !== 'all') {
+        query = query.eq('pan_vat_bills.buyer_company_id', filters.companyId)
+    }
 
     if (filters?.search) {
         query = query.ilike('particulars', `%${filters.search}%`)

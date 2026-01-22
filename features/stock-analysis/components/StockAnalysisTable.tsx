@@ -21,6 +21,11 @@ export function StockAnalysisTable({ data, isLoading }: StockAnalysisTableProps)
         return sum + (item.running_stock * item.weighted_average_rate)
     }, 0)
 
+    // Total Purchase Amount (should match Purchase Billing Report)
+    const totalPurchaseAmount = data.reduce((sum, item) => {
+        return sum + item.purchase_amount
+    }, 0)
+
     if (isLoading) {
         return (
             <div className="bg-white dark:bg-zinc-900 rounded-lg border dark:border-zinc-800 p-8 text-center text-gray-500">
@@ -90,6 +95,14 @@ export function StockAnalysisTable({ data, isLoading }: StockAnalysisTableProps)
                             <td className="px-6 py-3 text-right">-</td>
                             <td className="px-6 py-3 text-right text-blue-700 dark:text-blue-400">
                                 {totalRunningStock}
+                            </td>
+                        </tr>
+                        <tr>
+                            <td colSpan={7} className="px-6 py-3 text-right">
+                                Total Purchase Amount :
+                            </td>
+                            <td className="px-6 py-3 text-right text-green-700 dark:text-green-400">
+                                {formatNepaliCurrency(totalPurchaseAmount)}
                             </td>
                         </tr>
                         <tr>

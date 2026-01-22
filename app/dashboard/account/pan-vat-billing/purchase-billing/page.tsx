@@ -1,15 +1,16 @@
 'use client'
 
-import { ArrowLeft, FileText, Users, Building, BarChart3, Plus, Trash2 } from 'lucide-react'
+import { ArrowLeft, FileText, Users, Building, BarChart3, Plus, Edit } from 'lucide-react'
 import Link from 'next/link'
 import { useState } from 'react'
 import { AddPanVatCompanyModal } from '@/features/account/components/AddPanVatCompanyModal'
 import { AddPanVatBillModal } from '@/features/account/components/AddPanVatBillModal'
 import { PanVatBillList } from '@/features/account/components/PanVatBillList'
-import { getPanVatCompanies, deletePanVatCompany } from '@/features/account/actions/pan-vat-company-actions'
+import { getPanVatCompanies, type PanVatCompany } from '@/features/account/actions/pan-vat-company-actions'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { PartiesStatement } from '@/features/account/components/PartiesStatement'
+import { PurchaseBillingReport } from '@/features/account/components/PurchaseBillingReport'
 import { Card } from '@/components/ui-shim'
 
 type TabType = 'pan-vat-bill' | 'parties-statement' | 'pan-vat-company' | 'report'
@@ -17,6 +18,7 @@ type TabType = 'pan-vat-bill' | 'parties-statement' | 'pan-vat-company' | 'repor
 export default function PurchaseBillingPage() {
     const [activeTab, setActiveTab] = useState<TabType>('pan-vat-bill')
     const [isAddCompanyModalOpen, setIsAddCompanyModalOpen] = useState(false)
+    const [editingCompany, setEditingCompany] = useState<PanVatCompany | null>(null)
     const [isAddBillModalOpen, setIsAddBillModalOpen] = useState(false)
     const queryClient = useQueryClient()
 
@@ -26,16 +28,9 @@ export default function PurchaseBillingPage() {
         queryFn: getPanVatCompanies,
     })
 
-    const handleDelete = async (id: string) => {
-        if (!confirm('Are you sure you want to delete this company?')) return
-
-        try {
-            await deletePanVatCompany(id)
-            queryClient.invalidateQueries({ queryKey: ['pan-vat-companies'] })
-        } catch (error) {
-            console.error('Error deleting company:', error)
-            alert('Failed to delete company')
-        }
+    const handleEdit = (company: PanVatCompany) => {
+        setEditingCompany(company)
+        setIsAddCompanyModalOpen(true)
     }
 
     return (
@@ -209,11 +204,11 @@ export default function PurchaseBillingPage() {
                                                 </td>
                                                 <td className="px-3 py-2 whitespace-nowrap text-right">
                                                     <button
-                                                        onClick={() => handleDelete(company.id)}
-                                                        className="p-1 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-md transition-colors"
-                                                        title="Delete company"
+                                                        onClick={() => handleEdit(company)}
+                                                        className="p-1 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-md transition-colors"
+                                                        title="Edit company"
                                                     >
-                                                        <Trash2 className="h-4 w-4" />
+                                                        <Edit className="h-4 w-4" />
                                                     </button>
                                                 </td>
                                             </tr>
@@ -224,22 +219,21 @@ export default function PurchaseBillingPage() {
                         </div>
                     </Card>
                 ) : (
-                    <div className="bg-white dark:bg-zinc-900 rounded-lg border dark:border-zinc-800 p-8">
-                        <div className="text-center text-gray-500 dark:text-gray-400">
-                            <p className="text-lg font-semibold">Report</p>
-                            <p className="text-sm mt-2">Report content will be implemented here</p>
-                        </div>
-                    </div>
+                    <PurchaseBillingReport />
                 )}
             </div>
 
-            {/* Add Company Modal */}
+            {/* Add/Edit Company Modal */}
             <AddPanVatCompanyModal
                 isOpen={isAddCompanyModalOpen}
-                onClose={() => setIsAddCompanyModalOpen(false)}
+                onClose={() => {
+                    setIsAddCompanyModalOpen(false)
+                    setEditingCompany(null)
+                }}
                 onSuccess={() => {
                     queryClient.invalidateQueries({ queryKey: ['pan-vat-companies'] })
                 }}
+                company={editingCompany}
             />
 
             {/* Add Bill Modal */}
