@@ -171,22 +171,44 @@ export async function searchProducts(search: string) {
  * Get ALL products (lightweight) for client-side filtering
  * Returns only id, name, and seller sku
  */
+/**
+ * Get ALL products (lightweight) for client-side filtering
+ * Returns only id, name, and seller sku.
+ * Uses batch fetching to bypass 1000-row limit.
+ */
 export async function getAllProductOptions() {
     const supabase = await createClient()
 
-    const { data, error } = await supabase
-        .from('products')
-        .select('id, product_name, seller_sku1, seller_sku2')
-        .eq('is_deleted', false) // Only active products
-        .eq('status', 'Active')
-        .order('product_name', { ascending: true })
+    let allProducts: any[] = []
+    let page = 0
+    const pageSize = 1000
 
-    if (error) {
-        console.error('Get all products error:', error)
-        throw new Error(error.message)
+    while (true) {
+        const from = page * pageSize
+        const to = from + pageSize - 1
+
+        const { data, error } = await supabase
+            .from('products')
+            .select('id, product_name, seller_sku1, seller_sku2')
+            .eq('is_deleted', false) // Only show non-deleted products
+            // .eq('status', 'Active') // Removed to show Inactive products too
+            .order('product_name', { ascending: true })
+            .range(from, to)
+
+        if (error) {
+            console.error('Get all products error:', error)
+            throw new Error(error.message)
+        }
+
+        if (!data || data.length === 0) break
+
+        allProducts = allProducts.concat(data)
+
+        if (data.length < pageSize) break
+        page++
     }
 
-    return data || []
+    return allProducts
 }
 
 /**

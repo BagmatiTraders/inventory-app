@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/server'
 export interface ProductStockInfo {
     product_id: string
     product_name: string
+    image_url: string | null
     total_stock: number
 }
 
@@ -35,7 +36,9 @@ export async function getOrdersStockInfo(orderIds: string[]): Promise<Record<str
             quantity,
             product:products!inner(
                 id,
+                id,
                 product_name,
+                image_url,
                 product_type
             )
         `)
@@ -67,6 +70,7 @@ export async function getOrdersStockInfo(orderIds: string[]): Promise<Record<str
             return {
                 product_id: item.product_id,
                 product_name: product?.product_name || 'Unknown Product',
+                image_url: product?.image_url || null,
                 total_stock: stockMap.get(item.product_id) || 0
             }
         })

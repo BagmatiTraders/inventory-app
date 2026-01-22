@@ -1054,11 +1054,9 @@ export default function DarazSalesEntryPage() {
                                                             </div>
                                                             {/* Row 3: Status */}
                                                             <div>
-                                                                <AuditTrailHover order={order}>
-                                                                    <span className={`px-1.5 py-0.5 text-[10px] font-bold uppercase rounded ${getStatusColor(order.order_status)} inline-block`}>
-                                                                        {order.order_status}
-                                                                    </span>
-                                                                </AuditTrailHover>
+                                                                <span className={`px-1.5 py-0.5 text-[10px] font-bold uppercase rounded ${getStatusColor(order.order_status)} inline-block`}>
+                                                                    {order.order_status}
+                                                                </span>
                                                             </div>
                                                         </div>
                                                     </td>
@@ -1087,11 +1085,9 @@ export default function DarazSalesEntryPage() {
                                                         <span>Rs. {order.grand_total?.toLocaleString()}</span>
                                                     </td>
                                                     <td className="hidden md:table-cell px-1.5 py-0.5">
-                                                        <AuditTrailHover order={order}>
-                                                            <span className={`px-1 py-0.5 text-xs font-medium rounded ${getStatusColor(order.order_status)}`}>
-                                                                {order.order_status}
-                                                            </span>
-                                                        </AuditTrailHover>
+                                                        <span className={`px-1 py-0.5 text-xs font-medium rounded ${getStatusColor(order.order_status)}`}>
+                                                            {order.order_status}
+                                                        </span>
                                                     </td>
 
                                                     <td className="hidden md:table-cell px-1.5 py-0.5">

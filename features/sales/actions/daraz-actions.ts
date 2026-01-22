@@ -1348,11 +1348,12 @@ export async function getDailySalesReport() {
 }
 
 // Get Order Summary Report - aggregated by seller account
+// Get Order Summary Report - aggregated by seller account
 export async function getOrderSummaryReport() {
     const supabase = await createClient()
 
     try {
-        // 1. Get ALL Seller Accounts from Settings (online_stores) to ensure we show everyone
+        // 1. Get ALL Seller Accounts
         const { data: stores, error: storeError } = await supabase
             .from('online_stores')
             .select('seller_account')
@@ -1360,7 +1361,7 @@ export async function getOrderSummaryReport() {
 
         if (storeError) throw storeError
 
-        // Initialize map with all stores
+        // Initialize map
         const summaryMap = new Map<string, {
             shipped_qty: number
             shipped_amount: number
@@ -1389,7 +1390,14 @@ export async function getOrderSummaryReport() {
             }
         })
 
-        // 2. Fetch all orders with relevant statuses using BATCH FETCHING
+        // 2. Fetch ALL non-deleted orders (Removing strict status filter to catch everything)
+        // We select 'statuses' array column if available, or just use order_status
+        // Note: daraz_orders_with_totals view should ideally have 'statuses' array. 
+        // If not, we rely on order_status. 
+        // Checking previous code: getAllDarazOrders uses "statuses.cs.{...}". 
+        // We assume 'statuses' column exists in standard table/view or we need to fetch it.
+        // If 'statuses' is not in the view, we might miss item-level statuses. 
+        // Let's safe-guard: select * or at least commonly needed columns.
         let allOrders: any[] = []
         let page = 0
         const pageSize = 1000
@@ -1400,9 +1408,9 @@ export async function getOrderSummaryReport() {
 
             const { data: orders, error } = await supabase
                 .from('daraz_orders_with_totals')
-                .select('order_status, price, seller_account')
+                .select('order_status, price, seller_account, statuses') // Request 'statuses' array
                 .or('deleted.is.null,deleted.eq.false')
-                .in('order_status', ['Shipped', 'Delivered', 'Returning to Seller', 'Returned Delivered', 'Customer Return', 'Customer Return Delivered'])
+                // Remove the .in() filter to get generic 'Shipped' orders that might have 'Returning' items
                 .range(from, to)
 
             if (error) throw error
@@ -1411,18 +1419,22 @@ export async function getOrderSummaryReport() {
 
             allOrders = allOrders.concat(orders)
 
-            // If we got less than pageSize, we've reached the end
             if (orders.length < pageSize) break
-
             page++
         }
 
-        // 3. Aggregate Data
+        // 3. Aggregate Data with Hybrid Matching Priority
         allOrders?.forEach((order: any) => {
             const sellerAccount = order.seller_account || 'Unknown'
             const price = parseFloat(order.price) || 0
+            const mainStatus = order.order_status
+            const itemStatuses = order.statuses || [] // Array of strings
 
-            // If this is an unknown seller OR one not in our settings list, add it anyway
+            // Helper to check if status exists in Main OR Items
+            const hasStatus = (target: string) => {
+                return mainStatus === target || itemStatuses.includes(target)
+            }
+
             if (!summaryMap.has(sellerAccount)) {
                 summaryMap.set(sellerAccount, {
                     shipped_qty: 0,
@@ -1439,36 +1451,73 @@ export async function getOrderSummaryReport() {
 
             const stats = summaryMap.get(sellerAccount)!
 
-            // "Shipped" in this context context means "Dispatched" (Total of all these statuses)
-            // So we ALWAYS increment Shipped Qty/Amount for any of these statuses
-            stats.shipped_qty++
-            stats.shipped_amount += price
+            // Priority Logic: Assign to ONE bucket (mutually exclusive columns) based on significance
+            let assigned = false
 
-            switch (order.order_status) {
-                case 'Shipped':
-                    // Specifically currently Shipped -> implies "Remain"
-                    stats.remain_qty++
-                    break
-                case 'Delivered':
-                    stats.delivered_qty++
-                    stats.delivered_amount += price
-                    break
-                case 'Returning to Seller':
-                    stats.returning_to_seller_qty++
-                    break
-                case 'Returned Delivered':
-                    stats.returned_delivered_qty++
-                    break
-                case 'Customer Return':
-                    stats.return_qty++
-                    break
-                case 'Customer Return Delivered':
-                    stats.customer_return_delivered_qty++
-                    break
+            // 1. Customer Return Delivered
+            if (hasStatus('Customer Return Delivered')) {
+                stats.customer_return_delivered_qty++
+                assigned = true
+            }
+            // 2. Customer Return
+            else if (hasStatus('Customer Return')) {
+                stats.return_qty++
+                assigned = true
+            }
+            // 3. Returned Delivered
+            else if (hasStatus('Returned Delivered')) {
+                stats.returned_delivered_qty++
+                assigned = true
+            }
+            // 4. Returning to Seller
+            else if (hasStatus('Returning to Seller')) {
+                stats.returning_to_seller_qty++
+                assigned = true
+            }
+            // 5. Delivered
+            else if (hasStatus('Delivered')) {
+                stats.delivered_qty++
+                // Only add amount to Delivered Amount if it's actually Delivered
+                stats.delivered_amount += price
+                assigned = true
+            }
+            // 6. Shipped (Remain) - Catch-all for "Shipped" but not yet final
+            // Also explicitly check for 'Shipped' status
+            else if (mainStatus === 'Shipped') {
+                stats.remain_qty++
+                assigned = true
+            }
+
+            // "Shipped Qty" (Total Dispatched)
+            // Increment for ANY of the above categories, plus 'Ready to Ship' if we wanted, 
+            // but usually this report tracks post-dispatch.
+            // If it was assigned to any category OR it is 'Shipped', count it.
+            // Also include 'Delivery Failed' in the Total count if we want them to appear in the grand total 
+            // even if they don't have a specific column (user asked to fix discrepancies).
+            // Currently, 'Delivery Failed' falls through 'assigned=false'.
+
+            // LOGIC: If it was assigned to a bucket, OR matches generic Shipped/Failed Dispatched states
+            // We want to match the "Total" of 1174 from before roughly, which included:
+            // Delivered + Returning + Returned + Return + ReturnDelivered + Remain.
+            // If 'Delivery Failed' was missing before, adding it to Shipped Total might increase the total vs before.
+            // Let's stick to: If it's a "Dispatched" status, increment Shipped Qty/Amount.
+
+            const dispatchedStatuses = [
+                'Shipped', 'Delivered', 'Returning to Seller', 'Returned Delivered',
+                'Customer Return', 'Customer Return Delivered', 'Delivery Failed',
+                'Fail Delivered', 'Lost', 'Damaged'
+            ]
+
+            // Check if order is roughly "Post-Dispatch" logic
+            const isDispatched = dispatchedStatuses.includes(mainStatus) || dispatchedStatuses.some(s => itemStatuses.includes(s))
+
+            if (isDispatched) {
+                stats.shipped_qty++
+                stats.shipped_amount += price
             }
         })
 
-        // 4. Convert to Array and Sort
+        // 4. Convert and Sort
         return Array.from(summaryMap.entries()).map(([seller_account, stats]) => ({
             seller_account,
             ...stats

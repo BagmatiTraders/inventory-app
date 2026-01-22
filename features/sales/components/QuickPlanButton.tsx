@@ -35,36 +35,8 @@ export function QuickPlanButton({ order, stockInfo }: QuickPlanButtonProps) {
         setIsChecking(true)
 
         try {
-            // If single product, check and open directly
-            if (orderItems.length === 1) {
-                const productId = orderItems[0].product_id
-
-                // Skip if product_id is null (product not in inventory yet)
-                if (!productId) {
-                    toast.error('Product not found in inventory', {
-                        description: 'Please add this product to inventory first.'
-                    })
-                    setIsChecking(false)
-                    return
-                }
-
-                const today = new Date().toISOString().split('T')[0]
-                const alreadyPlanned = await checkProductPlan(productId, today)
-
-                if (alreadyPlanned) {
-                    toast.error('Product Already Planned', {
-                        description: 'This product already has a purchase plan for today.'
-                    })
-                    setIsChecking(false)
-                    return
-                }
-
-                setSelectedProductId(productId)
-                setShowPlanModal(true)
-            } else {
-                // Multiple products - show selection modal
-                setShowProductSelection(true)
-            }
+            // Always show selection modal
+            setShowProductSelection(true)
         } catch (error) {
             console.error('Error:', error)
             toast.error('Failed to process request')
@@ -108,10 +80,11 @@ export function QuickPlanButton({ order, stockInfo }: QuickPlanButtonProps) {
             <button
                 onClick={handleClick}
                 disabled={isChecking}
-                className="p-0.5 hover:bg-gray-100 dark:hover:bg-zinc-700 rounded text-blue-600 dark:text-blue-400 disabled:opacity-50"
+                className="flex items-center gap-0.5 px-1 py-0.5 text-[11px] font-medium bg-blue-50 text-blue-600 border border-blue-200 hover:bg-blue-100 rounded disabled:opacity-50 transition-colors"
                 title="Quick Purchase Plan"
             >
-                <Plus size={16} />
+                <Plus size={12} />
+                Add
             </button>
 
             {/* Product Selection Modal for multi-product orders */}
@@ -124,6 +97,7 @@ export function QuickPlanButton({ order, stockInfo }: QuickPlanButtonProps) {
                     return {
                         product_id: item.product_id,
                         product_name: item.product_name || 'Unknown Product',
+                        image_url: productStock?.image_url,
                         quantity: item.quantity,
                         stock: productStock?.total_stock
                     }

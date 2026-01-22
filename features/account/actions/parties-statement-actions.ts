@@ -89,22 +89,48 @@ export async function getPartiesStatement({ startDate, endDate, search }: GetPar
         return []
     }
 
-    // 4. Aggregate data
-    const result: PartiesStatementItem[] = suppliers.map(supplier => {
-        // Calculate Total Purchase Amount
-        const supplierPurchases = purchases.filter(p => p.supplier_id === supplier.id)
-        const totalPurchaseAmount = supplierPurchases.reduce((sum, p) => sum + (p.total_amount || 0), 0)
+    // 4. Aggregate data (Optimized with Maps)
 
-        // Calculate Pan/Vat Bill Amount
-        // Find companies linked to this supplier
-        const linkedCompanyIds = companies
-            .filter(c => c.supplier_id === supplier.id)
-            .map(c => c.id)
+    // Group purchases by Supplier ID
+    const purchasesMap = new Map<string, number>()
+    purchases?.forEach(p => {
+        if (p.supplier_id) {
+            const current = purchasesMap.get(p.supplier_id) || 0
+            purchasesMap.set(p.supplier_id, current + (p.total_amount || 0))
+        }
+    })
+
+    // Map Supplier ID -> List of PanVatCompany IDs
+    const supplierToCompanyMap = new Map<string, string[]>()
+    companies?.forEach(c => {
+        if (c.supplier_id) {
+            const list = supplierToCompanyMap.get(c.supplier_id) || []
+            list.push(c.id)
+            supplierToCompanyMap.set(c.supplier_id, list)
+        }
+    })
+
+    // Group Bills by Company ID
+    const billsMap = new Map<string, number>()
+    bills?.forEach(b => {
+        if (b.supplier_company_id) {
+            const current = billsMap.get(b.supplier_company_id) || 0
+            billsMap.set(b.supplier_company_id, current + (b.total_amount || 0))
+        }
+    })
+
+    const result: PartiesStatementItem[] = suppliers.map(supplier => {
+        // 1. Get Purchase Total (O(1) lookup)
+        const totalPurchaseAmount = purchasesMap.get(supplier.id) || 0
+
+        // 2. Get Pan/Vat Bill Total
+        // Get linked companies
+        const linkedCompanyIds = supplierToCompanyMap.get(supplier.id) || []
 
         // Sum bills for these companies
-        const totalPanVatBillAmount = bills
-            .filter(b => b.supplier_company_id && linkedCompanyIds.includes(b.supplier_company_id))
-            .reduce((sum, b) => sum + (b.total_amount || 0), 0)
+        const totalPanVatBillAmount = linkedCompanyIds.reduce((sum, companyId) => {
+            return sum + (billsMap.get(companyId) || 0)
+        }, 0)
 
         return {
             supplier_id: supplier.id,

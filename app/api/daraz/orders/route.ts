@@ -175,43 +175,49 @@ export async function GET(request: NextRequest) {
         console.log(`Total orders fetched: ${allOrders.length}`)
         const orders = allOrders
 
-        // 3. Enrich with Items (Sequential Fetch to avoid Rate Limiting)
-        // Rate limits are often tight (e.g. 5 req/sec). Promise.all bursts too hard.
-        const enrichedOrders = []
+        // 3. Enrich with Items (Concurrent Fetching with Rate Limiting)
+        // Rate limits are often tight (e.g. 5 req/sec). We use chunks of 5 to speed up.
+        const enrichedOrders: any[] = []
+        const CHUNK_SIZE = 5
 
-        // Use allOrders fetched from loop
-        for (const order of allOrders) {
-            try {
-                // Formatting helper for logs
-                const oid = order.order_id
+        for (let i = 0; i < allOrders.length; i += CHUNK_SIZE) {
+            const chunk = allOrders.slice(i, i + CHUNK_SIZE)
 
-                // ... item fetch logic (keep as is structure, just ensure loop variable is correct)
-                const itemTimestamp = new Date().getTime()
-                const itemParams: Record<string, any> = {
-                    app_key: appKey,
-                    access_token: tokenData.access_token,
-                    timestamp: itemTimestamp,
-                    sign_method: 'sha256',
-                    order_id: oid
+            console.log(`Fetching items for chunk ${i / CHUNK_SIZE + 1} / ${Math.ceil(allOrders.length / CHUNK_SIZE)}...`)
+
+            const chunkResults = await Promise.all(chunk.map(async (order) => {
+                try {
+                    const oid = order.order_id
+                    const itemTimestamp = new Date().getTime()
+                    const itemParams: Record<string, any> = {
+                        app_key: appKey,
+                        access_token: tokenData.access_token,
+                        timestamp: itemTimestamp,
+                        sign_method: 'sha256',
+                        order_id: oid
+                    }
+                    itemParams.sign = signRequest('/order/items/get', itemParams, appSecret)
+
+                    const itemRes = await axios.get(`${apiUrl}/order/items/get`, { params: itemParams })
+                    const items = itemRes.data.data || []
+
+                    return {
+                        ...order,
+                        store_id: storeId,
+                        items_detail: items
+                    }
+                } catch (err: any) {
+                    console.error(`Error fetching items for order ${order.order_id}`, err.message)
+                    // Fail gracefully but keep order
+                    return { ...order, store_id: storeId, items_detail: [] }
                 }
-                itemParams.sign = signRequest('/order/items/get', itemParams, appSecret)
+            }))
 
-                // Small delay to be nice to the API (50ms)
-                await new Promise(resolve => setTimeout(resolve, 50))
+            enrichedOrders.push(...chunkResults)
 
-                const itemRes = await axios.get(`${apiUrl}/order/items/get`, { params: itemParams })
-
-                const items = itemRes.data.data || []
-
-                enrichedOrders.push({
-                    ...order,
-                    store_id: storeId,
-                    items_detail: items
-                })
-            } catch (err) {
-                console.error(`Error fetching items for order ${order.order_id}`, err)
-                // Fail gracefully but keep order
-                enrichedOrders.push({ ...order, store_id: storeId, items_detail: [] })
+            // Small delay between chunks to be safe (200ms)
+            if (i + CHUNK_SIZE < allOrders.length) {
+                await new Promise(resolve => setTimeout(resolve, 200))
             }
         }
 
