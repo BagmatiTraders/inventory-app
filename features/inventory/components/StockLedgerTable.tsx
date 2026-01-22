@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Search, Loader2, ArrowLeft, ArrowRight } from 'lucide-react'
 import { StockLedgerItem, getStockLedger } from '../services/stock-ledger-service'
@@ -17,13 +17,13 @@ export default function StockLedgerTable({ initialData, initialTotal, initialPag
     const [search, setSearch] = useState('')
     const [debouncedSearch, setDebouncedSearch] = useState('')
 
-    const onSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const onSearchChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
         setSearch(e.target.value)
         setTimeout(() => {
             setDebouncedSearch(e.target.value)
             setPage(1) // Reset to first page on search
         }, 500)
-    }
+    }, [])
 
     const { data, isLoading } = useQuery({
         queryKey: ['stock-ledger', page, debouncedSearch],
