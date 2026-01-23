@@ -13,9 +13,10 @@ import PurchaseForm from '@/features/purchase/components/PurchaseForm'
 interface PlanListProps {
     plans: PurchasePlan[]
     completedProductIds: string[]
+    onPlanUpdated?: () => void
 }
 
-export function PlanList({ plans, completedProductIds }: PlanListProps) {
+export function PlanList({ plans, completedProductIds, onPlanUpdated }: PlanListProps) {
     const router = useRouter()
 
     // View Modal State
@@ -92,6 +93,7 @@ export function PlanList({ plans, completedProductIds }: PlanListProps) {
             triggerMobileFeedback(true) // Vibrate + Sound
             await updatePurchasePlanStatus(plan.id, 'Complete')
             toast.success("Marked as Complete")
+            onPlanUpdated?.()
         } catch (err) {
             toast.error("Failed to update status")
         }
@@ -103,6 +105,7 @@ export function PlanList({ plans, completedProductIds }: PlanListProps) {
             triggerMobileFeedback(false) // Vibrate Only
             await updatePurchasePlanStatus(plan.id, 'Cancel')
             toast.success("Plan Cancelled")
+            onPlanUpdated?.()
         } catch (err) {
             toast.error("Failed to update status")
         }
@@ -111,8 +114,8 @@ export function PlanList({ plans, completedProductIds }: PlanListProps) {
     const onPurchaseSuccess = async () => {
         triggerMobileFeedback(true)
         setPurchaseModalOpen(false)
-        router.refresh()
         toast.success("Purchase Entry Created. Plan Updated.")
+        onPlanUpdated?.()
     }
 
     const ActionButtons = ({ plan, type }: { plan: PurchasePlan, type: 'pending' | 'purchased' | 'complete' | 'cancel' }) => (

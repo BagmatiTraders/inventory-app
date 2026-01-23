@@ -104,3 +104,20 @@ export async function createSupplierTransaction(data: CreateSupplierTransactionD
     revalidatePath('/dashboard/suppliers/suppliers-transaction')
     return { success: true }
 }
+
+export async function updateSupplierTransaction({ id, data }: { id: string; data: CreateSupplierTransactionData }) {
+    const supabase = await createClient()
+
+    const { error } = await supabase
+        .from('supplier_transactions')
+        .update(data)
+        .eq('id', id)
+
+    if (error) {
+        console.error('Error updating supplier transaction:', error)
+        throw new Error('Failed to update transaction')
+    }
+
+    revalidatePath('/dashboard/suppliers/suppliers-transaction')
+    return { success: true }
+}

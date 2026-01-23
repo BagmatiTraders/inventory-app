@@ -1,11 +1,17 @@
 'use client'
 
-import { Package, FileText, TrendingUp, CreditCard, Users } from 'lucide-react'
+import { Package, FileText, TrendingUp, CreditCard, Users, LayoutDashboard } from 'lucide-react'
 import Link from 'next/link'
 import { Card } from '@/components/ui-shim'
 
 export default function SuppliersPage() {
     const suppliersModules = [
+        {
+            name: 'Supplier Dashboard',
+            icon: LayoutDashboard,
+            href: '/dashboard/suppliers/dashboard',
+            color: 'bg-indigo-600'
+        },
         {
             name: 'Suppliers List',
             icon: Users,
