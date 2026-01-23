@@ -109,7 +109,7 @@ export default function PurchaseListContent({ isEmbedded = false }: PurchaseList
             {!isEmbedded && (
                 <div className="hidden md:flex sticky top-0 z-10 bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 px-3 py-1.5 items-center justify-between shadow-sm">
                     <div>
-                        <h1 className="text-[17px] font-bold">All Purchase List</h1>
+                        <h1 className="text-[17px] font-bold">Purchase History</h1>
                         <p className="text-[13px] text-gray-500 dark:text-gray-400">View all purchases from all time</p>
                     </div>
                     <Link
@@ -255,8 +255,8 @@ export default function PurchaseListContent({ isEmbedded = false }: PurchaseList
                                                         <div className="flex justify-between items-center">
                                                             <span>{date}</span>
                                                             <div className="flex items-center gap-4">
-                                                                <span className="text-blue-600 font-bold">Buy: Rs {group.buyTotal.toLocaleString()}</span>
-                                                                <span className="text-green-600 font-bold">Sell: Rs {group.sellTotal.toLocaleString()}</span>
+                                                                <span className="text-blue-600 font-bold">Buy: NPR {group.buyTotal.toLocaleString()}</span>
+                                                                <span className="text-green-600 font-bold">Sell: NPR {group.sellTotal.toLocaleString()}</span>
                                                             </div>
                                                         </div>
                                                     </td>
@@ -287,7 +287,7 @@ export default function PurchaseListContent({ isEmbedded = false }: PurchaseList
                                                             <td className="px-3 py-2 text-sm">{purchase.supplier?.supplier_name}</td>
                                                             <td className="px-3 py-2 text-sm text-right">{purchase.quantity}</td>
                                                             <td className="px-3 py-2 text-sm text-right">{purchase.unit_amount.toLocaleString()}</td>
-                                                            <td className="px-3 py-2 text-sm text-right font-medium text-green-600">Rs {purchase.total_amount.toLocaleString()}</td>
+                                                            <td className="px-3 py-2 text-sm text-right font-medium text-green-600">NPR {purchase.total_amount.toLocaleString()}</td>
                                                             <td className="px-3 py-2 text-sm">
                                                                 <span className={`px-2 py-0.5 rounded text-xs font-medium ${purchase.payment_type === 'Due' ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'
                                                                     }`}>
@@ -365,7 +365,7 @@ export default function PurchaseListContent({ isEmbedded = false }: PurchaseList
                                     {/* Header Content */}
                                     <div className="px-3 py-2 flex justify-between items-center relative z-10">
                                         <span className="text-sm font-bold text-gray-800 dark:text-gray-100 drop-shadow-sm">{formatDateDDMMYYYY(date)}</span>
-                                        <span className="text-sm font-bold text-green-700 dark:text-green-400 drop-shadow-sm">Rs {group.total.toLocaleString()}</span>
+                                        <span className="text-sm font-bold text-green-700 dark:text-green-400 drop-shadow-sm">NPR {group.total.toLocaleString()}</span>
                                     </div>
 
                                     {/* Moving Neon Light Bottom Border - Vivid Blue Gradient */}
@@ -406,7 +406,7 @@ export default function PurchaseListContent({ isEmbedded = false }: PurchaseList
                                                     Rate: {purchase.unit_amount.toLocaleString()}
                                                 </div>
                                                 <div className="font-bold text-xs text-gray-700 dark:text-gray-300">
-                                                    Rs {purchase.total_amount.toLocaleString()}
+                                                    NPR {purchase.total_amount.toLocaleString()}
                                                 </div>
                                             </div>
                                         </div>

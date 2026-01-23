@@ -121,7 +121,7 @@ export default function PurchaseEntryPage() {
                         className="hidden md:flex items-center gap-1 px-3 py-1.5 text-sm bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 hover:bg-purple-200 dark:hover:bg-purple-900/50 rounded transition-colors whitespace-nowrap"
                     >
                         <LayoutDashboard size={16} />
-                        Purchase Dashboard
+                        Purchase Summary
                     </Link>
                 </div>
             </div>

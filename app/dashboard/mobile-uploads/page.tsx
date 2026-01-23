@@ -38,7 +38,7 @@ export default function MobileUploadsPage() {
             {/* Header Section with Back Button */}
             <div className="hidden md:flex items-start justify-between gap-4">
                 <div>
-                    <h1 className="text-3xl font-bold tracking-tight">Product Photo Capture</h1>
+                    <h1 className="text-3xl font-bold tracking-tight">Field Data Entry</h1>
                     <span className="text-sm text-gray-500">
                         {captures.length} photos
                     </span>

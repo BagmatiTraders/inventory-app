@@ -103,6 +103,7 @@ export function AddSupplierModal({ isOpen, onClose, editMode = false, supplierDa
 
             // Refresh supplier list
             queryClient.invalidateQueries({ queryKey: ['suppliers'] })
+            queryClient.invalidateQueries({ queryKey: ['supplier-ledger'] })
 
             resetForm()
             onClose()

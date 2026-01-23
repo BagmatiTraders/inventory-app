@@ -9,7 +9,7 @@ export default function InventoryPage() {
     const { setIsMobileMenuOpen } = useDashboard()
     const inventoryModules = [
         {
-            name: 'Product List',
+            name: 'Inventory List',
             icon: Package,
             href: '/dashboard/inventory/product-list',
             color: 'bg-blue-500'
@@ -27,14 +27,14 @@ export default function InventoryPage() {
             color: 'bg-purple-500'
         },
         {
-            name: 'Damaged Stocks',
+            name: 'Damaged Goods',
             icon: AlertTriangle,
             href: '/dashboard/inventory/damaged-stocks',
             color: 'bg-red-500'
         },
 
         {
-            name: 'Mobile Uploads',
+            name: 'Field Data Entry',
             icon: Camera,
             href: '/dashboard/mobile-uploads',
             color: 'bg-teal-500'

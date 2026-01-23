@@ -145,6 +145,9 @@ export async function deleteSupplier(supplierId: string) {
         if (error) throw error
 
         revalidatePath('/dashboard/suppliers/suppliers-list')
+        revalidatePath('/dashboard/suppliers/suppliers-account')
+        revalidatePath('/dashboard/suppliers/suppliers-transaction')
+        revalidatePath('/dashboard/suppliers/dashboard')
         return { success: true }
     } catch (error: any) {
         console.error('Error deleting supplier:', error)

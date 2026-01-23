@@ -1,73 +1,81 @@
 'use client'
 
-import { Package, FileText, TrendingUp, CreditCard, Users, LayoutDashboard } from 'lucide-react'
+import { useState } from 'react'
+import { ArrowLeft, Users, FileText, TrendingUp } from 'lucide-react'
 import Link from 'next/link'
-import { Card } from '@/components/ui-shim'
+import SuppliersListContent from '@/features/suppliers/components/SuppliersListContent'
+import SuppliersTransactionContent from '@/features/suppliers/components/SuppliersTransactionContent'
+import SuppliersLedgerContent from '@/features/suppliers/components/SuppliersLedgerContent'
+
+type Tab = 'list' | 'transaction' | 'ledger'
 
 export default function SuppliersPage() {
-    const suppliersModules = [
-        {
-            name: 'Supplier Dashboard',
-            icon: LayoutDashboard,
-            href: '/dashboard/suppliers/dashboard',
-            color: 'bg-indigo-600'
-        },
-        {
-            name: 'Suppliers List',
-            icon: Users,
-            href: '/dashboard/suppliers/suppliers-list',
-            color: 'bg-blue-500'
-        },
-        {
-            name: 'Suppliers Transaction',
-            icon: FileText,
-            href: '/dashboard/suppliers/suppliers-transaction',
-            color: 'bg-green-500'
-        },
-        {
-            name: 'Suppliers Statement',
-            icon: TrendingUp,
-            href: '/dashboard/suppliers/suppliers-statement',
-            color: 'bg-purple-500'
-        },
-        {
-            name: 'PAN/VAT Billing',
-            icon: CreditCard,
-            href: '/dashboard/suppliers/pan-vat-billing',
-            color: 'bg-orange-500'
-        },
-        {
-            name: 'Suppliers Account',
-            icon: Package,
-            href: '/dashboard/suppliers/suppliers-account',
-            color: 'bg-teal-500'
-        }
-    ]
+    const [activeTab, setActiveTab] = useState<Tab>('list')
 
     return (
-        <div className="flex flex-col h-full bg-gray-50 dark:bg-zinc-900 space-y-4">
-            {/* Top Bar with Shadow */}
-            <div className="bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 px-4 py-3 shadow-md sticky top-0 z-10">
-                <h1 className="text-xl font-bold">Suppliers</h1>
+        <div className="flex flex-col h-full bg-gray-50 dark:bg-zinc-900">
+            {/* Header */}
+            <div className="hidden md:flex sticky top-0 z-10 bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 px-3 py-1.5 items-center justify-between shadow-sm">
+                <div>
+                    <h1 className="text-[17px] font-bold">Supplier Management</h1>
+                    <p className="text-[13px] text-gray-500 dark:text-gray-400">Manage suppliers & transactions</p>
+                </div>
+                <Link
+                    href="/dashboard"
+                    className="flex items-center gap-1 px-2 py-1 text-[13px] bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700 rounded transition-colors"
+                >
+                    <ArrowLeft size={12} />
+                    Back to Dashboard
+                </Link>
             </div>
 
-            <div className="px-4 space-y-4">
-                {/* Suppliers Modules Grid */}
-                <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-                    {suppliersModules.map((module) => {
-                        const Icon = module.icon
-                        return (
-                            <Link key={module.name} href={module.href}>
-                                <Card className="p-3 hover:shadow-lg transition-all cursor-pointer h-full border border-gray-400 dark:border-zinc-600 bg-gray-200 dark:bg-zinc-800 flex flex-col items-center justify-center gap-2 text-center">
-                                    <div className={`${module.color} p-2 rounded-md shadow-sm`}>
-                                        <Icon size={18} className="text-white" />
-                                    </div>
-                                    <h3 className="font-semibold text-[15px] text-gray-800 dark:text-gray-100">{module.name}</h3>
-                                </Card>
-                            </Link>
-                        )
-                    })}
+            {/* Tab Bar */}
+            <div className="sticky top-0 md:top-[44px] z-10 bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 px-3 py-1.5 shadow-sm overflow-x-auto">
+                <div className="flex items-center gap-1.5 min-w-max">
+                    <button
+                        onClick={() => setActiveTab('list')}
+                        className={`flex items-center gap-1 px-2 py-1 text-sm rounded transition-colors ${activeTab === 'list'
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700'
+                            }`}
+                    >
+                        <Users size={12} />
+                        Supplier List
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('transaction')}
+                        className={`flex items-center gap-1 px-2 py-1 text-sm rounded transition-colors ${activeTab === 'transaction'
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700'
+                            }`}
+                    >
+                        <FileText size={12} />
+                        Suppliers Transaction
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('ledger')}
+                        className={`flex items-center gap-1 px-2 py-1 text-sm rounded transition-colors ${activeTab === 'ledger'
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700'
+                            }`}
+                    >
+                        <TrendingUp size={12} />
+                        Supplier Ledger
+                    </button>
                 </div>
+            </div>
+
+            {/* Content Area */}
+            <div className="flex-1 overflow-hidden flex flex-col">
+                {activeTab === 'list' && (
+                    <SuppliersListContent isEmbedded={true} />
+                )}
+                {activeTab === 'transaction' && (
+                    <SuppliersTransactionContent isEmbedded={true} />
+                )}
+                {activeTab === 'ledger' && (
+                    <SuppliersLedgerContent isEmbedded={true} />
+                )}
             </div>
         </div>
     )

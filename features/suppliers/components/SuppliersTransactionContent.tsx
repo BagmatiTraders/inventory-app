@@ -192,7 +192,7 @@ export default function SuppliersTransactionContent({ isEmbedded = false }: Supp
             {!isEmbedded && (
                 <div className="hidden md:flex sticky top-0 z-10 bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 px-3 py-1.5 items-center justify-between shadow-sm">
                     <div>
-                        <h1 className="text-[17px] font-bold">Suppliers Transaction</h1>
+                        <h1 className="text-[17px] font-bold">Supplier Transactions</h1>
                         <p className="text-[13px] text-gray-500 dark:text-gray-400">View supplier transactions</p>
                     </div>
                     <Link

@@ -9,19 +9,19 @@ export default function SalesPage() {
     const { setIsMobileMenuOpen } = useDashboard()
     const salesModules = [
         {
-            name: 'Daraz Sales',
+            name: 'E-commerce Sales & Orders',
             icon: Package,
             href: '/dashboard/sales/daraz',
             color: 'bg-orange-500'
         },
         {
-            name: 'Marketplace Sales',
+            name: 'Marketplace Sales & Orders',
             icon: ShoppingCart,
             href: '/dashboard/sales/marketplace',
             color: 'bg-blue-500'
         },
         {
-            name: 'Store Sales',
+            name: 'Physical Outlets Sales & Orders',
             icon: Store,
             href: '/dashboard/sales/store-sales',
             color: 'bg-green-500'
@@ -64,7 +64,9 @@ export default function SalesPage() {
                                         <Icon size={18} className="text-white" />
                                     </div>
                                     <h3 className="font-semibold text-[15px] text-gray-800 dark:text-gray-100">{module.name}</h3>
-                                    <span className="text-[10px] font-bold text-gray-400 tracking-wider">DARAZ</span>
+                                    {module.name === 'E-commerce Sales & Orders' && (
+                                        <span className="text-[10px] font-bold text-gray-400 tracking-wider">DARAZ</span>
+                                    )}
                                 </Card>
                             </Link>
                         )

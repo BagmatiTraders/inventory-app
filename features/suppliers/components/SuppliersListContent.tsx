@@ -31,6 +31,7 @@ export default function SuppliersListContent({ isEmbedded = false }: SuppliersLi
         mutationFn: deleteSupplier,
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['suppliers'] })
+            queryClient.invalidateQueries({ queryKey: ['supplier-ledger'] })
         }
     })
 

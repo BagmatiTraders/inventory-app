@@ -49,7 +49,7 @@ export default function BuySellSuppliersContent({ isEmbedded = false }: BuySellS
             {!isEmbedded && (
                 <div className="hidden md:flex sticky top-0 z-10 bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 px-3 py-1.5 items-center justify-between shadow-sm">
                     <div>
-                        <h1 className="text-[17px] font-bold">Suppliers Buy / Sell Reports</h1>
+                        <h1 className="text-[17px] font-bold">Vendor Trade Report</h1>
                         <p className="text-[13px] text-gray-500 dark:text-gray-400">View supplier reports and history</p>
                     </div>
                     <Link

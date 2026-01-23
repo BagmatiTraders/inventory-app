@@ -12,7 +12,7 @@ export default function DamagedStocksPage() {
             {/* Header Section with Back Button */}
             <div className="hidden md:flex items-start justify-between gap-4">
                 <div>
-                    <h1 className="text-2xl font-bold">Damaged Stocks</h1>
+                    <h1 className="text-2xl font-bold">Damaged Goods</h1>
                     <p className="text-gray-500">Record and manage damaged, repaired, or exchanged items.</p>
                 </div>
                 <button

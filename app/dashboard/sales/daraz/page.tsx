@@ -7,46 +7,22 @@ import { Card } from '@/components/ui-shim'
 export default function DarazSalesMenuPage() {
     const menuItems = [
         {
-            name: 'Sales Entry',
+            name: 'Order Entry',
             icon: Package,
             href: '/dashboard/sales/daraz/sales-entry',
             color: 'bg-orange-500'
+        },
+        {
+            name: 'Order Summary',
+            icon: BarChart2,
+            href: '/dashboard/sales/daraz/dashboard',
+            color: 'bg-green-500'
         },
         {
             name: 'Update Order Status',
             icon: FileText,
             href: '/dashboard/sales/daraz/update-status',
             color: 'bg-blue-500'
-        },
-        {
-            name: 'Sales Dashboard',
-            icon: BarChart2,
-            href: '/dashboard/sales/daraz/dashboard',
-            color: 'bg-green-500'
-        },
-        {
-            name: 'Order Sync',
-            icon: RefreshCw,
-            href: '/dashboard/sales/daraz/order-sync',
-            color: 'bg-indigo-500'
-        },
-        {
-            name: 'Order Status Sync',
-            icon: RefreshCw,
-            href: '/dashboard/sales/daraz/status-sync',
-            color: 'bg-teal-500'
-        },
-        {
-            name: 'Profit Tracker',
-            icon: BarChart2,
-            href: '/dashboard/sales/daraz/profit-tracker',
-            color: 'bg-emerald-500'
-        },
-        {
-            name: 'Sales Report',
-            icon: TrendingUp,
-            href: '/dashboard/sales/daraz/report',
-            color: 'bg-rose-500'
         }
     ]
 

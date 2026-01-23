@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { getProducts, exportProducts, deleteAllProducts, toggleProductStatus } from '@/features/inventory/actions/product-actions'
-import { ArrowLeft, Plus, Upload, Download, Search, X, Package, Trash2, Box } from 'lucide-react'
+import { ArrowLeft, Plus, Upload, Download, Search, X, Package, Trash2, Box, Image as ImageIcon } from 'lucide-react'
 import Link from 'next/link'
 import { Card } from '@/components/ui-shim'
 import { AddProductModal } from '@/features/inventory/components/AddProductModal'
@@ -112,7 +112,7 @@ export default function ProductListPage() {
             <div className="hidden md:flex sticky top-0 z-20 bg-white/80 dark:bg-zinc-900/80 backdrop-blur-md border-b dark:border-zinc-800 px-6 py-4 items-center justify-between shadow-sm transition-all duration-200">
                 <div>
                     <h1 className="text-xl font-bold tracking-tight text-gray-900 dark:text-gray-100 flex items-center gap-2">
-                        Product List
+                        Inventory List
                         <span className="px-2 py-0.5 rounded-full bg-gray-100 dark:bg-zinc-800 text-xs font-medium text-gray-600 dark:text-gray-400">
                             {data?.totalCount || 0} items
                         </span>
@@ -200,7 +200,7 @@ export default function ProductListPage() {
                                 <tr className="bg-gray-50/80 dark:bg-zinc-800/80 border-b border-gray-100 dark:border-zinc-800">
                                     <th className="px-2 md:px-4 py-3 text-xs font-bold uppercase tracking-wider text-black dark:text-white w-10 md:w-12 text-center">#</th>
                                     <th className="px-2 md:px-4 py-3 text-xs font-bold uppercase tracking-wider text-black dark:text-white w-12 md:w-16">Image</th>
-                                    <th className="px-2 md:px-4 py-3 text-xs font-bold uppercase tracking-wider text-black dark:text-white">Product Name</th>
+                                    <th className="px-2 md:px-4 py-3 text-xs font-bold uppercase tracking-wider text-black dark:text-white">Product</th>
                                     <th className="hidden md:table-cell px-4 py-3 text-xs font-bold uppercase tracking-wider text-black dark:text-white">Type</th>
                                     <th className="hidden md:table-cell px-4 py-3 text-xs font-bold uppercase tracking-wider text-black dark:text-white">Status</th>
                                     <th className="px-2 md:px-4 py-3 text-xs font-bold uppercase tracking-wider text-black dark:text-white">Product ID</th>
@@ -267,8 +267,8 @@ export default function ProductListPage() {
                                                                 }}
                                                             />
                                                         ) : null}
-                                                        <div className={`absolute inset-0 flex items-center justify-center text-[10px] text-gray-400 ${product.image_url ? 'hidden' : ''}`}>
-                                                            No Img
+                                                        <div className={`absolute inset-0 flex items-center justify-center text-gray-300 ${product.image_url ? 'hidden' : ''}`}>
+                                                            <ImageIcon size={16} />
                                                         </div>
                                                     </div>
                                                 </td>

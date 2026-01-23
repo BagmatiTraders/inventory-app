@@ -5,7 +5,7 @@ import { Store, Calendar, MapPin, CheckCircle, Database, Users, Shield, RefreshC
 
 const settingsCards = [
     {
-        title: 'Stores',
+        title: 'Stores Management',
         description: 'Manage online and retail stores',
         icon: Store,
         href: '/dashboard/settings/stores',
@@ -19,7 +19,7 @@ const settingsCards = [
         color: 'bg-green-500',
     },
     {
-        title: 'Courier',
+        title: 'Logistics Management',
         description: 'Manage delivery locations',
         icon: MapPin,
         href: '/dashboard/settings/couriers',

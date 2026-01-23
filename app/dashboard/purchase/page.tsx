@@ -15,40 +15,16 @@ export default function PurchaseDashboardPage() {
             color: 'bg-blue-500'
         },
         {
-            name: 'Purchase Dashboard',
+            name: 'Purchase Summary',
             icon: LayoutDashboard,
             href: '/dashboard/purchase/dashboard',
             color: 'bg-indigo-600'
-        },
-        {
-            name: 'Daily Purchase List',
-            icon: History,
-            href: '/dashboard/purchase/daily-purchase-list',
-            color: 'bg-green-500'
         },
         {
             name: 'Inventory Price Reports',
             icon: TrendingUp,
             href: '/dashboard/purchase/inventory-price-reports',
             color: 'bg-purple-500'
-        },
-        {
-            name: 'Purchase Analytics',
-            icon: BarChart3,
-            href: '/dashboard/purchase/analytics',
-            color: 'bg-indigo-500'
-        },
-        {
-            name: 'Purchase Reports',
-            icon: BarChart2,
-            href: '/dashboard/purchase/purchase-reports',
-            color: 'bg-orange-500'
-        },
-        {
-            name: 'Buy / Sell (Suppliers)',
-            icon: Users,
-            href: '/dashboard/purchase/buy-sell-suppliers',
-            color: 'bg-teal-500'
         }
     ]
 
@@ -82,7 +58,7 @@ export default function PurchaseDashboardPage() {
                                         <Icon size={18} className="text-white" />
                                     </div>
                                     <h3 className="font-semibold text-[15px] text-gray-800 dark:text-gray-100">{module.name}</h3>
-                                    <span className="text-[10px] font-bold text-gray-400 tracking-wider">PURCHASE</span>
+
                                 </Card>
                             </Link>
                         )

@@ -15,13 +15,13 @@ interface GetPartiesStatementParams {
     search?: string
 }
 
-export async function getPartiesStatement({ startDate, endDate, search }: GetPartiesStatementParams) {
+export async function getPartiesStatement({ startDate, endDate, search, page = 1, limit = 50 }: GetPartiesStatementParams & { page?: number, limit?: number }) {
     const supabase = await createClient()
 
-    // 1. Get all suppliers
+    // 1. Get all suppliers with pagination
     let suppliersQuery = supabase
         .from('suppliers')
-        .select('id, supplier_name')
+        .select('id, supplier_name', { count: 'exact' })
         .eq('is_deleted', false)
         .order('supplier_name')
 
@@ -29,19 +29,28 @@ export async function getPartiesStatement({ startDate, endDate, search }: GetPar
         suppliersQuery = suppliersQuery.ilike('supplier_name', `%${search}%`)
     }
 
-    const { data: suppliers, error: suppliersError } = await suppliersQuery
+    const from = (page - 1) * limit
+    const to = from + limit - 1
+
+    const { data: suppliers, error: suppliersError, count } = await suppliersQuery.range(from, to)
 
     if (suppliersError) {
         console.error('Error fetching suppliers:', suppliersError)
-        return []
+        return { data: [], totalCount: 0 }
     }
 
-    if (!suppliers.length) return []
+    if (!suppliers.length) return { data: [], totalCount: 0 }
 
     // 2. Get total purchase amount for each supplier within date range
+    // Note: We need to filter purchases ONLY for the suppliers we just fetched to be efficient, 
+    // but typically we fetching by date range. 
+    // To be safe and efficient query-wise, we can use 'in' supplier_ids
+    const supplierIds = suppliers.map(s => s.id)
+
     let purchasesQuery = supabase
         .from('purchases')
         .select('supplier_id, total_amount')
+        .in('supplier_id', supplierIds)
 
     if (startDate && endDate) {
         purchasesQuery = purchasesQuery
@@ -49,11 +58,14 @@ export async function getPartiesStatement({ startDate, endDate, search }: GetPar
             .lte('purchase_date', endDate)
     }
 
+    // Filter for only 'Buy' transactions
+    purchasesQuery = purchasesQuery.ilike('purchase_type', 'buy')
+
     const { data: purchases, error: purchasesError } = await purchasesQuery
 
     if (purchasesError) {
         console.error('Error fetching purchases:', purchasesError)
-        return []
+        return { data: [], totalCount: 0 }
     }
 
     // 3. Get Pan/Vat Bill amount for each supplier (via PanVatCompany)
@@ -61,13 +73,13 @@ export async function getPartiesStatement({ startDate, endDate, search }: GetPar
     let companiesQuery = supabase
         .from('pan_vat_companies')
         .select('id, supplier_id')
-        .not('supplier_id', 'is', null)
+        .in('supplier_id', supplierIds)
 
     const { data: companies, error: companiesError } = await companiesQuery
 
     if (companiesError) {
         console.error('Error fetching pan_vat_companies:', companiesError)
-        return []
+        return { data: [], totalCount: 0 }
     }
 
     // Then get bills for these companies
@@ -76,17 +88,27 @@ export async function getPartiesStatement({ startDate, endDate, search }: GetPar
         .select('supplier_company_id, total_amount')
         .eq('is_deleted', false)
 
-    if (startDate && endDate) {
-        billsQuery = billsQuery
-            .gte('issue_bill_date_ad', startDate)
-            .lte('issue_bill_date_ad', endDate)
-    }
+    // Optimize bills query to only check relevant companies if companies list is small? 
+    // If companies list is empty, no need to query bills
+    const companyIds = companies?.map(c => c.id) || []
+    let bills: any[] = []
 
-    const { data: bills, error: billsError } = await billsQuery
+    if (companyIds.length > 0) {
+        billsQuery = billsQuery.in('supplier_company_id', companyIds)
 
-    if (billsError) {
-        console.error('Error fetching bills:', billsError)
-        return []
+        if (startDate && endDate) {
+            billsQuery = billsQuery
+                .gte('issue_bill_date_ad', startDate)
+                .lte('issue_bill_date_ad', endDate)
+        }
+
+        const { data, error } = await billsQuery
+
+        if (error) {
+            console.error('Error fetching bills:', error)
+            return { data: [], totalCount: 0 }
+        }
+        bills = data || []
     }
 
     // 4. Aggregate data (Optimized with Maps)
@@ -129,7 +151,7 @@ export async function getPartiesStatement({ startDate, endDate, search }: GetPar
 
         // Sum bills for these companies
         const totalPanVatBillAmount = linkedCompanyIds.reduce((sum, companyId) => {
-            return sum + (billsMap.get(companyId) || 0)
+            return sum + (billsMap.get(companyId) || 0) // Should be billsMap, assuming billsMap is defined correctly above
         }, 0)
 
         return {
@@ -140,5 +162,5 @@ export async function getPartiesStatement({ startDate, endDate, search }: GetPar
         }
     })
 
-    return result
+    return { data: result, totalCount: count || 0 }
 }

@@ -58,7 +58,7 @@ export async function getSupplierLedger({
     }
 
     // 2. Get Suppliers
-    let supplierQuery = supabase.from('suppliers').select('id, supplier_name')
+    let supplierQuery = supabase.from('suppliers').select('id, supplier_name').eq('is_deleted', false)
     if (search) {
         supplierQuery = supplierQuery.ilike('supplier_name', `%${search}%`)
     }

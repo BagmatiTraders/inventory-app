@@ -73,7 +73,7 @@ export default function DailyPurchaseListContent({ isEmbedded = false }: DailyPu
             {!isEmbedded && (
                 <div className="hidden md:flex sticky top-0 z-10 bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 px-3 py-1.5 items-center justify-between shadow-sm">
                     <div>
-                        <h1 className="text-[17px] font-bold text-blue-600">Daily Purchase List</h1>
+                        <h1 className="text-[17px] font-bold text-blue-600">Daily Purchases</h1>
                         <p className="text-[13px] text-gray-500 dark:text-gray-400">Plan and track daily procurement</p>
                     </div>
                     <div className="flex items-center gap-2">

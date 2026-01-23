@@ -706,7 +706,7 @@ export default function DarazSalesEntryPage() {
                     {/* Left: Title Group */}
                     <div className="hidden md:block">
                         <h1 className="text-[18px] font-bold">Daraz Sales</h1>
-                        <p className="text-[14px] text-gray-500 dark:text-gray-400">Sales Entry</p>
+                        <p className="text-[14px] text-gray-500 dark:text-gray-400">Order Management</p>
                     </div>
 
                     {stats && (
@@ -800,7 +800,7 @@ export default function DarazSalesEntryPage() {
                         title="Show orders with unprinted invoices/AWB only"
                     >
                         <FileX size={10} />
-                        {unprintedOnly ? 'Unprinted' : 'Unprint'}
+                        Unprinted Invoices
                     </button>
 
                     {/* Separator */}

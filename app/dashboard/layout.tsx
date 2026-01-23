@@ -9,12 +9,14 @@ import { logout } from "@/features/auth/actions/auth-actions"
 import { useRouter, usePathname } from "next/navigation"
 import { useState, useEffect } from "react"
 
-import { AddProductModal } from '@/features/inventory/components/AddProductModal'
+import dynamic from 'next/dynamic'
 import { createContext, useContext } from "react"
 import { useQueryClient } from '@tanstack/react-query'
 import { MobileModeProvider, useMobileMode } from "@/context/MobileModeContext"
-import { MobileDashboard } from "@/components/dashboard/MobileDashboard"
-import { MobileFooter } from "@/components/dashboard/MobileFooter"
+
+const AddProductModal = dynamic(() => import('@/features/inventory/components/AddProductModal').then(mod => mod.AddProductModal), { ssr: false })
+const MobileDashboard = dynamic(() => import('@/components/dashboard/MobileDashboard').then(mod => mod.MobileDashboard), { ssr: false })
+const MobileFooter = dynamic(() => import('@/components/dashboard/MobileFooter').then(mod => mod.MobileFooter), { ssr: false })
 
 interface DashboardContextType {
     isMobileMenuOpen: boolean
@@ -85,13 +87,13 @@ function DashboardLayout({
                             {/* Centered Titles */}
                             <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-10 pointer-events-none">
                                 {pathname === '/dashboard/sales/daraz' && (
-                                    <span className="font-bold text-lg whitespace-nowrap">Daraz Sales</span>
+                                    <span className="font-bold text-lg whitespace-nowrap">E-commerce Sales & Orders</span>
                                 )}
                                 {pathname === '/dashboard/sales/marketplace' && (
-                                    <span className="font-bold text-lg whitespace-nowrap">Marketplace Sales</span>
+                                    <span className="font-bold text-lg whitespace-nowrap">Marketplace Sales & Orders</span>
                                 )}
                                 {pathname === '/dashboard/sales/daraz/sales-entry' && (
-                                    <span className="font-bold text-lg whitespace-nowrap">Sales Entry</span>
+                                    <span className="font-bold text-lg whitespace-nowrap">Order Entry</span>
                                 )}
                                 {pathname === '/dashboard/sales/marketplace/sales-entry' && (
                                     <span className="font-bold text-lg whitespace-nowrap">Marketplace Sales Entry</span>
@@ -100,34 +102,34 @@ function DashboardLayout({
                                     <span className="font-bold text-lg whitespace-nowrap">Update Order Status</span>
                                 )}
                                 {pathname === '/dashboard/sales/daraz/dashboard' && (
-                                    <span className="font-bold text-lg whitespace-nowrap">Sales Dashboard</span>
+                                    <span className="font-bold text-lg whitespace-nowrap">Order Summary</span>
                                 )}
                                 {pathname === '/dashboard/inventory/stock-adjustment' && (
                                     <span className="font-bold text-lg whitespace-nowrap">Stock Adjustment</span>
                                 )}
                                 {pathname === '/dashboard/inventory/product-list' && (
-                                    <span className="font-bold text-lg whitespace-nowrap">Product List</span>
+                                    <span className="font-bold text-lg whitespace-nowrap">Inventory List</span>
                                 )}
                                 {pathname === '/dashboard/inventory/damaged-stocks' && (
-                                    <span className="font-bold text-lg whitespace-nowrap">Damaged Stocks</span>
+                                    <span className="font-bold text-lg whitespace-nowrap">Damaged Goods</span>
                                 )}
                                 {pathname === '/dashboard/purchase' && (
-                                    <span className="font-bold text-lg whitespace-nowrap">Purchase Management</span>
+                                    <span className="font-bold text-lg whitespace-nowrap">Purchasing</span>
                                 )}
                                 {pathname === '/dashboard/purchase/purchase-entry' && (
                                     <span className="font-bold text-lg whitespace-nowrap">Purchase Entry</span>
                                 )}
                                 {pathname === '/dashboard/purchase/all-purchase-list' && (
-                                    <span className="font-bold text-lg whitespace-nowrap">All Purchase List</span>
+                                    <span className="font-bold text-lg whitespace-nowrap">Purchase History</span>
                                 )}
                                 {pathname === '/dashboard/purchase/daily-purchase-list' && (
-                                    <span className="font-bold text-lg whitespace-nowrap">Daily Purchase List</span>
+                                    <span className="font-bold text-lg whitespace-nowrap">Daily Purchases</span>
                                 )}
                                 {pathname === '/dashboard/purchase/buy-sell-suppliers' && (
-                                    <span className="font-bold text-lg whitespace-nowrap">Suppliers Buy / Sell Reports</span>
+                                    <span className="font-bold text-lg whitespace-nowrap">Vendor Trade Report</span>
                                 )}
                                 {pathname === '/dashboard/suppliers/suppliers-transaction' && (
-                                    <span className="font-bold text-lg whitespace-nowrap">Suppliers Transaction</span>
+                                    <span className="font-bold text-lg whitespace-nowrap">Supplier Transactions</span>
                                 )}
                                 {pathname === '/dashboard/suppliers/suppliers-account' && (
                                     <span className="font-bold text-lg whitespace-nowrap">Supplier Ledger</span>
@@ -145,13 +147,13 @@ function DashboardLayout({
                                     <span className="font-bold text-lg whitespace-nowrap">Profit Tracker</span>
                                 )}
                                 {pathname === '/dashboard/mobile-uploads' && (
-                                    <span className="font-bold text-lg whitespace-nowrap">Mobile Uploads</span>
+                                    <span className="font-bold text-lg whitespace-nowrap">Field Data Entry</span>
                                 )}
                                 {pathname === '/dashboard/stock-analysis' && (
                                     <span className="font-bold text-lg whitespace-nowrap">Stock Analysis</span>
                                 )}
                                 {pathname === '/dashboard/account' && (
-                                    <span className="font-bold text-lg whitespace-nowrap">Account & Transaction</span>
+                                    <span className="font-bold text-lg whitespace-nowrap">Finance & Accounts</span>
                                 )}
 
                                 {/* Default Title */}
@@ -273,13 +275,13 @@ function DashboardLayout({
                                 {/* Inventory with Sub-menu */}
                                 <div onClick={closeMobileMenu}>
                                     <NavItem href="/dashboard/inventory" icon={<Calculator size={20} />} isCollapsed={isCollapsed}>
-                                        Inventory
+                                        Inventory Management
                                     </NavItem>
                                 </div>
 
                                 <div onClick={closeMobileMenu}>
                                     <NavItem href="/dashboard/sales" icon={<ShoppingCart size={20} />} isCollapsed={isCollapsed}>
-                                        Sales
+                                        Sales & Orders
                                     </NavItem>
                                 </div>
 
@@ -289,7 +291,7 @@ function DashboardLayout({
                                         icon={<ShoppingBag size={20} />}
                                         isCollapsed={isCollapsed}
                                     >
-                                        Purchase
+                                        Purchasing
                                     </NavItem>
                                 </div>
                                 <div onClick={closeMobileMenu}>
@@ -299,7 +301,7 @@ function DashboardLayout({
                                 </div>
                                 <div onClick={closeMobileMenu}>
                                     <NavItem href="/dashboard/account" icon={<Wallet size={20} />} isCollapsed={isCollapsed}>
-                                        Account
+                                        Finance & Accounts
                                     </NavItem>
                                 </div>
                                 <div onClick={closeMobileMenu}>
@@ -307,11 +309,7 @@ function DashboardLayout({
                                         My Profile
                                     </NavItem>
                                 </div>
-                                <div onClick={closeMobileMenu}>
-                                    <NavItem href="/dashboard/admin/users" icon={<Shield size={20} />} isCollapsed={isCollapsed}>
-                                        Users (Admin)
-                                    </NavItem>
-                                </div>
+
                                 <div onClick={closeMobileMenu}>
                                     <NavItem href="/dashboard/settings" icon={<Settings size={20} />} isCollapsed={isCollapsed}>
                                         Settings
@@ -339,7 +337,7 @@ function DashboardLayout({
                                     title="Logout"
                                 >
                                     <LogOut size={16} />
-                                    {!isCollapsed && <span>Logout</span>}
+                                    {!isCollapsed && <span>Sign - Out</span>}
                                 </button>
                             </div>
                         </>

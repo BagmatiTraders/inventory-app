@@ -7,25 +7,25 @@ import { Card } from '@/components/ui-shim'
 export default function AccountPage() {
     const accountModules = [
         {
-            name: 'Pan/Vat Billing',
+            name: 'Vat Billing',
             href: '/dashboard/account/pan-vat-billing',
             icon: CreditCard,
             color: 'bg-purple-500',
         },
         {
-            name: 'Daraz Account',
+            name: 'E-commerce Finance',
             href: '/dashboard/account/daraz-account',
             icon: ShoppingCart,
             color: 'bg-orange-500',
         },
         {
-            name: 'Marketplace / Courier',
+            name: 'Logistics Finance',
             href: '/dashboard/account/marketplace-courier',
             icon: Truck,
             color: 'bg-blue-500',
         },
         {
-            name: 'Store Account',
+            name: 'Retail Store Finance',
             href: '/dashboard/account/store-account',
             icon: Store,
             color: 'bg-green-500',

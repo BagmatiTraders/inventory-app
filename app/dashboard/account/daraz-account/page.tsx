@@ -38,26 +38,7 @@ function DarazAccountContent() {
                             </p>
                         </div>
 
-                        {/* Store Selector */}
-                        <div className="flex items-center gap-2">
-                            <Store className="w-4 h-4 text-gray-400" />
-                            <select
-                                value={selectedStoreId}
-                                onChange={(e) => setSelectedStoreId(e.target.value)}
-                                className="h-9 rounded-md border border-gray-300 bg-white px-3 py-1 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-zinc-700 dark:bg-zinc-800"
-                                disabled={isStoresLoading}
-                            >
-                                {isStoresLoading ? (
-                                    <option>Loading stores...</option>
-                                ) : (
-                                    stores?.map((store: any) => (
-                                        <option key={store.id} value={store.id}>
-                                            {store.seller_account} ({store.company_name})
-                                        </option>
-                                    ))
-                                )}
-                            </select>
-                        </div>
+
                     </div>
 
                     {/* Tabs */}
