@@ -101,35 +101,40 @@ export default function DarazSalesEntryPage() {
     const stockInfo = stockInfoData || {}
 
 
-    // Calculate customer frequency
-    const customerCounts = orders.reduce((acc: { [key: string]: number }, order) => {
-        acc[order.customer_name] = (acc[order.customer_name] || 0) + 1
-        return acc
-    }, {})
+    // Calculate customer frequency (Global in current list)
+    const customerCounts = useMemo(() => {
+        return orders.reduce((acc: { [key: string]: number }, order) => {
+            const name = order.customer_name?.toLowerCase().trim() || ''
+            if (name) acc[name] = (acc[name] || 0) + 1
+            return acc
+        }, {})
+    }, [orders])
 
-    // Calculate customer frequency specifically for TODAY
-    const customerCountsToday = orders.reduce((acc: { [key: string]: number }, order) => {
-        const today = new Date().toISOString().split('T')[0]
-        const orderDate = new Date(order.order_date).toLocaleDateString('en-CA') // YYYY-MM-DD
-
-        if (orderDate === today) {
-            acc[order.customer_name] = (acc[order.customer_name] || 0) + 1
-        }
-        return acc
-    }, {})
+    // Calculate customer frequency per date
+    const customerCountsByDate = useMemo(() => {
+        return orders.reduce((acc: { [key: string]: number }, order) => {
+            const name = order.customer_name?.toLowerCase().trim() || ''
+            // Normalize date to YYYY-MM-DD to ignore time
+            const date = new Date(order.order_date).toLocaleDateString('en-CA')
+            const key = `${name}|${date}`
+            if (name) acc[key] = (acc[key] || 0) + 1
+            return acc
+        }, {})
+    }, [orders])
 
     // Helper to determine customer highlight class
     const getCustomerClass = (name: string, dateStr: string) => {
-        const today = new Date().toISOString().split('T')[0]
-        const orderDate = new Date(dateStr).toLocaleDateString('en-CA')
+        const n = name?.toLowerCase().trim() || ''
+        const date = new Date(dateStr).toLocaleDateString('en-CA')
+        const dateKey = `${n}|${date}`
 
-        // Priority 1: Duplicate ON TODAY (Green)
-        if (orderDate === today && (customerCountsToday[name] || 0) > 1) {
+        // Priority 1: Duplicate Name AND Same Date (Green)
+        if (customerCountsByDate[dateKey] > 1) {
             return 'text-green-600 dark:text-green-400 font-bold'
         }
 
-        // Priority 2: Duplicate Global/History (Blue)
-        if (customerCounts[name] > 1) {
+        // Priority 2: Duplicate Name in List (Blue)
+        if (customerCounts[n] > 1) {
             return 'text-blue-600 dark:text-blue-400 font-bold'
         }
 
