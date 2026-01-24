@@ -89,6 +89,14 @@ export async function getOrdersStockInfo(orderIds: string[]): Promise<Record<str
 }
 
 /**
+ * Get stock for a list of products (for internal usage or independent components)
+ */
+export async function getProductsStock(productIds: string[]): Promise<Record<string, number>> {
+    const map = await calculateProductStocks(productIds)
+    return Object.fromEntries(map)
+}
+
+/**
  * Calculate total stock for multiple products
  * Uses the same logic as stock-ledger-service
  */

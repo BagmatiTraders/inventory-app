@@ -16,6 +16,7 @@ export function QuickPlanButton({ order, stockInfo }: QuickPlanButtonProps) {
     const [showProductSelection, setShowProductSelection] = useState(false)
     const [showPlanModal, setShowPlanModal] = useState(false)
     const [selectedProductId, setSelectedProductId] = useState<string | null>(null)
+    const [selectedProductRemarks, setSelectedProductRemarks] = useState<string>('')
     const [isChecking, setIsChecking] = useState(false)
 
     // Don't show button for "Shipped" orders
@@ -45,7 +46,7 @@ export function QuickPlanButton({ order, stockInfo }: QuickPlanButtonProps) {
         }
     }
 
-    const handleProductSelect = async (productId: string) => {
+    const handleProductSelect = async (productId: string, remarks?: string) => {
         setShowProductSelection(false)
 
         if (!productId) {
@@ -66,12 +67,14 @@ export function QuickPlanButton({ order, stockInfo }: QuickPlanButtonProps) {
         }
 
         setSelectedProductId(productId)
+        if (remarks) setSelectedProductRemarks(remarks)
         setShowPlanModal(true)
     }
 
     const handlePlanSuccess = () => {
         setShowPlanModal(false)
         setSelectedProductId(null)
+        setSelectedProductRemarks('')
         toast.success('Purchase plan created successfully!')
     }
 
@@ -93,15 +96,18 @@ export function QuickPlanButton({ order, stockInfo }: QuickPlanButtonProps) {
                 onClose={() => setShowProductSelection(false)}
                 products={orderItems.map((item: any) => {
                     // Get stock for this product from stockInfo
+                    // Note: In new design, stock is handled internally via stockBreakdown for resolved components
+                    // But we still pass basic info here
                     const productStock = stockInfo?.products?.find((p: any) => p.product_id === item.product_id)
                     return {
                         product_id: item.product_id,
                         product_name: item.product_name || 'Unknown Product',
                         image_url: productStock?.image_url,
                         quantity: item.quantity,
-                        stock: productStock?.total_stock
+                        stock: 0 // Placeholder
                     }
                 })}
+                stockBreakdown={stockInfo?.products}
                 onProductSelect={handleProductSelect}
             />
 
@@ -111,6 +117,7 @@ export function QuickPlanButton({ order, stockInfo }: QuickPlanButtonProps) {
                     trigger={null}
                     onPlanAdded={() => { }}
                     prefilledProductId={selectedProductId}
+                    prefilledRemarks={selectedProductRemarks}
                     onSuccess={handlePlanSuccess}
                     isOpen={showPlanModal}
                     onClose={() => {

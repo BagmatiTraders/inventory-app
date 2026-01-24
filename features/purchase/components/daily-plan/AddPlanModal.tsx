@@ -12,6 +12,7 @@ export function AddPlanModal({
     onPlanAdded,
     trigger,
     prefilledProductId,
+    prefilledRemarks,
     onSuccess,
     isOpen: externalIsOpen,
     onClose: externalOnClose
@@ -19,6 +20,7 @@ export function AddPlanModal({
     onPlanAdded: () => void
     trigger?: React.ReactNode
     prefilledProductId?: string
+    prefilledRemarks?: string
     onSuccess?: () => void
     isOpen?: boolean
     onClose?: () => void
@@ -79,19 +81,27 @@ export function AddPlanModal({
             .finally(() => setLoadingProducts(false))
     }, [])
 
-    // Handle prefilled product when modal opens
+    // Handle prefilled data when modal opens
     useEffect(() => {
-        if (prefilledProductId && productOptions.length > 0 && open && !productId) {
-            const option = productOptions.find(opt => opt.value === prefilledProductId)
-            if (option) {
-                setProductId(option.value)
-                setProductName(option.label)
-                // Auto-fill seller sku
-                const p = option.product
-                setSellerSku(p.seller_sku1 || p.seller_sku2 || '')
+        if (open) {
+            // Handle prefilled Product ID
+            if (prefilledProductId && productOptions.length > 0 && !productId) {
+                const option = productOptions.find(opt => opt.value === prefilledProductId)
+                if (option) {
+                    setProductId(option.value)
+                    setProductName(option.label)
+                    // Auto-fill seller sku
+                    const p = option.product
+                    setSellerSku(p.seller_sku1 || p.seller_sku2 || '')
+                }
+            }
+
+            // Handle prefilled Remarks
+            if (prefilledRemarks && !remarks) {
+                setRemarks(prefilledRemarks)
             }
         }
-    }, [prefilledProductId, productOptions, open, productId])
+    }, [prefilledProductId, prefilledRemarks, productOptions, open, productId, remarks])
 
     // Reset form when modal closes
     useEffect(() => {

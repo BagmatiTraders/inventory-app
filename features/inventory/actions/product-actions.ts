@@ -300,6 +300,58 @@ export async function getProductById(productId: string) {
 }
 
 /**
+ * Get multiple products by IDs with combo items (Batch Resolve)
+ */
+export async function getResolvedProductsByIds(productIds: string[]) {
+    const supabase = await createClient()
+
+    if (productIds.length === 0) return []
+
+    // Get products
+    const { data: products, error: productsError } = await supabase
+        .from('products')
+        .select('*')
+        .in('id', productIds)
+
+    if (productsError) throw new Error(productsError.message)
+    if (!products) return []
+
+    // Get all combo items for these products (where parent is in list)
+    // Filter productIds to only those that are 'combo' type to optimize
+    const comboProductIds = products.filter(p => p.product_type === 'combo').map(p => p.id)
+
+    let allComboItems: any[] = []
+    if (comboProductIds.length > 0) {
+        const { data: combos, error: comboError } = await supabase
+            .from('product_combos')
+            .select(`
+                parent_product_id,
+                id,
+                quantity,
+                child:products!product_combos_child_product_id_fkey(
+                    id,
+                    product_id,
+                    product_name,
+                    image_url
+                )
+            `)
+            .in('parent_product_id', comboProductIds)
+
+        if (comboError) throw new Error(comboError.message)
+        allComboItems = combos || []
+    }
+
+    // Stitch together
+    return products.map(product => {
+        const comboItems = allComboItems.filter(c => c.parent_product_id === product.id)
+        return {
+            ...product,
+            combo_items: comboItems
+        }
+    })
+}
+
+/**
  * Create new product
  */
 export async function createProduct(data: {
