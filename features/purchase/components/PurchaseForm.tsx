@@ -8,6 +8,7 @@ import { getProducts, searchProducts } from '@/features/inventory/actions/produc
 import { getSuppliers } from '@/features/suppliers/actions/supplier-actions'
 import AsyncSelect from 'react-select/async'
 import { X, Save } from 'lucide-react'
+import { ComboComponentSelectModal } from '@/features/inventory/components/ComboComponentSelectModal'
 
 // PurchaseFormProps
 interface PurchaseFormProps {
@@ -29,6 +30,9 @@ export default function PurchaseForm({ onClose, onSuccess, editMode = false, pur
     const router = useRouter()
     const queryClient = useQueryClient()
     const [isSubmitting, setIsSubmitting] = useState(false)
+
+    // Combo Resolving State
+    const [comboResolving, setComboResolving] = useState<{ id: string, name: string } | null>(null)
 
     // Form State
     const [formData, setFormData] = useState({
@@ -60,7 +64,8 @@ export default function PurchaseForm({ onClose, onSuccess, editMode = false, pur
         return products.map((p: any) => ({
             value: p.id,
             label: `${p.product_name} ${p.seller_sku1 ? `(${p.seller_sku1})` : ''}`,
-            name: p.product_name
+            name: p.product_name,
+            product_type: p.product_type
         }))
     }
 
@@ -74,6 +79,25 @@ export default function PurchaseForm({ onClose, onSuccess, editMode = false, pur
             value: s.id,
             label: s.supplier_name
         }))
+    }
+
+    // Handle Product Change
+    const handleProductChange = (opt: any) => {
+        if (opt?.product_type === 'combo') {
+            setComboResolving({
+                id: opt.value,
+                name: opt.name
+            })
+            // Clear selection temporarily
+            setFormData({ ...formData, product_id: '', product_name: '' })
+            return
+        }
+
+        setFormData({
+            ...formData,
+            product_id: opt?.value || '',
+            product_name: opt?.name || opt?.label || ''
+        })
     }
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -168,7 +192,7 @@ export default function PurchaseForm({ onClose, onSuccess, editMode = false, pur
                                     defaultOptions
                                     loadOptions={loadProductOptions}
                                     value={formData.product_id ? { label: formData.product_name, value: formData.product_id } : null}
-                                    onChange={(opt: any) => setFormData({ ...formData, product_id: opt?.value || '', product_name: opt?.name || opt?.label || '' })}
+                                    onChange={handleProductChange}
                                     className="text-sm"
                                     placeholder="Search product..."
                                     styles={{
@@ -291,7 +315,7 @@ export default function PurchaseForm({ onClose, onSuccess, editMode = false, pur
                                     defaultOptions
                                     loadOptions={loadProductOptions}
                                     value={formData.product_id ? { label: formData.product_name, value: formData.product_id } : null}
-                                    onChange={(opt: any) => setFormData({ ...formData, product_id: opt?.value || '', product_name: opt?.name || opt?.label || '' })}
+                                    onChange={handleProductChange}
                                     className="text-sm"
                                     placeholder="Search product..."
                                     styles={{
@@ -414,6 +438,24 @@ export default function PurchaseForm({ onClose, onSuccess, editMode = false, pur
                     {isSubmitting ? 'Saving...' : (editMode ? 'Update Purchase' : 'Save And Close')}
                 </button>
             </div>
+
+            {/* Combo Resolver Modal */}
+            {comboResolving && (
+                <ComboComponentSelectModal
+                    comboProductId={comboResolving.id}
+                    comboProductName={comboResolving.name}
+                    onClose={() => setComboResolving(null)}
+                    onSelectComponent={(component) => {
+                        setComboResolving(null)
+                        setFormData({
+                            ...formData,
+                            product_id: component.id,
+                            product_name: component.product_name,
+                            remarks: `${formData.remarks ? formData.remarks + '. ' : ''}Resolved from ${comboResolving.name}`
+                        })
+                    }}
+                />
+            )}
         </div>
     )
 }

@@ -154,7 +154,7 @@ export async function searchProducts(search: string) {
     // Search primarily in product_name and seller_sku1
     const { data, error } = await supabase
         .from('products')
-        .select('id, product_name, seller_sku1')
+        .select('id, product_name, seller_sku1, product_type')
         .or(`product_name.ilike.${searchTerm},seller_sku1.ilike.${searchTerm}`)
         .order('product_name', { ascending: true })
         .limit(20)

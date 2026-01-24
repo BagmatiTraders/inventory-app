@@ -9,6 +9,7 @@ import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui-shim'
 import PurchaseForm from '@/features/purchase/components/PurchaseForm'
+import { ComboComponentSelectModal } from '@/features/inventory/components/ComboComponentSelectModal'
 
 interface PlanListProps {
     plans: PurchasePlan[]
@@ -27,6 +28,9 @@ export function PlanList({ plans, completedProductIds, onPlanUpdated }: PlanList
     const [purchaseModalOpen, setPurchaseModalOpen] = useState(false)
     const [purchasePlanData, setPurchasePlanData] = useState<{ productId: string, productName: string, quantity: number, remarks: string } | undefined>(undefined)
 
+    // Combo Resolving State
+    const [comboResolving, setComboResolving] = useState<{ id: string, name: string, planQuantity: number, remarks: string, components?: any[] } | null>(null)
+
     // Full Image State
     const [fullImage, setFullImage] = useState<string | null>(null)
 
@@ -44,6 +48,18 @@ export function PlanList({ plans, completedProductIds, onPlanUpdated }: PlanList
     }
 
     const handleOpenPurchaseModal = (plan: PurchasePlan) => {
+        // Check if combo
+        if (plan.product && plan.product.product_type === 'combo') {
+            setComboResolving({
+                id: plan.product_id,
+                name: plan.product.product_name,
+                planQuantity: plan.quantity,
+                remarks: plan.remarks || '',
+                components: plan.product.product_combos || [] // Pass eager components
+            })
+            return
+        }
+
         setPurchasePlanData({
             productId: plan.product_id,
             productName: plan.product?.product_name || '',
@@ -387,6 +403,27 @@ export function PlanList({ plans, completedProductIds, onPlanUpdated }: PlanList
                         />
                     </div>
                 </div>
+            )}
+
+            {/* Combo Component Select Modal */}
+            {comboResolving && (
+                <ComboComponentSelectModal
+                    comboProductId={comboResolving.id}
+                    comboProductName={comboResolving.name}
+                    initialComponents={comboResolving.components}
+                    onClose={() => setComboResolving(null)}
+                    onSelectComponent={(component) => {
+                        setComboResolving(null)
+                        // Open purchase form with component
+                        setPurchasePlanData({
+                            productId: component.id,
+                            productName: component.product_name,
+                            quantity: comboResolving.planQuantity, // Or calculate based on ratio? User said "when user click Product A then open add purchase form with Product name is Product A" implies simple mapping. Quantity likely needs user input or just prefill with plan quantity. I'll prefill with plan quantity for now as a default.
+                            remarks: `Component of bundle: ${comboResolving.name}. ${comboResolving.remarks}`
+                        })
+                        setPurchaseModalOpen(true)
+                    }}
+                />
             )}
 
             {/* Full Image Modal */}

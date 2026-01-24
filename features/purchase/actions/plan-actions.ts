@@ -10,10 +10,29 @@ export interface PurchasePlan {
     product?: {
         product_name: string
         image_url: string | null
+        product_type: 'single' | 'combo'
         seller_sku1: string
         seller_sku2: string
         seller_sku3: string
         seller_sku4: string
+        combo_items?: { // Flattened structure or raw DB structure? Let's use raw for now to match query
+            id: string
+            quantity: number
+            child: {
+                id: string
+                product_id: string
+                product_name: string
+            }
+        }[] // Actually, supabase returns it as 'product_combos' usually unless aliased. I will use the query name.
+        product_combos?: {
+            id: string
+            quantity: number
+            child: {
+                id: string
+                product_id: string
+                product_name: string
+            }
+        }[]
     }
     quantity: number
     remarks?: string
@@ -53,7 +72,24 @@ export async function getPurchasePlans() {
         .from('purchase_plans')
         .select(`
             *,
-            product:products(product_name, image_url, seller_sku1, seller_sku2, seller_sku3, seller_sku4)
+            product:products(
+                product_name, 
+                image_url, 
+                product_type, 
+                seller_sku1, 
+                seller_sku2, 
+                seller_sku3, 
+                seller_sku4,
+                product_combos:product_combos!product_combos_parent_product_id_fkey(
+                    id,
+                    quantity,
+                    child:products!product_combos_child_product_id_fkey(
+                        id,
+                        product_id,
+                        product_name
+                    )
+                )
+            )
         `)
         .order('created_at', { ascending: false })
 

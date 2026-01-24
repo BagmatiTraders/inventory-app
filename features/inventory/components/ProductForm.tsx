@@ -37,7 +37,14 @@ export function ProductForm({ initialData, onSubmit, onCancel, isSubmitting }: P
     const [sellerAccount4, setSellerAccount4] = useState(initialData?.seller_account4 || '')
 
     // Combo items
-    const [comboItems, setComboItems] = useState<ComboItem[]>(initialData?.combo_items || [])
+    const [comboItems, setComboItems] = useState<ComboItem[]>(() => {
+        if (!initialData?.combo_items) return []
+        return initialData.combo_items.map((item: any) => ({
+            child_product_id: item.child_product_id || item.child?.id,
+            child_product_name: item.child_product_name || item.child?.product_name,
+            quantity: item.quantity
+        }))
+    })
     const [selectedProduct, setSelectedProduct] = useState<any>(null)
     const [quantity, setQuantity] = useState(1)
     const [searchProductId, setSearchProductId] = useState('')

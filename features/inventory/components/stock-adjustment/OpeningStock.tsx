@@ -6,6 +6,8 @@ import AsyncSelect from 'react-select/async'
 import { getProducts } from '@/features/inventory/actions/product-actions'
 import { saveOpeningStock, getOpeningStocks, deleteOpeningStock, updateOpeningStock, OpeningStock as OpeningStockType } from '@/features/inventory/actions/stock-adjustment-actions'
 
+import { ComboComponentSelectModal } from '@/features/inventory/components/ComboComponentSelectModal'
+
 export default function OpeningStock() {
     // Form State
     const [date, setDate] = useState(new Date().toISOString().split('T')[0])
@@ -15,6 +17,9 @@ export default function OpeningStock() {
     const [remarks, setRemarks] = useState('')
     const [isSaving, setIsSaving] = useState(false)
     const [comboWarning, setComboWarning] = useState<string | null>(null)
+
+    // Combo Resolving State
+    const [comboResolving, setComboResolving] = useState<{ id: string, name: string } | null>(null)
 
     // History Data State
     const [history, setHistory] = useState<OpeningStockType[]>([])
@@ -59,7 +64,12 @@ export default function OpeningStock() {
     const handleProductChange = (option: any) => {
         setComboWarning(null)
         if (option?.product_type === 'combo') {
-            setComboWarning('Combo cannot be added')
+            // Show modal instead of warning
+            setComboResolving({
+                id: option.value,
+                name: option.label
+            })
+            // Reset selection to null until component selected
             setSelectedProduct(null)
             return
         }
@@ -492,6 +502,23 @@ export default function OpeningStock() {
                         </div>
                     </div>
                 </div>
+            )}
+
+            {/* Combo Resolver Modal */}
+            {comboResolving && (
+                <ComboComponentSelectModal
+                    comboProductId={comboResolving.id}
+                    comboProductName={comboResolving.name}
+                    onClose={() => setComboResolving(null)}
+                    onSelectComponent={(component) => {
+                        setComboResolving(null)
+                        setSelectedProduct({
+                            value: component.id,
+                            label: component.product_name
+                        })
+                        setRemarks(prev => `${prev ? prev + '. ' : ''}Resolved from ${comboResolving.name}`)
+                    }}
+                />
             )}
         </div>
     )

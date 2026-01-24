@@ -6,6 +6,8 @@ import AsyncSelect from 'react-select/async'
 import { getProducts } from '@/features/inventory/actions/product-actions'
 import { saveManualAdjustment, getManualAdjustments, deleteManualAdjustment, updateManualAdjustment, ManualAdjustment as ManualAdjustmentType } from '@/features/inventory/actions/stock-adjustment-actions'
 
+import { ComboComponentSelectModal } from '@/features/inventory/components/ComboComponentSelectModal'
+
 export default function ManualAdjustment() {
     // Form State
     const [date, setDate] = useState(new Date().toISOString().split('T')[0])
@@ -14,6 +16,9 @@ export default function ManualAdjustment() {
     const [quantity, setQuantity] = useState<number | ''>('')
     const [reason, setReason] = useState('')
     const [isSaving, setIsSaving] = useState(false)
+
+    // Combo Resolving State
+    const [comboResolving, setComboResolving] = useState<{ id: string, name: string } | null>(null)
 
     // History Data State
     const [history, setHistory] = useState<ManualAdjustmentType[]>([])
@@ -56,6 +61,14 @@ export default function ManualAdjustment() {
     }
 
     const handleProductChange = (option: any) => {
+        if (option?.product_type === 'combo') {
+            setComboResolving({
+                id: option.value,
+                name: option.label
+            })
+            setSelectedProduct(null)
+            return
+        }
         setSelectedProduct(option)
     }
 
@@ -461,6 +474,23 @@ export default function ManualAdjustment() {
                         </div>
                     </div>
                 </div>
+            )}
+
+            {/* Combo Resolver Modal */}
+            {comboResolving && (
+                <ComboComponentSelectModal
+                    comboProductId={comboResolving.id}
+                    comboProductName={comboResolving.name}
+                    onClose={() => setComboResolving(null)}
+                    onSelectComponent={(component) => {
+                        setComboResolving(null)
+                        setSelectedProduct({
+                            value: component.id,
+                            label: component.product_name
+                        })
+                        setReason(prev => `${prev ? prev + '. ' : ''}Resolved from ${comboResolving.name}`)
+                    }}
+                />
             )}
         </div>
     )
