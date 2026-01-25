@@ -20,7 +20,11 @@ import {
     Store,
     User,
     ArrowLeftRight,
-    Camera
+    Camera,
+    ClipboardList,
+    Briefcase,
+    BookOpen,
+    BarChart2
 } from "lucide-react"
 
 export function MobileDashboard() {
@@ -65,28 +69,16 @@ export function MobileDashboard() {
 
     const homeItems = [
         {
-            title: "Daily Purchase Plan",
+            title: "Daily Purchase List",
             href: "/dashboard/purchase/daily-purchase-list",
-            icon: <ShoppingCart className="h-8 w-8 text-blue-600" />,
+            icon: <ClipboardList className="h-8 w-8 text-blue-600" />,
             color: "bg-blue-50"
         },
         {
-            title: "Buy/Sell (Suppliers)",
-            href: "/dashboard/purchase/buy-sell-suppliers",
+            title: "Suppliers",
+            href: "/dashboard/suppliers",
             icon: <Users className="h-8 w-8 text-green-600" />,
             color: "bg-green-50"
-        },
-        {
-            title: "Supplier Transaction",
-            href: "/dashboard/suppliers/suppliers-transaction",
-            icon: <Wallet className="h-8 w-8 text-indigo-600" />,
-            color: "bg-indigo-50"
-        },
-        {
-            title: "Suppliers Account",
-            href: "/dashboard/suppliers/suppliers-account",
-            icon: <LayoutDashboard className="h-8 w-8 text-pink-600" />,
-            color: "bg-pink-50"
         },
         {
             title: "Order Status Sync",
@@ -95,43 +87,61 @@ export function MobileDashboard() {
             color: "bg-purple-50"
         },
         {
+            title: "E-commerce Sales",
+            href: "/dashboard/sales/daraz",
+            icon: <ShoppingCart className="h-8 w-8 text-orange-600" />,
+            color: "bg-orange-50"
+        },
+        {
             title: "Order Sync",
             href: "/dashboard/sales/daraz/order-sync",
             icon: <ArrowLeftRight className="h-8 w-8 text-cyan-600" />,
             color: "bg-cyan-50"
         },
         {
-            title: "Mobile Capture",
-            href: "/mobile/quick-capture",
-            icon: <Camera className="h-8 w-8 text-orange-600" />,
-            color: "bg-orange-50"
-        },
-        {
             title: "Marketplace Sales",
             href: "/dashboard/sales/marketplace",
             icon: <Store className="h-8 w-8 text-emerald-600" />,
             color: "bg-emerald-50"
+        },
+        {
+            title: "Mobile Capture",
+            href: "/mobile/quick-capture",
+            icon: <Camera className="h-8 w-8 text-red-600" />,
+            color: "bg-red-50"
+        },
+        {
+            title: "Store Sales",
+            href: "/dashboard/sales/store-sales",
+            icon: <TrendingUp className="h-8 w-8 text-indigo-600" />,
+            color: "bg-indigo-50"
         }
     ]
 
     const moreItems = [
         {
-            title: "Stock Ledger",
-            href: "/dashboard/inventory/stock-ledger",
-            icon: <FileText className="h-8 w-8 text-blue-600" />,
+            title: "Buy/Sell Suppliers",
+            href: "/dashboard/purchase/buy-sell-suppliers",
+            icon: <Briefcase className="h-8 w-8 text-blue-600" />,
             color: "bg-blue-50"
         },
         {
-            title: "Damaged Stocks",
+            title: "Stock Ledger",
+            href: "/dashboard/inventory/stock-ledger",
+            icon: <BookOpen className="h-8 w-8 text-gray-600" />,
+            color: "bg-gray-50"
+        },
+        {
+            title: "Vat Billing",
+            href: "/dashboard/account/pan-vat-billing",
+            icon: <FileText className="h-8 w-8 text-amber-600" />,
+            color: "bg-amber-50"
+        },
+        {
+            title: "Damage Stock",
             href: "/dashboard/inventory/damaged-stocks",
             icon: <AlertTriangle className="h-8 w-8 text-red-600" />,
             color: "bg-red-50"
-        },
-        {
-            title: "Stock Adjustment",
-            href: "/dashboard/inventory/stock-adjustment",
-            icon: <Sliders className="h-8 w-8 text-yellow-600" />,
-            color: "bg-yellow-50"
         },
         {
             title: "Product List",
@@ -140,22 +150,16 @@ export function MobileDashboard() {
             color: "bg-purple-50"
         },
         {
-            title: "Purchase Entry",
-            href: "/dashboard/purchase/purchase-entry",
-            icon: <FilePlus className="h-8 w-8 text-green-600" />,
-            color: "bg-green-50"
+            title: "Stock Adjustment",
+            href: "/dashboard/inventory/stock-adjustment",
+            icon: <Sliders className="h-8 w-8 text-yellow-600" />,
+            color: "bg-yellow-50"
         },
         {
             title: "Profit Tracker",
             href: "/dashboard/sales/daraz/profit-tracker",
-            icon: <TrendingUp className="h-8 w-8 text-orange-600" />,
-            color: "bg-orange-50"
-        },
-        {
-            title: "Store Sales",
-            href: "/dashboard/sales/store-sales",
-            icon: <Store className="h-8 w-8 text-indigo-600" />,
-            color: "bg-indigo-50"
+            icon: <BarChart2 className="h-8 w-8 text-green-600" />,
+            color: "bg-green-50"
         },
         {
             title: "My Profile",

@@ -69,8 +69,10 @@ function DashboardLayout({
         <DashboardContext.Provider value={{ isMobileMenuOpen, setIsMobileMenuOpen, isCollapsed }}>
             <div className="flex h-screen bg-gray-100 dark:bg-zinc-900 relative">
                 {/* Mobile Header - Hide for Stock Ledger and other specific pages */}
-                {pathname !== '/dashboard/purchase/inventory-price-reports' &&
-                    pathname !== '/dashboard/purchase/analytics' &&
+                {pathname !== '/dashboard/purchase/daily-purchase-list' &&
+                    pathname !== '/dashboard/suppliers/dashboard' &&
+                    pathname !== '/dashboard/suppliers' &&
+                    pathname !== '/dashboard/sales/daraz/dashboard' &&
                     !pathname?.includes('/dashboard/inventory/stock-ledger') && (
                         <div className={`md:hidden fixed top-0 left-0 right-0 h-16 bg-white dark:bg-zinc-800 border-b z-30 flex items-center justify-between px-4 transition-all ${isMobileMode ? 'shadow-sm' : ''}`}>
                             <div className="flex items-center gap-3 relative z-20">
@@ -353,7 +355,7 @@ function DashboardLayout({
                     ${pathname === '/dashboard/purchase/inventory-price-reports' || pathname === '/dashboard/purchase/analytics' || pathname === '/dashboard/suppliers/suppliers-account' || pathname === '/dashboard/sales/daraz/status-sync' || pathname === '/dashboard/sales/daraz/order-sync' || pathname?.startsWith('/dashboard/inventory/stock-ledger') ? 'h-full' : 'h-[calc(100vh-4rem)] md:h-full'}
                     pointer-events-auto
                 `}>
-                    <div className={`${pathname === '/dashboard/purchase/inventory-price-reports' || pathname === '/dashboard/purchase/analytics' || pathname === '/dashboard/purchase/buy-sell-suppliers' || pathname === '/dashboard/suppliers/suppliers-account' || pathname === '/dashboard/sales/daraz/status-sync' || pathname === '/dashboard/sales/daraz/order-sync' || pathname === '/dashboard/sales/marketplace/sales-entry' || pathname === '/dashboard/sales/daraz/profit-tracker' ? 'p-0 h-full' : 'px-4 pb-4 pt-1'} md:p-8 ${isMobileMode ? 'pb-24' : ''}`}>
+                    <div className={`${pathname === '/dashboard/purchase/inventory-price-reports' || pathname === '/dashboard/purchase/analytics' || pathname === '/dashboard/purchase/daily-purchase-list' || pathname === '/dashboard/suppliers/dashboard' || pathname === '/dashboard/suppliers' || pathname === '/dashboard/purchase/buy-sell-suppliers' || pathname === '/dashboard/suppliers/suppliers-account' || pathname === '/dashboard/sales/daraz/status-sync' || pathname === '/dashboard/sales/daraz/order-sync' || pathname === '/dashboard/sales/marketplace/sales-entry' || pathname === '/dashboard/sales/daraz/profit-tracker' ? 'p-0 h-full' : 'px-4 pb-4 pt-1'} md:p-8 ${isMobileMode ? 'pb-24' : ''}`}>
                         {isMobileMode && pathname === '/dashboard' ? (
                             <MobileDashboard />
                         ) : (

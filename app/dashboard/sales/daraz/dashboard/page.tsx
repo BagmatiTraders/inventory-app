@@ -4,10 +4,11 @@ import { useState, useEffect, Fragment } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { getDailySalesReport, getOrderSummaryReport, getOrderStatusSummary } from '@/features/sales/actions/daraz-actions'
 import { getUserRole } from '@/features/sales/actions/daraz-deletion-actions'
-import { ArrowLeft, BarChart2, AlertCircle, PieChart, RefreshCw, Download, List, FileText } from 'lucide-react'
+import { ArrowLeft, BarChart2, AlertCircle, PieChart, RefreshCw, Download, List, FileText, Menu } from 'lucide-react'
 import Link from 'next/link'
 import { Card } from '@/components/ui-shim'
 import { useSearchParams } from 'next/navigation'
+import { useDashboard } from '@/app/dashboard/layout'
 
 import { OrderStatusSyncTable } from '@/features/sales/components/OrderStatusSyncTable'
 import { OrderSyncPageContent } from '../order-sync/page'
@@ -29,6 +30,8 @@ function DashboardContent() {
     const backLink = fromPage === 'sales-entry'
         ? { href: '/dashboard/sales/daraz/sales-entry', label: 'Back to Sales Entry' }
         : { href: '/dashboard/sales/daraz', label: 'Back to Dashboard' }
+
+    const { isMobileMenuOpen, setIsMobileMenuOpen } = useDashboard()
 
     // Check user role
     useEffect(() => {
@@ -167,6 +170,19 @@ function DashboardContent() {
 
     return (
         <div className="flex flex-col h-full bg-gray-50 dark:bg-zinc-900">
+            {/* Custom Mobile Header */}
+            {activeTab !== 'order-list' && (
+                <div className="md:hidden sticky top-0 left-0 right-0 h-14 bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 z-20 flex items-center justify-between px-3 shadow-sm">
+                    <button
+                        onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+                        className="p-2 -ml-2 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-md"
+                    >
+                        <Menu size={20} />
+                    </button>
+                    <span className="font-bold text-base">Order Summary</span>
+                    <div className="w-8"></div>
+                </div>
+            )}
             {/* Compact Header - Hidden on mobile, visible on desktop */}
             <div className="hidden md:flex sticky top-0 z-10 bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 px-3 py-1.5 items-center justify-between shadow-sm">
                 <div>
@@ -268,7 +284,7 @@ function DashboardContent() {
                     <DarazSalesReport isEmbedded={true} />
                 )}
                 {activeTab === 'daily' && (
-                    <Card className="overflow-hidden">
+                    <Card className="overflow-hidden hidden md:block">
                         <div className="overflow-x-auto">
                             <table className="w-full text-left">
                                 <thead className="bg-gray-50 dark:bg-zinc-800">
@@ -445,6 +461,65 @@ function DashboardContent() {
                         </div>
                     </Card>
                 )}
+                {activeTab === 'daily' && (
+                    <div className="md:hidden space-y-4">
+                        {isLoading ? (
+                            <div className="text-center py-8 text-gray-500">Loading details...</div>
+                        ) : dailyReport && dailyReport.length > 0 ? (
+                            (() => {
+                                const groupedReport = dailyReport?.reduce((acc, row) => {
+                                    if (!acc[row.date]) acc[row.date] = []
+                                    acc[row.date].push(row)
+                                    return acc
+                                }, {} as Record<string, typeof dailyReport>)
+
+                                return Object.entries(groupedReport || {}).map(([date, rows]) => (
+                                    <div key={date} className="space-y-3">
+                                        <div className="sticky top-0 z-10 bg-gray-100 dark:bg-zinc-800 px-3 py-2 text-sm font-bold text-gray-700 dark:text-gray-300 border-b dark:border-zinc-700">
+                                            {formatDate(date)}
+                                        </div>
+                                        {rows.map((row) => (
+                                            <Card key={`${row.date}-${row.seller_account}`} className="p-3 space-y-3 mx-2">
+                                                <div className="flex justify-between items-start">
+                                                    <span className="font-bold text-gray-900 dark:text-white">{row.seller_account}</span>
+                                                    <span className="text-xs font-mono text-blue-600 dark:text-blue-400 font-bold bg-blue-50 dark:bg-blue-900/20 px-1.5 py-0.5 rounded">
+                                                        {formatAmount(row.shipped_amount)}
+                                                    </span>
+                                                </div>
+                                                <div className="grid grid-cols-3 gap-2 text-xs">
+                                                    <div className="bg-gray-50 dark:bg-zinc-800 p-2 rounded text-center">
+                                                        <div className="text-gray-500 mb-0.5">Shipped</div>
+                                                        <div className="font-bold text-blue-700 dark:text-blue-400">{row.shipped_qty}</div>
+                                                    </div>
+                                                    <div className="bg-gray-50 dark:bg-zinc-800 p-2 rounded text-center">
+                                                        <div className="text-gray-500 mb-0.5">Delivered</div>
+                                                        <div className="font-bold text-green-700 dark:text-green-400">{row.delivered_qty}</div>
+                                                    </div>
+                                                    <div className="bg-gray-50 dark:bg-zinc-800 p-2 rounded text-center">
+                                                        <div className="text-gray-500 mb-0.5">RTS</div>
+                                                        <div className="font-bold text-orange-700 dark:text-orange-400">{row.returning_to_seller_qty}</div>
+                                                    </div>
+                                                    <div className="bg-gray-50 dark:bg-zinc-800 p-2 rounded text-center">
+                                                        <div className="text-gray-500 mb-0.5">Ret. Del</div>
+                                                        <div className="font-bold text-orange-800 dark:text-orange-300">{row.returned_delivered_qty}</div>
+                                                    </div>
+                                                    <div className="bg-gray-50 dark:bg-zinc-800 p-2 rounded text-center">
+                                                        <div className="text-gray-500 mb-0.5">C. Return</div>
+                                                        <div className="font-bold text-red-700 dark:text-red-400">{row.return_qty}</div>
+                                                    </div>
+                                                </div>
+                                            </Card>
+                                        ))}
+                                    </div>
+                                ))
+                            })()
+                        ) : (
+                            <div className="text-center py-12 text-gray-500 dark:text-gray-400">
+                                No report data available.
+                            </div>
+                        )}
+                    </div>
+                )}
 
                 {
                     activeTab === 'summary' && (
@@ -576,11 +651,163 @@ function DashboardContent() {
                                 </div>
                             </Card>
 
+                            {/* Mobile Card View for Account Summary */}
+                            <div className="md:hidden space-y-3">
+                                {isSummaryLoading ? (
+                                    <div className="text-center py-8 text-gray-500">Loading summary...</div>
+                                ) : summaryReport && summaryReport.length > 0 ? (
+                                    summaryReport.map((row) => (
+                                        <Card key={row.seller_account} className="p-3 space-y-3">
+                                            <div className="flex justify-between items-start">
+                                                <span className="font-bold text-gray-900 dark:text-white">{row.seller_account}</span>
+                                                <span className="text-xs font-mono text-blue-600 dark:text-blue-400 font-bold bg-blue-50 dark:bg-blue-900/20 px-1.5 py-0.5 rounded">
+                                                    {formatAmount(row.shipped_amount)}
+                                                </span>
+                                            </div>
+                                            <div className="grid grid-cols-3 gap-2 text-xs">
+                                                <div className="bg-gray-50 dark:bg-zinc-800 p-2 rounded text-center">
+                                                    <div className="text-gray-500 mb-0.5">Shipped</div>
+                                                    <div className="font-bold text-blue-700 dark:text-blue-400">{row.shipped_qty}</div>
+                                                </div>
+                                                <div className="bg-gray-50 dark:bg-zinc-800 p-2 rounded text-center">
+                                                    <div className="text-gray-500 mb-0.5">Delivered</div>
+                                                    <div className="font-bold text-green-700 dark:text-green-400">{row.delivered_qty}</div>
+                                                </div>
+                                                <div className="bg-gray-50 dark:bg-zinc-800 p-2 rounded text-center">
+                                                    <div className="text-gray-500 mb-0.5">RTS</div>
+                                                    <div className="font-bold text-orange-700 dark:text-orange-400">{row.returning_to_seller_qty}</div>
+                                                </div>
+                                                <div className="bg-gray-50 dark:bg-zinc-800 p-2 rounded text-center">
+                                                    <div className="text-gray-500 mb-0.5">Ret. Del</div>
+                                                    <div className="font-bold text-orange-800 dark:text-orange-300">{row.returned_delivered_qty}</div>
+                                                </div>
+                                                <div className="bg-gray-50 dark:bg-zinc-800 p-2 rounded text-center">
+                                                    <div className="text-gray-500 mb-0.5">C. Return</div>
+                                                    <div className="font-bold text-red-700 dark:text-red-400">{row.return_qty}</div>
+                                                </div>
+                                                <div className="bg-gray-50 dark:bg-zinc-800 p-2 rounded text-center border border-yellow-200 dark:border-yellow-900/30 bg-yellow-50 dark:bg-yellow-900/10">
+                                                    <div className="text-gray-500 mb-0.5">Remain</div>
+                                                    <div className="font-bold text-yellow-700 dark:text-yellow-400">{row.remain_qty}</div>
+                                                </div>
+                                            </div>
+                                        </Card>
+                                    ))
+                                ) : (
+                                    <div className="text-center py-12 text-gray-500">No summary data available.</div>
+                                )}
+                            </div>
+
                             {/* Double line separator */}
                             <div className="border-t-4 border-double border-gray-300 dark:border-zinc-700 my-6"></div>
 
                             <h2 className="text-lg font-bold mb-3">Order Status Sync Data</h2>
                             <Card className="overflow-hidden">
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-sm text-left">
+                                        <thead className="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-zinc-800 dark:text-gray-400">
+                                            <tr>
+                                                <th className="px-2 py-3">S.N</th>
+                                                <th className="px-2 py-3">Seller Account</th>
+                                                <th className="px-2 py-3 text-center">Pending</th>
+                                                <th className="px-2 py-3 text-center">Packed</th>
+                                                <th className="px-2 py-3 text-center">Ready to Ship</th>
+                                                <th className="px-2 py-3 text-center">Shipped</th>
+                                                <th className="px-2 py-3 text-center">Delivered</th>
+                                                <th className="px-2 py-3 text-center">Returning to Seller</th>
+                                                <th className="px-2 py-3 text-center">Returned Delivered</th>
+                                                <th className="px-2 py-3 text-center">Customer Return</th>
+                                                <th className="px-2 py-3 text-center">Customer Return Delivered</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {isStatusSummaryLoading ? (
+                                                <tr>
+                                                    <td colSpan={11} className="px-4 py-8 text-center text-sm text-gray-500">
+                                                        Loading status data...
+                                                    </td>
+                                                </tr>
+                                            ) : !statusSummary || statusSummary.length === 0 ? (
+                                                <tr>
+                                                    <td colSpan={11} className="px-4 py-8 text-center text-sm text-gray-500">
+                                                        No status data available.
+                                                    </td>
+                                                </tr>
+                                            ) : (
+                                                statusSummary.map((row: any, idx: number) => (
+                                                    <tr key={idx} className="bg-white border-b dark:bg-zinc-900 dark:border-zinc-800 hover:bg-gray-50 dark:hover:bg-zinc-800/50">
+                                                        <td className="px-2 py-3 text-[13px]">{idx + 1}</td>
+                                                        <td className="px-2 py-3 font-medium text-gray-900 dark:text-white">{row.seller_account}</td>
+                                                        <td className="px-2 py-3 text-center text-yellow-700 dark:text-yellow-400">{row.pending}</td>
+                                                        <td className="px-2 py-3 text-center text-blue-700 dark:text-blue-400">{row.packed}</td>
+                                                        <td className="px-2 py-3 text-center text-green-700 dark:text-green-400">{row.ready_to_ship}</td>
+                                                        <td className="px-2 py-3 text-center text-indigo-700 dark:text-indigo-400">{row.shipped}</td>
+                                                        <td className="px-2 py-3 text-center text-green-800 dark:text-green-300 font-medium">{row.delivered}</td>
+                                                        <td className="px-2 py-3 text-center text-orange-700 dark:text-orange-400">{row.returning_to_seller}</td>
+                                                        <td className="px-2 py-3 text-center text-orange-800 dark:text-orange-300">{row.returned_delivered}</td>
+                                                        <td className="px-2 py-3 text-center text-red-700 dark:text-red-400">{row.customer_return}</td>
+                                                        <td className="px-2 py-3 text-center text-red-800 dark:text-red-300">{row.customer_return_delivered}</td>
+                                                    </tr>
+                                                ))
+                                            )}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </Card>
+
+                            {/* Mobile Card View for Order Status Sync */}
+                            <div className="md:hidden space-y-3">
+                                {isStatusSummaryLoading ? (
+                                    <div className="text-center py-8 text-gray-500">Loading details...</div>
+                                ) : statusSummary && statusSummary.length > 0 ? (
+                                    statusSummary.map((row: any) => (
+                                        <Card key={row.seller_account} className="p-3 space-y-3">
+                                            <div className="flex justify-between items-start">
+                                                <span className="font-bold text-gray-900 dark:text-white">{row.seller_account}</span>
+                                                <span className={`text-xs font-bold px-1.5 py-0.5 rounded ${row.pending > 0 ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' : 'bg-gray-100 text-gray-500 dark:bg-zinc-800'}`}>
+                                                    Pending: {row.pending}
+                                                </span>
+                                            </div>
+                                            <div className="grid grid-cols-3 gap-2 text-xs">
+                                                <div className="bg-gray-50 dark:bg-zinc-800 p-2 rounded text-center">
+                                                    <div className="text-gray-500 mb-0.5">RTS</div>
+                                                    <div className="font-bold text-green-700 dark:text-green-400">{row.ready_to_ship}</div>
+                                                </div>
+                                                <div className="bg-gray-50 dark:bg-zinc-800 p-2 rounded text-center">
+                                                    <div className="text-gray-500 mb-0.5">Shipped</div>
+                                                    <div className="font-bold text-indigo-700 dark:text-indigo-400">{row.shipped}</div>
+                                                </div>
+                                                <div className="bg-gray-50 dark:bg-zinc-800 p-2 rounded text-center">
+                                                    <div className="text-gray-500 mb-0.5">Delivered</div>
+                                                    <div className="font-bold text-green-800 dark:text-green-300">{row.delivered}</div>
+                                                </div>
+                                                <div className="bg-gray-50 dark:bg-zinc-800 p-2 rounded text-center">
+                                                    <div className="text-gray-500 mb-0.5">Ret. Sell</div>
+                                                    <div className="font-bold text-orange-700 dark:text-orange-400">{row.returning_to_seller}</div>
+                                                </div>
+                                                <div className="bg-gray-50 dark:bg-zinc-800 p-2 rounded text-center">
+                                                    <div className="text-gray-500 mb-0.5">Ret. Del</div>
+                                                    <div className="font-bold text-orange-800 dark:text-orange-300">{row.returned_delivered}</div>
+                                                </div>
+                                                <div className="bg-gray-50 dark:bg-zinc-800 p-2 rounded text-center">
+                                                    <div className="text-gray-500 mb-0.5">C. Return</div>
+                                                    <div className="font-bold text-red-700 dark:text-red-400">{row.customer_return}</div>
+                                                </div>
+                                            </div>
+                                        </Card>
+                                    ))
+                                ) : (
+                                    <div className="text-center py-12 text-gray-500 dark:text-gray-400">
+                                        No status data available.
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Double line separator hidden on mobile to save space if needed, or keep it */}
+                            <div className="border-t-4 border-double border-gray-300 dark:border-zinc-700 my-6 hidden md:block"></div>
+                            <h2 className="text-lg font-bold mb-3 hidden md:block">Order Status Sync Data</h2>
+
+                            {/* Desktop Table for Status Sync */}
+                            <Card className="overflow-hidden hidden md:block">
                                 <div className="overflow-x-auto">
                                     <table className="w-full text-sm text-left">
                                         <thead className="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-zinc-800 dark:text-gray-400">
@@ -660,6 +887,16 @@ function DashboardContent() {
             < div className="md:hidden fixed bottom-0 left-0 right-0 z-30 bg-white dark:bg-zinc-800 border-t dark:border-zinc-700 shadow-lg" >
                 <div className="grid grid-cols-3 gap-1 p-2">
                     <button
+                        onClick={() => setActiveTab('order-list')}
+                        className={`flex flex-col items-center justify-center gap-1 px-2 py-2 rounded-lg transition-colors ${activeTab === 'order-list'
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-gray-100 dark:bg-zinc-700 text-gray-700 dark:text-gray-300'
+                            }`}
+                    >
+                        <List size={18} />
+                        <span className="text-[10px] font-medium text-center leading-tight">Order List</span>
+                    </button>
+                    <button
                         onClick={() => setActiveTab('daily')}
                         className={`flex flex-col items-center justify-center gap-1 px-2 py-2 rounded-lg transition-colors ${activeTab === 'daily'
                             ? 'bg-blue-600 text-white'
@@ -679,16 +916,7 @@ function DashboardContent() {
                         <PieChart size={18} />
                         <span className="text-[10px] font-medium text-center leading-tight">Account Summary</span>
                     </button>
-                    <button
-                        onClick={() => setActiveTab('status-sync')}
-                        className={`flex flex-col items-center justify-center gap-1 px-2 py-2 rounded-lg transition-colors ${activeTab === 'status-sync'
-                            ? 'bg-blue-600 text-white'
-                            : 'bg-gray-100 dark:bg-zinc-700 text-gray-700 dark:text-gray-300'
-                            }`}
-                    >
-                        <RefreshCw size={18} />
-                        <span className="text-[10px] font-medium text-center leading-tight">Order Status</span>
-                    </button>
+
                 </div>
             </div >
         </div >

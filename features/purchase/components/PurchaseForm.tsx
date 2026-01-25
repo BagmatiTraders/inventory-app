@@ -4,11 +4,12 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useQueryClient } from '@tanstack/react-query'
 import { createPurchase, updatePurchase } from '@/features/purchase/actions/purchase-actions'
-import { getProducts, searchProducts } from '@/features/inventory/actions/product-actions'
+import { getAllProductOptions } from '@/features/inventory/actions/product-actions'
 import { getSuppliers } from '@/features/suppliers/actions/supplier-actions'
-import AsyncSelect from 'react-select/async'
-import { X, Save } from 'lucide-react'
+import Select from 'react-select'
+import { X, Save, Loader2 } from 'lucide-react'
 import { ComboComponentSelectModal } from '@/features/inventory/components/ComboComponentSelectModal'
+import { toast } from 'sonner'
 
 // PurchaseFormProps
 interface PurchaseFormProps {
@@ -27,12 +28,54 @@ interface PurchaseFormProps {
 }
 
 export default function PurchaseForm({ onClose, onSuccess, editMode = false, purchaseData, initialData, showExtraFields = false, fixedPurchaseName }: PurchaseFormProps) {
-    const router = useRouter()
     const queryClient = useQueryClient()
     const [isSubmitting, setIsSubmitting] = useState(false)
 
     // Combo Resolving State
     const [comboResolving, setComboResolving] = useState<{ id: string, name: string } | null>(null)
+
+    // Select Options State
+    const [productOptions, setProductOptions] = useState<any[]>([])
+    const [supplierOptions, setSupplierOptions] = useState<any[]>([])
+    const [loadingProducts, setLoadingProducts] = useState(false)
+    const [loadingSuppliers, setLoadingSuppliers] = useState(false)
+
+    // Init Data Loading
+    useEffect(() => {
+        // Load Products
+        setLoadingProducts(true)
+        getAllProductOptions()
+            .then(products => {
+                const options = products.map((p: any) => ({
+                    value: p.id,
+                    label: `${p.product_name} ${p.seller_sku1 ? `(${p.seller_sku1})` : ''}`,
+                    name: p.product_name,
+                    product_type: p.product_type
+                }))
+                setProductOptions(options)
+            })
+            .catch(err => {
+                console.error("Failed to load products", err)
+                toast.error("Failed to load products")
+            })
+            .finally(() => setLoadingProducts(false))
+
+        // Load Suppliers (Limit 1000 for "all")
+        setLoadingSuppliers(true)
+        getSuppliers({ limit: 1000 })
+            .then(({ suppliers }) => {
+                const options = suppliers.map((s: any) => ({
+                    value: s.id,
+                    label: s.supplier_name
+                }))
+                setSupplierOptions(options)
+            })
+            .catch(err => {
+                console.error("Failed to load suppliers", err)
+                toast.error("Failed to load suppliers")
+            })
+            .finally(() => setLoadingSuppliers(false))
+    }, [])
 
     // Form State
     const [formData, setFormData] = useState({
@@ -57,30 +100,6 @@ export default function PurchaseForm({ onClose, onSuccess, editMode = false, pur
         setFormData(prev => ({ ...prev, total_amount: qty * rate }))
     }, [formData.quantity, formData.unit_amount])
 
-    // Load Products for AsyncSelect
-    const loadProductOptions = async (inputValue: string) => {
-        // Use optimized search action
-        const products = await searchProducts(inputValue)
-        return products.map((p: any) => ({
-            value: p.id,
-            label: `${p.product_name} ${p.seller_sku1 ? `(${p.seller_sku1})` : ''}`,
-            name: p.product_name,
-            product_type: p.product_type
-        }))
-    }
-
-    // Load Suppliers for AsyncSelect
-    const loadSupplierOptions = async (inputValue: string) => {
-        const { suppliers } = await getSuppliers({
-            search: inputValue,
-            limit: 50
-        })
-        return suppliers.map(s => ({
-            value: s.id,
-            label: s.supplier_name
-        }))
-    }
-
     // Handle Product Change
     const handleProductChange = (opt: any) => {
         if (opt?.product_type === 'combo') {
@@ -102,11 +121,9 @@ export default function PurchaseForm({ onClose, onSuccess, editMode = false, pur
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
-        // If fixedPurchaseName is set, we might not need product_id? 
-        // But the schema likely requires product_id. The user didn't mention product_id being optional.
-        // I will assume product_id is still required.
+
         if (!formData.product_id || !formData.quantity || !formData.unit_amount || !formData.supplier_id || !formData.payment_type) {
-            alert('Please fill in all required fields')
+            toast.warning('Please fill in all required fields')
             return
         }
 
@@ -128,19 +145,47 @@ export default function PurchaseForm({ onClose, onSuccess, editMode = false, pur
 
             if (editMode && purchaseData) {
                 await updatePurchase(purchaseData.id, purchasePayload)
+                toast.success("Purchase updated successfully")
             } else {
                 await createPurchase(purchasePayload)
+                toast.success("Purchase added successfully")
             }
 
-            queryClient.invalidateQueries({ queryKey: ['today-purchases'] })
-            queryClient.invalidateQueries({ queryKey: ['buy-sell-transactions'] }) // Invalidate the new list
+            // Invalidate Queries
+            Promise.all([
+                queryClient.invalidateQueries({ queryKey: ['today-purchases'] }),
+                queryClient.invalidateQueries({ queryKey: ['buy-sell-transactions'] }),
+                queryClient.invalidateQueries({ queryKey: ['today-purchases-for-plan'] }),
+                queryClient.invalidateQueries({ queryKey: ['purchase-details-today'] })
+            ])
+
             onSuccess()
             onClose()
         } catch (error: any) {
-            alert(`Error ${editMode ? 'updating' : 'adding'} purchase: ${error.message}`)
+            toast.error(`Error: ${error.message}`)
         } finally {
             setIsSubmitting(false)
         }
+    }
+
+    const customSelectStyles = {
+        control: (base: any) => ({
+            ...base,
+            minHeight: '42px',
+            borderColor: '#e5e7eb', // gray-200
+            borderRadius: '0.375rem',
+            backgroundColor: 'white'
+        }),
+        menu: (base: any) => ({
+            ...base,
+            zIndex: 9999,
+            color: 'black'
+        }),
+        option: (base: any, state: any) => ({
+            ...base,
+            backgroundColor: state.isFocused ? '#f3f4f6' : 'white',
+            color: 'black'
+        })
     }
 
     return (
@@ -187,22 +232,14 @@ export default function PurchaseForm({ onClose, onSuccess, editMode = false, pur
                             {/* Row 2: Product Name */}
                             <div>
                                 <label className="block text-xs font-bold mb-1 text-black dark:text-white">Product Name <span className="text-red-500">*</span></label>
-                                <AsyncSelect
-                                    cacheOptions
-                                    defaultOptions
-                                    loadOptions={loadProductOptions}
+                                <Select
+                                    options={productOptions}
+                                    isLoading={loadingProducts}
                                     value={formData.product_id ? { label: formData.product_name, value: formData.product_id } : null}
                                     onChange={handleProductChange}
                                     className="text-sm"
-                                    placeholder="Search product..."
-                                    styles={{
-                                        control: (base) => ({ ...base, backgroundColor: 'white', color: 'black', borderColor: 'var(--purchase-border)', borderWidth: 2 }),
-                                        menu: (base) => ({ ...base, backgroundColor: 'white', zIndex: 9999, border: '2px solid var(--purchase-border)' }),
-                                        option: (base, state) => ({ ...base, backgroundColor: state.isFocused ? '#f3f4f6' : 'white', color: 'black' }),
-                                        singleValue: (base) => ({ ...base, color: 'black' }),
-                                        input: (base) => ({ ...base, color: 'black' }),
-                                        placeholder: (base) => ({ ...base, color: '#6b7280' })
-                                    }}
+                                    placeholder={loadingProducts ? "Loading products..." : "Search product..."}
+                                    styles={customSelectStyles}
                                 />
                             </div>
 
@@ -245,22 +282,14 @@ export default function PurchaseForm({ onClose, onSuccess, editMode = false, pur
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <label className="block text-xs font-bold mb-1 text-black dark:text-white">Supplier <span className="text-red-500">*</span></label>
-                                    <AsyncSelect
-                                        cacheOptions
-                                        defaultOptions
-                                        loadOptions={loadSupplierOptions}
+                                    <Select
+                                        options={supplierOptions}
+                                        isLoading={loadingSuppliers}
                                         value={formData.supplier_id ? { label: formData.supplier_name, value: formData.supplier_id } : null}
                                         onChange={(opt: any) => setFormData({ ...formData, supplier_id: opt?.value || '', supplier_name: opt?.label || '' })}
                                         className="text-sm"
-                                        placeholder="Search supplier..."
-                                        styles={{
-                                            control: (base) => ({ ...base, backgroundColor: 'white', color: 'black', borderColor: '#000', borderWidth: 1 }),
-                                            menu: (base) => ({ ...base, backgroundColor: 'white', zIndex: 9999, border: '1px solid black' }),
-                                            option: (base, state) => ({ ...base, backgroundColor: state.isFocused ? '#f3f4f6' : 'white', color: 'black' }),
-                                            singleValue: (base) => ({ ...base, color: 'black' }),
-                                            input: (base) => ({ ...base, color: 'black' }),
-                                            placeholder: (base) => ({ ...base, color: '#6b7280' })
-                                        }}
+                                        placeholder={loadingSuppliers ? "Loading..." : "Select supplier..."}
+                                        styles={customSelectStyles}
                                     />
                                 </div>
                                 <div>
@@ -310,22 +339,14 @@ export default function PurchaseForm({ onClose, onSuccess, editMode = false, pur
                             {/* Product */}
                             <div>
                                 <label className="block text-xs font-bold mb-1 text-black dark:text-white">Product Name <span className="text-red-500">*</span></label>
-                                <AsyncSelect
-                                    cacheOptions
-                                    defaultOptions
-                                    loadOptions={loadProductOptions}
+                                <Select
+                                    options={productOptions}
+                                    isLoading={loadingProducts}
                                     value={formData.product_id ? { label: formData.product_name, value: formData.product_id } : null}
                                     onChange={handleProductChange}
                                     className="text-sm"
-                                    placeholder="Search product..."
-                                    styles={{
-                                        control: (base) => ({ ...base, backgroundColor: 'white', color: 'black', borderColor: 'var(--purchase-border)', borderWidth: 2 }),
-                                        menu: (base) => ({ ...base, backgroundColor: 'white', zIndex: 9999, border: '2px solid var(--purchase-border)' }),
-                                        option: (base, state) => ({ ...base, backgroundColor: state.isFocused ? '#f3f4f6' : 'white', color: 'black' }),
-                                        singleValue: (base) => ({ ...base, color: 'black' }),
-                                        input: (base) => ({ ...base, color: 'black' }),
-                                        placeholder: (base) => ({ ...base, color: '#6b7280' })
-                                    }}
+                                    placeholder={loadingProducts ? "Loading products..." : "Search product..."}
+                                    styles={customSelectStyles}
                                 />
                             </div>
 
@@ -367,22 +388,14 @@ export default function PurchaseForm({ onClose, onSuccess, editMode = false, pur
                             {/* Supplier */}
                             <div>
                                 <label className="block text-xs font-bold mb-1 text-black dark:text-white">Supplier <span className="text-red-500">*</span></label>
-                                <AsyncSelect
-                                    cacheOptions
-                                    defaultOptions
-                                    loadOptions={loadSupplierOptions}
+                                <Select
+                                    options={supplierOptions}
+                                    isLoading={loadingSuppliers}
                                     value={formData.supplier_id ? { label: formData.supplier_name, value: formData.supplier_id } : null}
                                     onChange={(opt: any) => setFormData({ ...formData, supplier_id: opt?.value || '', supplier_name: opt?.label || '' })}
                                     className="text-sm"
-                                    placeholder="Search supplier..."
-                                    styles={{
-                                        control: (base) => ({ ...base, backgroundColor: 'white', color: 'black', borderColor: 'var(--purchase-border)', borderWidth: 2 }),
-                                        menu: (base) => ({ ...base, backgroundColor: 'white', zIndex: 9999, border: '2px solid var(--purchase-border)' }),
-                                        option: (base, state) => ({ ...base, backgroundColor: state.isFocused ? '#f3f4f6' : 'white', color: 'black' }),
-                                        singleValue: (base) => ({ ...base, color: 'black' }),
-                                        input: (base) => ({ ...base, color: 'black' }),
-                                        placeholder: (base) => ({ ...base, color: '#6b7280' })
-                                    }}
+                                    placeholder={loadingSuppliers ? "Loading..." : "Select supplier..."}
+                                    styles={customSelectStyles}
                                 />
                             </div>
 
@@ -434,8 +447,17 @@ export default function PurchaseForm({ onClose, onSuccess, editMode = false, pur
                     disabled={isSubmitting}
                     className="flex items-center gap-2 px-4 py-2 text-sm bg-blue-600 text-white hover:bg-blue-700 rounded disabled:opacity-50"
                 >
-                    <Save size={16} />
-                    {isSubmitting ? 'Saving...' : (editMode ? 'Update Purchase' : 'Save And Close')}
+                    {isSubmitting ? (
+                        <>
+                            <Loader2 size={16} className="animate-spin" />
+                            Processing...
+                        </>
+                    ) : (
+                        <>
+                            <Save size={16} />
+                            {editMode ? 'Update Purchase' : 'Save And Close'}
+                        </>
+                    )}
                 </button>
             </div>
 

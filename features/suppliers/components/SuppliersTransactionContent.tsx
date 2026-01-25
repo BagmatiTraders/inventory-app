@@ -244,7 +244,7 @@ export default function SuppliersTransactionContent({ isEmbedded = false }: Supp
 
             {/* Transactions Table */}
             <div className="flex-1 overflow-auto p-2 md:p-3">
-                <Card className="overflow-hidden bg-white shadow-sm dark:bg-zinc-900 border-y md:border rounded-none md:rounded-lg">
+                <Card className="hidden md:block overflow-hidden bg-white shadow-sm dark:bg-zinc-900 border-y md:border rounded-none md:rounded-lg">
                     <div className="overflow-x-auto">
                         <table className="w-full text-left">
                             <thead className="bg-gray-50 dark:bg-zinc-800">
@@ -268,27 +268,15 @@ export default function SuppliersTransactionContent({ isEmbedded = false }: Supp
                                         <tr key={t.id} className="hover:bg-gray-50 dark:hover:bg-zinc-800/50">
                                             <td className="px-3 py-2 text-sm whitespace-nowrap">{t.transaction_date}</td>
                                             <td
-                                                className="px-3 py-2 text-sm font-medium text-green-600 hover:underline cursor-pointer md:text-gray-900 md:hover:no-underline md:cursor-default"
-                                                onClick={() => {
-                                                    // Only open modal on mobile
-                                                    if (window.innerWidth < 768) {
-                                                        setSelectedDetail(t)
-                                                    }
-                                                }}
+                                                className="px-3 py-2 text-sm font-medium text-gray-900"
                                             >
                                                 {t.supplier?.supplier_name}
                                             </td>
                                             <td className="px-3 py-2 text-sm">
-                                                <div className="flex flex-col gap-1 items-start">
-                                                    <span className={`px-2 py-0.5 rounded text-xs font-medium ${t.transaction_type === 'Received' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-                                                        }`}>
-                                                        {t.transaction_type}
-                                                    </span>
-                                                    {/* Mobile Only: Show Mode under Type */}
-                                                    <span className="md:hidden text-[11px] text-gray-500">
-                                                        {t.transaction_mode}
-                                                    </span>
-                                                </div>
+                                                <span className={`px-2 py-0.5 rounded text-xs font-medium ${t.transaction_type === 'Received' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                                                    }`}>
+                                                    {t.transaction_type}
+                                                </span>
                                             </td>
                                             <td className="hidden md:table-cell px-3 py-2 text-sm">
                                                 <span className={`px-2 py-0.5 rounded text-xs font-medium ${t.transaction_mode === 'Cash' ? 'bg-green-100 text-green-700' :
@@ -315,6 +303,39 @@ export default function SuppliersTransactionContent({ isEmbedded = false }: Supp
                         </table>
                     </div>
                 </Card>
+
+                {/* Mobile Card View */}
+                <div className="md:hidden space-y-3 pb-24">
+                    {isLoading ? (
+                        <div className="text-center p-4 text-gray-500">Loading transactions...</div>
+                    ) : transactions.length === 0 ? (
+                        <div className="text-center p-4 text-gray-500">No transactions found.</div>
+                    ) : (
+                        transactions.map((t: any) => (
+                            <div
+                                key={t.id}
+                                onClick={() => setSelectedDetail(t)}
+                                className="bg-white dark:bg-zinc-900 p-3 rounded-lg border shadow-sm active:bg-gray-50 transition-colors"
+                            >
+                                <div className="flex justify-between items-start mb-2">
+                                    <div className="font-medium text-gray-900 dark:text-gray-100">{t.supplier?.supplier_name}</div>
+                                    <div className="font-bold text-gray-900 dark:text-gray-100">Rs {t.amount.toLocaleString()}</div>
+                                </div>
+                                <div className="flex justify-between items-center text-sm">
+                                    <div className="text-gray-500 text-xs">{t.transaction_date}</div>
+                                    <div className="flex items-center gap-2">
+                                        <span className={`px-2 py-0.5 rounded text-[10px] font-medium ${t.transaction_mode === 'Cash' ? 'bg-green-50 text-green-700' : 'bg-blue-50 text-blue-700'}`}>
+                                            {t.transaction_mode}
+                                        </span>
+                                        <span className={`px-2 py-0.5 rounded text-[10px] font-medium ${t.transaction_type === 'Received' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                            {t.transaction_type}
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                        ))
+                    )}
+                </div>
             </div>
 
             {/* Detail View Modal (Mobile Only) */}

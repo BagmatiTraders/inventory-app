@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { getAllDarazOrders, deleteDarazOrder, updateDarazOrderStatus, getDarazOrderById, getAllFiscalYears, getActiveFiscalYear, syncDarazOrderProducts, syncProductInfoFromInventory, getUniqueSellerAccounts } from '@/features/sales/actions/daraz-actions'
 import { getUserRole, getUserDeletionStats, createDeletionRequest, softDeleteOrder } from '@/features/sales/actions/daraz-deletion-actions'
-import { Search, Printer, ArrowLeft, X, Trash2, Clock, RefreshCw, Split } from 'lucide-react'
+import { Search, Printer, ArrowLeft, X, Trash2, Clock, RefreshCw, Split, Camera } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Card } from '@/components/ui-shim'
@@ -12,6 +12,7 @@ import { DeletionReasonModal } from '@/features/sales/components/DeletionReasonM
 import { AdminDeleteConfirm } from '@/features/sales/components/AdminDeleteConfirm'
 import { AuditTrailHover } from '@/features/sales/components/AuditTrailHover'
 import { toast } from 'sonner'
+import { BarcodeScannerModal } from '@/components/BarcodeScannerModal'
 
 import { PartialReturnModal } from '@/features/sales/components/PartialReturnModal'
 
@@ -22,9 +23,33 @@ interface DarazOrderListProps {
 export function DarazOrderList({ isEmbedded = false }: DarazOrderListProps) {
     const router = useRouter()
     const searchParams = useSearchParams()
-
     const [selectedOrders, setSelectedOrders] = useState<string[]>([])
     const [searchInput, setSearchInput] = useState('')
+    const [isScannerOpen, setIsScannerOpen] = useState(false)
+
+    // Handle barcode scan
+    const handleBarcodeScan = async (barcode: string): Promise<boolean> => {
+        try {
+            // Check if barcode matches any order
+            const result = await getAllDarazOrders({
+                page: 1,
+                limit: 1,
+                search: barcode,
+                status: 'all',
+                sellerAccount: 'all'
+            })
+
+            if (result.orders && result.orders.length > 0) {
+                setSearchInput(barcode)
+                setPage(1)
+                return true
+            }
+            return false
+        } catch (error) {
+            console.error('Scan error:', error)
+            return false
+        }
+    }
     const [search, setSearch] = useState('')
     const [statusFilter, setStatusFilter] = useState('all')
     const [bulkStatus, setBulkStatus] = useState('')
@@ -309,6 +334,43 @@ export function DarazOrderList({ isEmbedded = false }: DarazOrderListProps) {
 
     return (
         <div className="flex flex-col h-full bg-gray-50 dark:bg-zinc-900">
+            {/* Mobile Header with Search - Visible only on mobile */}
+            <div className="md:hidden sticky top-0 z-20 bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 px-3 py-2 shadow-sm space-y-2">
+                <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                        <h1 className="text-base font-bold">Order List</h1>
+                    </div>
+                </div>
+                <div className="relative">
+                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
+                    <input
+                        type="text"
+                        placeholder="Search order or tracking..."
+                        value={searchInput}
+                        onChange={(e) => setSearchInput(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+                        className="w-full pl-8 pr-16 py-2 text-sm border dark:border-zinc-700 rounded-lg focus:ring-1 focus:ring-blue-500 dark:bg-zinc-800 dark:text-gray-50 bg-gray-50"
+                    />
+
+                    {searchInput && (
+                        <button
+                            onClick={handleClearSearch}
+                            className="absolute right-9 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                        >
+                            <X size={14} />
+                        </button>
+                    )}
+
+                    <button
+                        onClick={() => setIsScannerOpen(true)}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-blue-600 hover:text-blue-700 active:scale-95"
+                        title="Scan Barcode"
+                    >
+                        <Camera size={16} />
+                    </button>
+                </div>
+            </div>
+
             {/* Compact Header - Conditionally rendered */}
             {!isEmbedded && (
                 <div className="sticky top-0 z-10 bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 px-3 py-1.5 flex items-center justify-between shadow-sm">
@@ -449,7 +511,7 @@ export function DarazOrderList({ isEmbedded = false }: DarazOrderListProps) {
                     )}
 
                     {/* Search Box */}
-                    <div className="relative flex-1 min-w-[180px] max-w-sm">
+                    <div className="relative flex-1 min-w-[180px] max-w-sm hidden md:block">
                         <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
                         <input
                             type="text"
@@ -537,7 +599,80 @@ export function DarazOrderList({ isEmbedded = false }: DarazOrderListProps) {
 
             {/* Orders Table */}
             <div className="flex-1 overflow-y-auto p-2">
-                <Card className="dark:bg-zinc-900 dark:border-zinc-700">
+                {/* Mobile Card List */}
+                <div className="md:hidden space-y-4 pb-20">
+                    {isLoading || isFetching ? (
+                        <div className="text-center py-8 text-sm text-gray-500">Loading...</div>
+                    ) : orders.length === 0 ? (
+                        <div className="text-center py-12 text-sm text-gray-500">No orders found.</div>
+                    ) : (
+                        Object.entries(groupedOrders).map(([date, groupOrders]) => (
+                            <div key={date} className="space-y-2">
+                                <div className="sticky top-0 z-10 bg-gray-50 dark:bg-zinc-900 py-1 flex justify-between items-center">
+                                    <span className="font-semibold text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider">{date}</span>
+                                    <span className="text-[10px] px-2 py-0.5 bg-gray-200 dark:bg-zinc-800 rounded-full text-gray-600 dark:text-gray-400">
+                                        {groupOrders.length}
+                                    </span>
+                                </div>
+                                <div className="space-y-2">
+                                    {groupOrders.map((order: any) => (
+                                        <div
+                                            key={order.id}
+                                            className="bg-white dark:bg-zinc-800 p-3 rounded-lg border dark:border-zinc-700 shadow-sm relative active:scale-[0.99] transition-transform"
+                                            onClick={() => router.push(`/dashboard/sales/daraz/order/${order.id}?from=order-list`)}
+                                        >
+                                            {/* Header Row */}
+                                            <div className="flex justify-between items-start mb-2">
+                                                <div className="flex flex-col">
+                                                    <span className="font-bold text-sm text-blue-600 dark:text-blue-400">#{order.order_number}</span>
+                                                    <span className="text-[10px] text-gray-400">{order.invoice_number}</span>
+                                                </div>
+                                                <div className="flex flex-col items-end gap-1">
+                                                    <span className={`px-2 py-0.5 text-[10px] font-bold rounded ${order.order_status === 'Pending' ? 'bg-yellow-100 text-yellow-800' :
+                                                        order.order_status === 'Ready to Ship' ? 'bg-green-100 text-green-800' :
+                                                            order.order_status === 'Shipped' ? 'bg-blue-100 text-blue-800' :
+                                                                order.order_status === 'Delivered' ? 'bg-green-100 text-green-800' :
+                                                                    order.order_status === 'Cancelled' ? 'bg-red-100 text-red-800' :
+                                                                        'bg-gray-100 text-gray-800'
+                                                        }`}>
+                                                        {order.order_status}
+                                                    </span>
+                                                </div>
+                                            </div>
+
+                                            {/* Content Row */}
+                                            <div className="grid grid-cols-[1fr_auto] gap-2 mb-2">
+                                                <div className="flex flex-col min-w-0">
+                                                    <span className={`text-sm font-medium truncate ${getCustomerClass(order.customer_name, order.order_date)}`}>{order.customer_name}</span>
+                                                    <span className="text-xs text-gray-500 dark:text-gray-400 truncate">{order.first_product_name}</span>
+                                                    {order.item_count > 1 && <span className="text-[10px] text-blue-500">+{order.item_count - 1} more items</span>}
+                                                </div>
+                                                <div className="flex flex-col items-end">
+                                                    <span className="font-bold text-sm text-gray-900 dark:text-gray-100">Rs. {order.grand_total?.toLocaleString()}</span>
+                                                    <span className="text-xs text-gray-500">{order.total_quantity} item(s)</span>
+                                                </div>
+                                            </div>
+
+                                            {/* Footer Row */}
+                                            <div className="flex justify-between items-center pt-2 border-t dark:border-zinc-700/50 mt-1">
+                                                <span className="text-[10px] text-gray-400">{new Date(order.order_date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                                <div className="flex gap-2">
+                                                    {order.is_printed && <Printer size={12} className="text-green-500" />}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        ))
+                    )}
+                    {/* Mobile Pagination */}
+                    <div className="py-2">
+                        {renderPagination()}
+                    </div>
+                </div>
+
+                <Card className="dark:bg-zinc-900 dark:border-zinc-700 hidden md:block">
                     <div className="overflow-x-auto">
                         <table className="w-full table-fixed border-collapse">
                             <thead className="bg-gray-50 dark:bg-zinc-800 sticky top-0 shadow-sm z-10">
@@ -815,6 +950,13 @@ export function DarazOrderList({ isEmbedded = false }: DarazOrderListProps) {
                     // Invalidate query to refresh list data (item statuses)
                     queryClient.invalidateQueries({ queryKey: ['all-daraz-orders'] })
                 }}
+            />
+
+            {/* Barcode Scanner Modal (Mobile Only) */}
+            <BarcodeScannerModal
+                isOpen={isScannerOpen}
+                onClose={() => setIsScannerOpen(false)}
+                onScan={handleBarcodeScan}
             />
         </div>
     )

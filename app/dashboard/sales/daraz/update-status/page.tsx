@@ -7,6 +7,7 @@ import { Card } from '@/components/ui-shim'
 import { toast } from 'sonner'
 import { updateDarazOrderStatus } from '@/features/sales/actions/daraz-actions'
 import { supabase } from '@/lib/supabase/client'
+import { BarcodeScannerModal } from '@/components/BarcodeScannerModal'
 
 
 // Sound feedback
@@ -36,8 +37,6 @@ export default function UpdateOrderStatusPage() {
     const [isUpdating, setIsUpdating] = useState(false)
     const [isCameraOpen, setIsCameraOpen] = useState(false)
     const searchInputRef = useRef<HTMLInputElement>(null)
-    const videoRef = useRef<HTMLVideoElement>(null)
-    const streamRef = useRef<MediaStream | null>(null)
 
     // Auto-focus search input on mount
     useEffect(() => {
@@ -45,10 +44,11 @@ export default function UpdateOrderStatusPage() {
     }, [])
 
     // Search and add order to list
-    const handleAddToList = async () => {
-        if (!searchValue.trim()) {
+    const handleAddToList = async (overrideValue?: string) => {
+        const term = overrideValue || searchValue
+        if (!term.trim()) {
             toast.error('Please enter a value to search')
-            return
+            return false // Return false for scanner
         }
 
         try {
@@ -65,24 +65,24 @@ export default function UpdateOrderStatusPage() {
                         product_name
                     )
                 `)
-                .eq(searchField, searchValue.trim())
+                .eq(searchField, term.trim())
                 .single()
 
             if (error || !data) {
                 playErrorSound()
                 toast.error('Order not found')
-                setSearchValue('')
+                if (!overrideValue) setSearchValue('') // Clear only if manual
                 searchInputRef.current?.focus()
-                return
+                return false
             }
 
             // Check if already in list
             if (ordersInList.some(o => o.id === data.id)) {
                 playErrorSound()
                 toast.error('Order already in list')
-                setSearchValue('')
+                if (!overrideValue) setSearchValue('')
                 searchInputRef.current?.focus()
-                return
+                return true // Return true because it technically exists/found
             }
 
             // Add to list
@@ -94,16 +94,18 @@ export default function UpdateOrderStatusPage() {
                 order_status: data.order_status
             }
 
-            setOrdersInList([...ordersInList, newOrder])
+            setOrdersInList(prev => [...prev, newOrder])
             playSuccessSound()
             toast.success('Order added to list')
             setSearchValue('')
             searchInputRef.current?.focus()
+            return true
         } catch (error: any) {
             playErrorSound()
             toast.error(error.message || 'Failed to search order')
-            setSearchValue('')
+            if (!overrideValue) setSearchValue('')
             searchInputRef.current?.focus()
+            return false
         }
     }
 
@@ -228,29 +230,12 @@ export default function UpdateOrderStatusPage() {
         e.target.value = ''
     }
 
-    // Mobile camera barcode scanning
-    const openCamera = async () => {
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia({
-                video: { facingMode: 'environment' }
-            })
-
-            streamRef.current = stream
-            if (videoRef.current) {
-                videoRef.current.srcObject = stream
-            }
-            setIsCameraOpen(true)
-        } catch (error) {
-            toast.error('Camera access denied')
-        }
-    }
-
-    const closeCamera = () => {
-        if (streamRef.current) {
-            streamRef.current.getTracks().forEach(track => track.stop())
-            streamRef.current = null
-        }
-        setIsCameraOpen(false)
+    // Handle barcode scan
+    const handleBarcodeScan = async (barcode: string): Promise<boolean> => {
+        // Set search value for visual feedback
+        setSearchValue(barcode)
+        // Try to add to list
+        return await handleAddToList(barcode)
     }
 
     return (
@@ -295,8 +280,9 @@ export default function UpdateOrderStatusPage() {
                             className="w-full pl-2 pr-8 py-1 text-sm border dark:border-zinc-700 rounded focus:ring-1 focus:ring-blue-500 dark:bg-zinc-800 dark:text-gray-50"
                         />
                         <button
-                            onClick={openCamera}
-                            className="md:hidden absolute right-1.5 top-1/2 -translate-y-1/2 p-0.5 text-gray-500 hover:text-gray-700"
+                            onClick={() => setIsCameraOpen(true)}
+                            className="md:hidden absolute right-1.5 top-1/2 -translate-y-1/2 p-0.5 text-blue-600 hover:text-blue-700"
+                            title="Scan Barcode"
                         >
                             <Camera size={14} />
                         </button>
@@ -304,7 +290,7 @@ export default function UpdateOrderStatusPage() {
 
                     {/* Compact Buttons */}
                     <button
-                        onClick={handleAddToList}
+                        onClick={() => handleAddToList()}
                         className="flex items-center gap-1 px-2 py-1 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors"
                     >
                         <Search size={12} />
@@ -403,28 +389,11 @@ export default function UpdateOrderStatusPage() {
                 </Card>
 
                 {/* Mobile Camera Modal */}
-                {isCameraOpen && (
-                    <div className="fixed inset-0 bg-black z-50 flex flex-col">
-                        <div className="flex items-center justify-between p-4 bg-zinc-900">
-                            <h3 className="text-white font-semibold">Scan Barcode</h3>
-                            <button
-                                onClick={closeCamera}
-                                className="px-4 py-2 bg-red-600 text-white rounded-md"
-                            >
-                                Close Camera
-                            </button>
-                        </div>
-                        <video
-                            ref={videoRef}
-                            autoPlay
-                            playsInline
-                            className="flex-1 w-full h-full object-cover"
-                        />
-                        <div className="p-4 bg-zinc-900 text-white text-center text-[17px]">
-                            Position barcode in camera view. Currently requires manual entry after scan detection.
-                        </div>
-                    </div>
-                )}
+                <BarcodeScannerModal
+                    isOpen={isCameraOpen}
+                    onClose={() => setIsCameraOpen(false)}
+                    onScan={handleBarcodeScan}
+                />
             </div>
         </div>
     )

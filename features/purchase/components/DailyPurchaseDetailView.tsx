@@ -118,42 +118,47 @@ export default function DailyPurchaseDetailView({ date, purchases, isLoading, on
     return (
         <div className="flex flex-col h-full bg-gray-50 dark:bg-zinc-900 border-l dark:border-zinc-800 animate-in slide-in-from-right-10 duration-200">
             {/* Detail Header */}
-            <div className="sticky top-0 z-20 bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 px-4 py-3 flex items-center justify-between shadow-sm">
-                <div className="flex items-center gap-3">
-                    {onBack && (
-                        <button
-                            onClick={onBack}
-                            className="p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors"
-                        >
-                            <ArrowLeft size={18} />
-                        </button>
-                    )}
-                    <div>
-                        <h2 className="text-lg font-bold">{formatDate(date)}</h2>
-                        <p className="text-xs text-gray-500 dark:text-gray-400">Daily Transaction Details</p>
-                    </div>
-                </div>
-                <div className="text-right flex items-center gap-4">
-                    <div>
-                        <div className="text-xs text-gray-500">Total Purchase (Buy)</div>
-                        <div className="text-md font-bold text-blue-600">
-                            Rs {paymentStats.grandPurchase.toLocaleString()}
+            <div className="sticky top-0 z-20 bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 px-3 py-3 shadow-sm">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                    {/* Top Row: Back Button & Date - Centered on Mobile */}
+                    <div className="relative flex items-center justify-center md:justify-start">
+                        {onBack && (
+                            <button
+                                onClick={onBack}
+                                className="absolute left-0 p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors md:relative md:left-auto"
+                            >
+                                <ArrowLeft size={18} />
+                            </button>
+                        )}
+                        <div className="text-center md:text-left md:ml-2">
+                            <h2 className="text-lg font-bold">{formatDate(date)}</h2>
+                            <p className="hidden md:block text-xs text-gray-500 dark:text-gray-400">Daily Transaction Details</p>
                         </div>
                     </div>
-                    <div>
-                        <div className="text-xs text-gray-500">Total Sales (Sell)</div>
-                        <div className="text-md font-bold text-green-600">
-                            Rs {paymentStats.grandSales.toLocaleString()}
+
+                    {/* Bottom/Right Row: Totals */}
+                    <div className="flex items-center justify-between md:justify-end gap-2 md:gap-6 bg-gray-50 dark:bg-zinc-800/50 p-2 md:p-0 rounded-lg md:bg-transparent">
+                        <div className="flex-1 md:flex-none text-center md:text-right px-2 md:px-0 border-r md:border-r-0 border-gray-200 dark:border-zinc-700 last:border-0">
+                            <div className="text-[10px] md:text-xs text-gray-500 uppercase tracking-wider md:normal-case">Total Purchase</div>
+                            <div className="text-sm md:text-md font-bold text-blue-600">
+                                Rs {paymentStats.grandPurchase.toLocaleString()}
+                            </div>
+                        </div>
+                        <div className="flex-1 md:flex-none text-center md:text-right px-2 md:px-0">
+                            <div className="text-[10px] md:text-xs text-gray-500 uppercase tracking-wider md:normal-case">Total Sales</div>
+                            <div className="text-sm md:text-md font-bold text-green-600">
+                                Rs {paymentStats.grandSales.toLocaleString()}
+                            </div>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <div className="flex-1 overflow-auto p-4 space-y-4">
+            <div className="flex-1 overflow-auto p-3 space-y-3 pb-24">
                 {/* Top Section: Payment Types & Suppliers */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     {/* Left: Payment Analysis */}
-                    <Card className="p-4">
+                    <Card className="p-3">
                         <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
                             <Wallet size={16} className="text-purple-500" />
                             Payment Analysis
@@ -168,8 +173,8 @@ export default function DailyPurchaseDetailView({ date, purchases, isLoading, on
                                     {/* Header Row */}
                                     <div className="flex text-xs font-semibold text-gray-500 border-b pb-2 mb-2">
                                         <div className="flex-1">Type</div>
-                                        <div className="w-24 text-right">Sales</div>
-                                        <div className="w-24 text-right">Purchase</div>
+                                        <div className="w-20 text-right">Sales</div>
+                                        <div className="w-20 text-right">Purchase</div>
                                     </div>
                                     {/* Data Rows */}
                                     {paymentStats.rows.map((stat) => (
@@ -180,10 +185,10 @@ export default function DailyPurchaseDetailView({ date, purchases, isLoading, on
                                                 </div>
                                                 <span className="text-sm font-medium">{stat.type}</span>
                                             </div>
-                                            <div className="w-24 text-right text-sm text-green-600 font-medium">
+                                            <div className="w-20 text-right text-sm text-green-600 font-medium">
                                                 Rs {stat.sales.toLocaleString()}
                                             </div>
-                                            <div className="w-24 text-right text-sm text-blue-600 font-medium">
+                                            <div className="w-20 text-right text-sm text-blue-600 font-medium">
                                                 Rs {stat.purchase.toLocaleString()}
                                             </div>
                                         </div>
@@ -191,8 +196,8 @@ export default function DailyPurchaseDetailView({ date, purchases, isLoading, on
                                     {/* Footer Total Row */}
                                     <div className="flex text-xs font-bold text-gray-700 dark:text-gray-300 border-t pt-2 mt-2">
                                         <div className="flex-1">Total</div>
-                                        <div className="w-24 text-right text-green-700">Rs {paymentStats.grandSales.toLocaleString()}</div>
-                                        <div className="w-24 text-right text-blue-700">Rs {paymentStats.grandPurchase.toLocaleString()}</div>
+                                        <div className="w-20 text-right text-green-700">Rs {paymentStats.grandSales.toLocaleString()}</div>
+                                        <div className="w-20 text-right text-blue-700">Rs {paymentStats.grandPurchase.toLocaleString()}</div>
                                     </div>
                                 </>
                             )}
@@ -200,7 +205,7 @@ export default function DailyPurchaseDetailView({ date, purchases, isLoading, on
                     </Card>
 
                     {/* Right: Supplier Breakdown */}
-                    <Card className="p-4">
+                    <Card className="p-3">
                         <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
                             <UsersIcon className="text-orange-500" size={16} />
                             Supplier Breakdown
@@ -251,7 +256,9 @@ export default function DailyPurchaseDetailView({ date, purchases, isLoading, on
                     <div className="px-4 py-3 border-b dark:border-zinc-800 bg-gray-50 dark:bg-zinc-800/50">
                         <h3 className="text-sm font-semibold">Transaction History</h3>
                     </div>
-                    <div className="overflow-x-auto">
+
+                    {/* Desktop Table */}
+                    <div className="hidden md:block overflow-x-auto">
                         <table className="w-full text-left text-sm">
                             <thead className="bg-gray-50 dark:bg-zinc-800 text-xs uppercase text-gray-500">
                                 <tr>
@@ -289,6 +296,35 @@ export default function DailyPurchaseDetailView({ date, purchases, isLoading, on
                                 ))}
                             </tbody>
                         </table>
+                    </div>
+
+                    {/* Mobile Card List */}
+                    <div className="md:hidden divide-y dark:divide-zinc-800">
+                        {isLoading ? (
+                            <div className="p-4 text-center text-sm text-gray-500">Loading...</div>
+                        ) : sortedPurchases.map((p: Purchase) => (
+                            <div key={p.id} className="p-3 hover:bg-gray-50 dark:hover:bg-zinc-800/50 transition-colors">
+                                <div className="flex justify-between items-start mb-1">
+                                    <h4 className="text-sm font-medium line-clamp-2 pr-2">{p.product?.product_name}</h4>
+                                    <span className="text-sm font-bold whitespace-nowrap">Rs {p.total_amount.toLocaleString()}</span>
+                                </div>
+                                <div className="flex items-center justify-between text-xs text-gray-500 mb-2">
+                                    <span className="truncate max-w-[150px]">{p.supplier?.supplier_name}</span>
+                                    <div className="flex items-center gap-2">
+                                        <span>{p.quantity} x {p.unit_amount}</span>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${(p.purchase_type || '').toLowerCase() === 'sell' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'
+                                        }`}>
+                                        {p.purchase_type || '-'}
+                                    </span>
+                                    <span className={`px-2 py-0.5 rounded text-[10px] font-medium border ${p.payment_type === 'Due' ? 'border-red-200 text-red-700 bg-red-50' : 'border-green-200 text-green-700 bg-green-50'}`}>
+                                        {p.payment_type}
+                                    </span>
+                                </div>
+                            </div>
+                        ))}
                     </div>
                 </Card>
             </div>

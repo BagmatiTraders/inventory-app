@@ -10,11 +10,11 @@ import SuppliersLedgerContent from '@/features/suppliers/components/SuppliersLed
 type Tab = 'list' | 'transaction' | 'ledger'
 
 export default function SupplierDashboardPage() {
-    const [activeTab, setActiveTab] = useState<Tab>('list')
+    const [activeTab, setActiveTab] = useState<Tab>('ledger')
 
     return (
         <div className="flex flex-col h-full bg-gray-50 dark:bg-zinc-900">
-            {/* Header */}
+            {/* Header - Desktop */}
             <div className="hidden md:flex sticky top-0 z-10 bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 px-3 py-1.5 items-center justify-between shadow-sm">
                 <div>
                     <h1 className="text-[17px] font-bold">Supplier Dashboard</h1>
@@ -29,8 +29,17 @@ export default function SupplierDashboardPage() {
                 </Link>
             </div>
 
-            {/* Tab Bar */}
-            <div className="sticky top-0 md:top-[44px] z-10 bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 px-3 py-1.5 shadow-sm overflow-x-auto">
+            {/* Header - Mobile (Dynamic Title) */}
+            <div className="md:hidden sticky top-0 z-10 bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 px-4 py-3 shadow-sm flex items-center justify-center">
+                <h1 className="text-lg font-bold">
+                    {activeTab === 'list' && 'Supplier List'}
+                    {activeTab === 'transaction' && 'Suppliers Transaction'}
+                    {activeTab === 'ledger' && 'Supplier Ledger'}
+                </h1>
+            </div>
+
+            {/* Tab Bar - Desktop Only */}
+            <div className="hidden md:block sticky top-0 md:top-[44px] z-10 bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 px-3 py-1.5 shadow-sm overflow-x-auto">
                 <div className="flex items-center gap-1.5 min-w-max">
                     <button
                         onClick={() => setActiveTab('list')}
@@ -76,6 +85,42 @@ export default function SupplierDashboardPage() {
                 {activeTab === 'ledger' && (
                     <SuppliersLedgerContent isEmbedded={true} />
                 )}
+            </div>
+
+            {/* Mobile Bottom Navigation */}
+            <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-zinc-900 border-t dark:border-zinc-800 z-50 px-2 py-2 pb-safe">
+                <div className="flex items-center gap-2">
+                    <button
+                        onClick={() => setActiveTab('ledger')}
+                        className={`flex-1 flex flex-col items-center justify-center gap-1 py-2 rounded-lg transition-colors ${activeTab === 'ledger'
+                            ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400'
+                            : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-zinc-800'
+                            }`}
+                    >
+                        <TrendingUp size={20} />
+                        <span className="text-xs font-medium">Ledger</span>
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('transaction')}
+                        className={`flex-1 flex flex-col items-center justify-center gap-1 py-2 rounded-lg transition-colors ${activeTab === 'transaction'
+                            ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400'
+                            : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-zinc-800'
+                            }`}
+                    >
+                        <FileText size={20} />
+                        <span className="text-xs font-medium">Transaction</span>
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('list')}
+                        className={`flex-1 flex flex-col items-center justify-center gap-1 py-2 rounded-lg transition-colors ${activeTab === 'list'
+                            ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400'
+                            : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-zinc-800'
+                            }`}
+                    >
+                        <Users size={20} />
+                        <span className="text-xs font-medium">List</span>
+                    </button>
+                </div>
             </div>
         </div>
     )

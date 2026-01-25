@@ -2,10 +2,10 @@
 
 import { useState, useEffect } from 'react'
 import { Calendar, Save, Upload, Download, Search, AlertTriangle, Trash2, Edit2, X, Check } from 'lucide-react'
-import AsyncSelect from 'react-select/async'
-import { getProducts } from '@/features/inventory/actions/product-actions'
+import Select from 'react-select'
+import { getAllProductOptions } from '@/features/inventory/actions/product-actions'
 import { saveOpeningStock, getOpeningStocks, deleteOpeningStock, updateOpeningStock, OpeningStock as OpeningStockType } from '@/features/inventory/actions/stock-adjustment-actions'
-
+import { toast } from 'sonner'
 import { ComboComponentSelectModal } from '@/features/inventory/components/ComboComponentSelectModal'
 
 export default function OpeningStock() {
@@ -30,9 +30,14 @@ export default function OpeningStock() {
     // Mobile View Details Modal State
     const [viewDetailsItem, setViewDetailsItem] = useState<OpeningStockType | null>(null)
 
-    // Load history on mount
+    // Products State
+    const [productOptions, setProductOptions] = useState<any[]>([])
+    const [isLoadingProducts, setIsLoadingProducts] = useState(false)
+
+    // Load history and products on mount
     useEffect(() => {
         fetchHistory()
+        loadProducts()
     }, [])
 
     const fetchHistory = async () => {
@@ -46,19 +51,23 @@ export default function OpeningStock() {
         }
     }
 
-    // Product Search Handler
-    const loadProductOptions = async (inputValue: string) => {
-        const { products } = await getProducts({
-            search: inputValue,
-            limit: 20,
-            productType: 'all' // We fetch all to check type client-side for the specific warning requirement
-        })
-
-        return products.map(product => ({
-            value: product.id,
-            label: product.product_name,
-            product_type: product.product_type
-        }))
+    const loadProducts = async () => {
+        setIsLoadingProducts(true)
+        try {
+            const products = await getAllProductOptions()
+            const options = products.map((p: any) => ({
+                value: p.id,
+                label: `${p.product_name} ${p.seller_sku1 ? `(${p.seller_sku1})` : ''}`,
+                product_type: p.product_type,
+                name: p.product_name
+            }))
+            setProductOptions(options)
+        } catch (error) {
+            console.error("Failed to load products", error)
+            toast.error("Failed to load products")
+        } finally {
+            setIsLoadingProducts(false)
+        }
     }
 
     const handleProductChange = (option: any) => {
@@ -67,7 +76,7 @@ export default function OpeningStock() {
             // Show modal instead of warning
             setComboResolving({
                 id: option.value,
-                name: option.label
+                name: option.name || option.label
             })
             // Reset selection to null until component selected
             setSelectedProduct(null)
@@ -104,6 +113,7 @@ export default function OpeningStock() {
             setQuantity('')
             setRemarks('')
             setComboWarning(null)
+            toast.success("Opening stock saved successfully")
 
             // Refresh history
             await fetchHistory()
@@ -121,6 +131,7 @@ export default function OpeningStock() {
         try {
             await deleteOpeningStock(id)
             await fetchHistory()
+            toast.success("Deleted successfully")
         } catch (error: any) {
             alert(`Error deleting: ${error.message}`)
         }
@@ -150,6 +161,7 @@ export default function OpeningStock() {
             await updateOpeningStock(id, editForm)
             setEditingId(null)
             await fetchHistory()
+            toast.success("Updated successfully")
         } catch (error: any) {
             alert(`Error updating: ${error.message}`)
         }
@@ -196,14 +208,26 @@ export default function OpeningStock() {
                     {/* Row 2: Product */}
                     <div>
                         <label className="block text-xs font-bold mb-1 text-gray-700 dark:text-gray-300">Product</label>
-                        <AsyncSelect
-                            cacheOptions
-                            defaultOptions
-                            loadOptions={loadProductOptions}
+                        <Select
+                            options={productOptions}
+                            isLoading={isLoadingProducts}
                             onChange={handleProductChange}
                             value={selectedProduct}
-                            placeholder="Search product..."
+                            placeholder={isLoadingProducts ? "Loading products..." : "Search product..."}
                             className="text-sm"
+                            styles={{
+                                control: (base, state) => ({
+                                    ...base,
+                                    borderColor: state.isFocused ? '#8b5cf6' : '#e5e7eb', // purple-500 if focused (or blue)
+                                    minHeight: '42px',
+                                    borderRadius: '0.375rem',
+                                    backgroundColor: 'white' // Assuming light mode default, dark handling via global CSS usually or verify styles
+                                }),
+                                menu: (base) => ({
+                                    ...base,
+                                    zIndex: 9999
+                                })
+                            }}
                             classNames={{
                                 control: (state) =>
                                     `${state.isFocused ? 'border-purple-500 ring-1 ring-purple-500' : 'border-gray-300 dark:border-zinc-700'} !bg-white dark:!bg-zinc-900 !text-gray-900 dark:!text-white`,
@@ -464,20 +488,9 @@ export default function OpeningStock() {
                             </div>
 
                             {/* Actions */}
-                            {/* Retrying Actions with proper logic */}
                             <div className="grid grid-cols-2 gap-3 pt-2">
                                 <button
                                     onClick={() => {
-                                        // Enable specialized mobile edit mode or just reuse desktop edit if visible?
-                                        // Since cols are hidden, we MUST show inputs in modal or unhide cols.
-                                        // Let's keep it simple: Click edit -> Close modal -> Scroll to top form populated? No that's Add.
-                                        // Let's enable inline edit, but we need to see the fields. 
-                                        // I will implement a "Quick Edit" inside this modal itself in a future step if needed.
-                                        // For now, I'll wire it to `startEdit` but this assumes rows are visible.
-                                        // Wait, the user said "product name and quantity" are visible. 
-                                        // Quantity IS visible. So Quantity edit will work! 
-                                        // Remarks edit won't work as it's hidden.
-                                        // I'll leave the button here.
                                         startEdit(viewDetailsItem)
                                         setViewDetailsItem(null)
                                     }}
@@ -514,7 +527,8 @@ export default function OpeningStock() {
                         setComboResolving(null)
                         setSelectedProduct({
                             value: component.id,
-                            label: component.product_name
+                            label: component.product_name,
+                            name: component.product_name
                         })
                         setRemarks(prev => `${prev ? prev + '. ' : ''}Resolved from ${comboResolving.name}`)
                     }}

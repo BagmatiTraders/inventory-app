@@ -747,7 +747,7 @@ export default function DarazSalesEntryPage() {
 
                         <Link
                             href="/dashboard/sales/daraz"
-                            className="flex items-center gap-1 px-2 py-1 text-[15px] bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700 rounded transition-colors whitespace-nowrap"
+                            className="hidden md:flex items-center gap-1 px-2 py-1 text-[15px] bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700 rounded transition-colors whitespace-nowrap"
                         >
                             <ArrowLeft size={11} />
                             Back to Sales
@@ -798,7 +798,7 @@ export default function DarazSalesEntryPage() {
                     {/* Awb Unprint Button */}
                     <button
                         onClick={() => setUnprintedOnly(!unprintedOnly)}
-                        className={`flex items-center gap-1 px-2 py-1 text-[15px] border rounded transition-colors whitespace-nowrap ${unprintedOnly
+                        className={`hidden md:flex items-center gap-1 px-2 py-1 text-[15px] border rounded transition-colors whitespace-nowrap ${unprintedOnly
                             ? 'bg-red-50 border-red-200 text-red-700 dark:bg-red-900/20 dark:border-red-800 dark:text-red-400 font-medium'
                             : 'hover:bg-gray-50 dark:border-zinc-700 dark:hover:bg-zinc-800 dark:text-gray-300'
                             }`}
@@ -864,7 +864,7 @@ export default function DarazSalesEntryPage() {
                     <div className="ml-auto flex items-center gap-2">
                         <Link
                             href="/dashboard/sales/daraz/dashboard?from=sales-entry"
-                            className="flex items-center gap-1 px-2 py-1 text-[15px] bg-purple-600 hover:bg-purple-700 text-white rounded transition-colors whitespace-nowrap"
+                            className="hidden md:flex items-center gap-1 px-2 py-1 text-[15px] bg-purple-600 hover:bg-purple-700 text-white rounded transition-colors whitespace-nowrap"
                         >
                             <List size={11} />
                             Sales Dashboard

@@ -648,68 +648,12 @@ export function OrderStatusSyncTable() {
 
 // Separate component for Quick View logic to keep main component clean
 
+// Separate component for Quick View logic to keep main component clean
+
 function QuickViewFab({ sellerAccounts }: { sellerAccounts: string[] }) {
     const [isOpen, setIsOpen] = useState(false)
     const [selectedAccount, setSelectedAccount] = useState<string | null>(null)
     const [summaryData, setSummaryData] = useState<Record<string, any> | null>(null)
-
-    // Animation States
-    const [scaleY, setScaleY] = useState(1)
-    const [translateX, setTranslateX] = useState(0)
-    const [translateY, setTranslateY] = useState(0)
-    const nextLookRef = useRef<'x' | 'y'>('x')
-
-    // Complex Eye Animation Loop
-    useEffect(() => {
-        let timeoutId: NodeJS.Timeout
-
-        const runAnimationSequence = async () => {
-            // 1. Blink Closed
-            setScaleY(0.1)
-            await new Promise(r => setTimeout(r, 150))
-
-            // 2. Blink Open
-            setScaleY(1)
-            await new Promise(r => setTimeout(r, 300))
-
-            // 3. Look Animation
-            if (nextLookRef.current === 'x') {
-                // Look Left
-                setTranslateX(-4)
-                await new Promise(r => setTimeout(r, 250))
-                // Look Right
-                setTranslateX(4)
-                await new Promise(r => setTimeout(r, 250))
-                // Back to Center
-                setTranslateX(0)
-
-                // Set next turn to Y
-                nextLookRef.current = 'y'
-            } else {
-                // Look Up
-                setTranslateY(-4)
-                await new Promise(r => setTimeout(r, 250))
-                // Look Down
-                setTranslateY(4)
-                await new Promise(r => setTimeout(r, 250))
-                // Back to Center
-                setTranslateY(0)
-
-                // Set next turn to X
-                nextLookRef.current = 'x'
-            }
-
-            // 4. Schedule next sequence (Random 3s - 6s)
-            const nextRunDelay = Math.random() * 3000 + 3000
-            timeoutId = setTimeout(runAnimationSequence, nextRunDelay)
-        }
-
-        // Start initial delay
-        timeoutId = setTimeout(runAnimationSequence, 2000)
-
-        // Cleanup
-        return () => clearTimeout(timeoutId)
-    }, [])
 
     // Fetch summary data when modal opens
     const handleOpen = async () => {
@@ -737,21 +681,12 @@ function QuickViewFab({ sellerAccounts }: { sellerAccounts: string[] }) {
     if (!isOpen) {
         return (
             <div className="md:hidden fixed bottom-20 right-4 z-50 flex items-center justify-center">
-                {/* 3D Button container with pulse ring */}
-                <span className="absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-20 animate-ping duration-[3000ms]"></span>
-
-                {/* Main 3D Button */}
                 <button
                     onClick={handleOpen}
-                    className="relative inline-flex items-center justify-center bg-gradient-to-b from-blue-500 to-blue-600 text-white p-3.5 rounded-full shadow-[0_8px_16px_rgba(37,99,235,0.4)] border-t border-blue-400 active:translate-y-1 transition-all duration-200"
+                    className="flex items-center justify-center bg-blue-600 text-white p-3.5 rounded-full shadow-lg hover:bg-blue-700 active:scale-95 transition-all"
                     title="Quick Status View"
                 >
-                    <Eye
-                        className="h-6 w-6 drop-shadow-md transition-all duration-200 ease-in-out"
-                        style={{
-                            transform: `scaleY(${scaleY}) translate(${translateX}px, ${translateY}px)`
-                        }}
-                    />
+                    <Eye className="h-6 w-6" />
                 </button>
             </div>
         )

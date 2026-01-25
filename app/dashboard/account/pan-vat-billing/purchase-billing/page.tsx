@@ -36,10 +36,10 @@ export default function PurchaseBillingPage() {
     return (
         <div className="flex flex-col h-full bg-gray-50 dark:bg-zinc-900">
             {/* Header */}
-            <div className="hidden md:flex sticky top-0 z-10 bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 px-3 py-1.5 items-center justify-between shadow-sm">
+            <div className="sticky top-0 z-10 bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 px-3 py-2 flex items-center justify-between shadow-sm">
                 <div>
                     <h1 className="text-[17px] font-bold">Purchase Billing</h1>
-                    <p className="text-[13px] text-gray-500 dark:text-gray-400">Manage purchase invoices and details</p>
+                    <p className="text-[13px] text-gray-500 dark:text-gray-400 hidden md:block">Manage purchase invoices and details</p>
                 </div>
                 <div className="flex gap-2">
                     <Link
@@ -53,7 +53,7 @@ export default function PurchaseBillingPage() {
             </div>
 
             {/* Tab Bar */}
-            <div className="hidden md:flex sticky top-[44px] z-10 bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 px-3 py-1.5 shadow-sm items-center justify-between gap-4">
+            <div className="sticky top-[50px] z-10 bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 px-3 py-1.5 shadow-sm flex items-center justify-between gap-4 overflow-x-auto no-scrollbar">
                 <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
                     <button
                         onClick={() => setActiveTab('pan-vat-bill')}

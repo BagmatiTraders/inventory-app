@@ -297,44 +297,35 @@ export function PlanList({ plans, completedProductIds, onPlanUpdated }: PlanList
                                 <div className="pt-1.5 border-t dark:border-zinc-800">
                                     {type === 'pending' && (
                                         <div className="grid grid-cols-2 gap-2">
-                                            {/* Complete Button with Moving Green Border */}
-                                            <div className="relative group overflow-hidden rounded-md p-[1px]">
-                                                <div className="absolute inset-[-100%] animate-[spin_3s_linear_infinite_reverse] bg-[conic-gradient(from_90deg_at_50%_50%,#dcfce7_0%,#16a34a_50%,#dcfce7_100%)]" />
-                                                <button
-                                                    onClick={() => {
-                                                        if (window.confirm("Complete Purchase? This will mark the plan as finished.")) {
-                                                            handleMarkComplete(plan)
-                                                        }
-                                                    }}
-                                                    className="relative w-full py-1.5 bg-white dark:bg-zinc-900 hover:bg-green-50 text-green-700 font-medium text-[10px] rounded flex items-center justify-center gap-1 transition-all"
-                                                >
-                                                    <Check size={12} /> Complete
-                                                </button>
-                                            </div>
+                                            {/* Complete Button */}
+                                            <button
+                                                onClick={() => {
+                                                    if (window.confirm("Complete Purchase? This will mark the plan as finished.")) {
+                                                        handleMarkComplete(plan)
+                                                    }
+                                                }}
+                                                className="w-full py-1.5 bg-green-50 hover:bg-green-100 text-green-700 font-medium text-[10px] rounded flex items-center justify-center gap-1 transition-all border border-green-200"
+                                            >
+                                                <Check size={12} /> Complete
+                                            </button>
 
-                                            {/* Cancel Button with Moving Red Border */}
-                                            <div className="relative group overflow-hidden rounded-md p-[1px]">
-                                                <div className="absolute inset-[-100%] animate-[spin_3s_linear_infinite_reverse] bg-[conic-gradient(from_90deg_at_50%_50%,#fee2e2_0%,#dc2626_50%,#fee2e2_100%)]" />
-                                                <button
-                                                    onClick={() => handleMarkCancel(plan)}
-                                                    className="relative w-full py-1.5 bg-white dark:bg-zinc-900 hover:bg-red-50 text-red-600 font-medium text-[10px] rounded flex items-center justify-center gap-1 transition-all"
-                                                >
-                                                    Cancel
-                                                </button>
-                                            </div>
+                                            {/* Cancel Button */}
+                                            <button
+                                                onClick={() => handleMarkCancel(plan)}
+                                                className="w-full py-1.5 bg-red-50 hover:bg-red-100 text-red-600 font-medium text-[10px] rounded flex items-center justify-center gap-1 transition-all border border-red-200"
+                                            >
+                                                Cancel
+                                            </button>
                                         </div>
                                     )}
 
                                     {type === 'complete' && (
-                                        <div className="relative group overflow-hidden rounded-full p-[1px]">
-                                            <div className="absolute inset-[-100%] animate-[spin_5s_linear_infinite] bg-[conic-gradient(from_0deg_at_50%_50%,#dcfce7_0%,#16a34a_50%,#dcfce7_100%)]" />
-                                            <button
-                                                onClick={() => handleOpenPurchaseModal(plan)}
-                                                className="relative w-full py-1.5 bg-white dark:bg-zinc-900 hover:bg-green-50 text-green-700 font-bold text-[10px] rounded-full flex items-center justify-center gap-1 transition-all"
-                                            >
-                                                Add Purchase
-                                            </button>
-                                        </div>
+                                        <button
+                                            onClick={() => handleOpenPurchaseModal(plan)}
+                                            className="w-full py-1.5 bg-green-600 hover:bg-green-700 text-white font-bold text-[10px] rounded-full flex items-center justify-center gap-1 transition-all shadow-sm"
+                                        >
+                                            Add Purchase
+                                        </button>
                                     )}
 
                                     {type === 'purchased' && (

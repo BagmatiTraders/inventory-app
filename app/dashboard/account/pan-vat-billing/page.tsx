@@ -32,7 +32,7 @@ export default function PanVatBillingPage() {
             <div className="bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 px-4 py-3 shadow-md sticky top-0 z-10 flex items-center gap-3">
                 <Link
                     href="/dashboard/account"
-                    className="p-1 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-md transition-colors text-gray-600 dark:text-gray-400"
+                    className="p-1 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-md transition-colors text-gray-600 dark:text-gray-400 hidden md:block"
                 >
                     <ArrowLeft className="h-5 w-5" />
                 </Link>

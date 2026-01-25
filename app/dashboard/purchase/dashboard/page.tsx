@@ -66,7 +66,7 @@ export default function PurchaseDashboardSubPage() {
                             }`}
                     >
                         <FileStack size={12} />
-                        Daily Purchase List
+                        Purchase List
                     </button>
                     <button
                         onClick={() => setActiveTab('buy-sell')}

@@ -2,10 +2,10 @@
 
 import { useState, useEffect } from 'react'
 import { Calendar, Save, Upload, Download, Search, AlertTriangle, Trash2, Edit2, X, Check, PenTool } from 'lucide-react'
-import AsyncSelect from 'react-select/async'
-import { getProducts } from '@/features/inventory/actions/product-actions'
+import Select from 'react-select'
+import { getAllProductOptions } from '@/features/inventory/actions/product-actions'
 import { saveManualAdjustment, getManualAdjustments, deleteManualAdjustment, updateManualAdjustment, ManualAdjustment as ManualAdjustmentType } from '@/features/inventory/actions/stock-adjustment-actions'
-
+import { toast } from 'sonner'
 import { ComboComponentSelectModal } from '@/features/inventory/components/ComboComponentSelectModal'
 
 export default function ManualAdjustment() {
@@ -29,9 +29,14 @@ export default function ManualAdjustment() {
     // Mobile View Details Modal State
     const [viewDetailsItem, setViewDetailsItem] = useState<ManualAdjustmentType | null>(null)
 
-    // Load history on mount
+    // Products State
+    const [productOptions, setProductOptions] = useState<any[]>([])
+    const [isLoadingProducts, setIsLoadingProducts] = useState(false)
+
+    // Load history and products on mount
     useEffect(() => {
         fetchHistory()
+        loadProducts()
     }, [])
 
     const fetchHistory = async () => {
@@ -45,26 +50,30 @@ export default function ManualAdjustment() {
         }
     }
 
-    // Product Search Handler
-    const loadProductOptions = async (inputValue: string) => {
-        const { products } = await getProducts({
-            search: inputValue,
-            limit: 20,
-            productType: 'all'
-        })
-
-        return products.map(product => ({
-            value: product.id,
-            label: product.product_name,
-            product_type: product.product_type
-        }))
+    const loadProducts = async () => {
+        setIsLoadingProducts(true)
+        try {
+            const products = await getAllProductOptions()
+            const options = products.map((p: any) => ({
+                value: p.id,
+                label: `${p.product_name} ${p.seller_sku1 ? `(${p.seller_sku1})` : ''}`,
+                product_type: p.product_type,
+                name: p.product_name
+            }))
+            setProductOptions(options)
+        } catch (error) {
+            console.error("Failed to load products", error)
+            toast.error("Failed to load products")
+        } finally {
+            setIsLoadingProducts(false)
+        }
     }
 
     const handleProductChange = (option: any) => {
         if (option?.product_type === 'combo') {
             setComboResolving({
                 id: option.value,
-                name: option.label
+                name: option.name || option.label
             })
             setSelectedProduct(null)
             return
@@ -101,6 +110,7 @@ export default function ManualAdjustment() {
             setSelectedProduct(null)
             setQuantity('')
             setReason('')
+            toast.success("Manual adjustment saved successfully")
 
             // Refresh history
             await fetchHistory()
@@ -118,6 +128,7 @@ export default function ManualAdjustment() {
         try {
             await deleteManualAdjustment(id)
             await fetchHistory()
+            toast.success("Deleted successfully")
         } catch (error: any) {
             alert(`Error deleting: ${error.message}`)
         }
@@ -147,6 +158,7 @@ export default function ManualAdjustment() {
             await updateManualAdjustment(id, editForm)
             setEditingId(null)
             await fetchHistory()
+            toast.success("Updated successfully")
         } catch (error: any) {
             alert(`Error updating: ${error.message}`)
         }
@@ -193,14 +205,26 @@ export default function ManualAdjustment() {
                     {/* Row 2: Product */}
                     <div>
                         <label className="block text-xs font-bold mb-1 text-gray-700 dark:text-gray-300">Product</label>
-                        <AsyncSelect
-                            cacheOptions
-                            defaultOptions
-                            loadOptions={loadProductOptions}
+                        <Select
+                            options={productOptions}
+                            isLoading={isLoadingProducts}
                             onChange={handleProductChange}
                             value={selectedProduct}
-                            placeholder="Search product..."
+                            placeholder={isLoadingProducts ? "Loading products..." : "Search product..."}
                             className="text-sm"
+                            styles={{
+                                control: (base, state) => ({
+                                    ...base,
+                                    borderColor: state.isFocused ? '#9333ea' : '#e5e7eb', // purple-600 if focused
+                                    minHeight: '42px',
+                                    borderRadius: '0.375rem',
+                                    backgroundColor: 'white'
+                                }),
+                                menu: (base) => ({
+                                    ...base,
+                                    zIndex: 9999
+                                })
+                            }}
                             classNames={{
                                 control: (state) =>
                                     `${state.isFocused ? 'border-purple-500 ring-1 ring-purple-500' : 'border-gray-300 dark:border-zinc-700'} !bg-white dark:!bg-zinc-900 !text-gray-900 dark:!text-white`,
@@ -486,7 +510,8 @@ export default function ManualAdjustment() {
                         setComboResolving(null)
                         setSelectedProduct({
                             value: component.id,
-                            label: component.product_name
+                            label: component.product_name,
+                            name: component.product_name
                         })
                         setReason(prev => `${prev ? prev + '. ' : ''}Resolved from ${comboResolving.name}`)
                     }}

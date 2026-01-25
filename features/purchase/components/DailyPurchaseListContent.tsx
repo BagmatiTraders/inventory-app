@@ -14,12 +14,15 @@ import Link from 'next/link'
 import { Card } from '@/components/ui-shim'
 import DailyPurchaseDetailView from './DailyPurchaseDetailView'
 
+import PurchaseForm from '@/features/purchase/components/PurchaseForm'
+
 interface DailyPurchaseListContentProps {
     isEmbedded?: boolean
 }
 
 export default function DailyPurchaseListContent({ isEmbedded = false }: DailyPurchaseListContentProps) {
     const [viewMode, setViewMode] = useState<'plan' | 'transactions'>('plan')
+    const [isAddPurchaseModalOpen, setIsAddPurchaseModalOpen] = useState(false)
     const searchParams = useSearchParams()
     const queryClient = useQueryClient()
     const searchQuery = searchParams.get('q')?.toLowerCase() || ''
@@ -67,6 +70,15 @@ export default function DailyPurchaseListContent({ isEmbedded = false }: DailyPu
         ])
     }
 
+    const handlePurchaseAdded = async () => {
+        // Refresh data after adding a purchase
+        await Promise.all([
+            queryClient.invalidateQueries({ queryKey: ['today-purchases-for-plan'] }),
+            queryClient.invalidateQueries({ queryKey: ['purchase-details-today'] }),
+            queryClient.invalidateQueries({ queryKey: ['today-purchases'] })
+        ])
+    }
+
     return (
         <div className={`flex flex-col h-full bg-gray-50 dark:bg-zinc-900 ${isEmbedded ? '' : ''}`}>
             {/* Header - Only shown if NOT embedded */}
@@ -89,13 +101,13 @@ export default function DailyPurchaseListContent({ isEmbedded = false }: DailyPu
             )}
 
             {/* Toggle Buttons & Controls */}
-            <div className={`md:sticky z-10 bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 px-3 py-2 shadow-sm ${isEmbedded ? 'top-0' : 'top-0 md:top-[44px]'}`}>
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
-                    {/* Left: View Toggles */}
-                    <div className="flex items-center p-1 bg-gray-100 dark:bg-zinc-800 rounded-lg w-full md:w-auto">
+            <div className={`hidden md:block sticky z-10 bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 px-3 py-2 shadow-sm ${isEmbedded ? 'top-0' : 'top-0'}`}>
+                <div className="flex items-center justify-between gap-3">
+                    {/* Left: View Toggles (Desktop) */}
+                    <div className="flex items-center p-1 bg-gray-100 dark:bg-zinc-800 rounded-lg">
                         <button
                             onClick={() => setViewMode('plan')}
-                            className={`flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-1.5 text-sm font-medium rounded-md transition-all ${viewMode === 'plan'
+                            className={`flex items-center justify-center gap-2 px-4 py-1.5 text-sm font-medium rounded-md transition-all ${viewMode === 'plan'
                                 ? 'bg-white dark:bg-zinc-700 text-blue-600 shadow-sm'
                                 : 'text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
                                 }`}
@@ -105,7 +117,7 @@ export default function DailyPurchaseListContent({ isEmbedded = false }: DailyPu
                         </button>
                         <button
                             onClick={() => setViewMode('transactions')}
-                            className={`flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-1.5 text-sm font-medium rounded-md transition-all ${viewMode === 'transactions'
+                            className={`flex items-center justify-center gap-2 px-4 py-1.5 text-sm font-medium rounded-md transition-all ${viewMode === 'transactions'
                                 ? 'bg-white dark:bg-zinc-700 text-blue-600 shadow-sm'
                                 : 'text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
                                 }`}
@@ -115,22 +127,41 @@ export default function DailyPurchaseListContent({ isEmbedded = false }: DailyPu
                         </button>
                     </div>
 
-                    {/* Right: Actions (Only for Plan View currently) */}
+                    {/* Right: Actions (Only for Plan View currently) - Desktop */}
                     {viewMode === 'plan' && (
                         <div className="flex items-center gap-2">
-                            <div className="w-full md:w-64">
+                            <div className="w-64">
                                 <SearchInput />
                             </div>
-                            <div className="hidden md:block">
-                                <AddPlanModal onPlanAdded={handlePlanAdded} />
-                            </div>
+                            <AddPlanModal onPlanAdded={handlePlanAdded} />
                         </div>
                     )}
                 </div>
             </div>
 
+            {/* Mobile Header Controls */}
+            <div className={`md:hidden sticky top-0 z-10 bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 ${viewMode === 'plan' ? 'block' : 'hidden'}`}>
+                <div className="px-4 py-3 space-y-3">
+                    <div className="flex items-center justify-between relative">
+                        {/* Spacer for centering */}
+                        <div className="w-8"></div>
+                        <h1 className="text-lg font-bold">Daily Purchases</h1>
+                        {/* Add Purchase Button */}
+                        <button
+                            onClick={() => setIsAddPurchaseModalOpen(true)}
+                            className="p-1.5 text-blue-600 bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/30 rounded-full transition-colors"
+                        >
+                            <Plus size={20} />
+                        </button>
+                    </div>
+                </div>
+                <div className="px-4 pb-3">
+                    <SearchInput />
+                </div>
+            </div>
+
             {/* Content Area */}
-            <div className="flex-1 overflow-auto p-3">
+            <div className={`flex-1 ${viewMode === 'plan' ? 'overflow-auto p-3 pb-24' : 'overflow-hidden'}`}>
                 {viewMode === 'plan' ? (
                     isLoading ? (
                         <div className="flex items-center justify-center h-40">
@@ -156,7 +187,7 @@ export default function DailyPurchaseListContent({ isEmbedded = false }: DailyPu
 
             {/* Mobile Floating Action Button (Plan View Only) */}
             {viewMode === 'plan' && (
-                <div className="md:hidden fixed bottom-6 right-4 z-40">
+                <div className="md:hidden fixed bottom-20 right-4 z-40">
                     <AddPlanModal
                         onPlanAdded={handlePlanAdded}
                         trigger={
@@ -165,6 +196,45 @@ export default function DailyPurchaseListContent({ isEmbedded = false }: DailyPu
                             </button>
                         }
                     />
+                </div>
+            )}
+
+            {/* Mobile Bottom Navigation */}
+            <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-zinc-900 border-t dark:border-zinc-800 z-50 px-2 py-2 pb-safe">
+                <div className="flex items-center gap-2">
+                    <button
+                        onClick={() => setViewMode('plan')}
+                        className={`flex-1 flex flex-col items-center justify-center gap-1 py-2 rounded-lg transition-colors ${viewMode === 'plan'
+                            ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400'
+                            : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-zinc-800'
+                            }`}
+                    >
+                        <FileText size={20} />
+                        <span className="text-xs font-medium">Purchase Plan</span>
+                    </button>
+                    <button
+                        onClick={() => setViewMode('transactions')}
+                        className={`flex-1 flex flex-col items-center justify-center gap-1 py-2 rounded-lg transition-colors ${viewMode === 'transactions'
+                            ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400'
+                            : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-zinc-800'
+                            }`}
+                    >
+                        <ListIcon size={20} />
+                        <span className="text-xs font-medium">Transaction Details</span>
+                    </button>
+                </div>
+            </div>
+
+            {/* Add Purchase Modal */}
+            {isAddPurchaseModalOpen && (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4 animate-in fade-in duration-200">
+                    <div className="w-full max-w-3xl h-[80vh] bg-white dark:bg-zinc-900 rounded-lg shadow-xl overflow-hidden animate-in zoom-in-95 duration-200">
+                        <PurchaseForm
+                            onClose={() => setIsAddPurchaseModalOpen(false)}
+                            onSuccess={handlePurchaseAdded}
+                            showExtraFields={true} // Assuming full entry form is desired as per "Purchase Entry" page
+                        />
+                    </div>
                 </div>
             )}
         </div>

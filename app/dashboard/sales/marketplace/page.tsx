@@ -117,15 +117,26 @@ export default function MarketplaceSalesEntryPage() {
             {/* Compact Header */}
             <div className="z-10 bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 px-3 py-1.5 shadow-sm">
                 <div className="flex items-center justify-between gap-2 flex-wrap">
-                    {/* Left: Title Group */}
-                    <div className="hidden md:block">
-                        <h1 className="text-[18px] font-bold">Marketplace Sales</h1>
-                        <p className="text-[14px] text-gray-500 dark:text-gray-400">Sales Entry</p>
+                    {/* Left: Title Group & Mobile Notification */}
+                    <div className="flex items-center gap-2">
+                        {/* Mobile Notification (Left Aligned) */}
+                        <div className="md:hidden">
+                            <MarketplaceNotificationBell align="left" />
+                        </div>
+
+                        {/* Desktop Title */}
+                        <div className="hidden md:block">
+                            <h1 className="text-[18px] font-bold">Marketplace Sales</h1>
+                            <p className="text-[14px] text-gray-500 dark:text-gray-400">Sales Entry</p>
+                        </div>
                     </div>
 
                     {/* Right: Actions Group (Import/Export + Back) */}
                     <div className="flex items-center gap-2">
-                        <MarketplaceNotificationBell />
+                        {/* Desktop Notification (Right Aligned) */}
+                        <div className="hidden md:block">
+                            <MarketplaceNotificationBell align="right" />
+                        </div>
                         <button
                             onClick={() => setIsImportModalOpen(true)}
                             className="flex items-center gap-2 px-3 py-1 text-[15px] border dark:border-zinc-700 hover:bg-gray-50 dark:hover:bg-zinc-800 rounded transition-colors dark:text-gray-50 whitespace-nowrap hidden md:flex"
@@ -143,7 +154,7 @@ export default function MarketplaceSalesEntryPage() {
 
                         <Link
                             href="/dashboard/sales"
-                            className="flex items-center gap-1 px-2 py-1 text-[15px] bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700 rounded transition-colors whitespace-nowrap"
+                            className="flex items-center gap-1 px-2 py-1 text-[15px] bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700 rounded transition-colors whitespace-nowrap hidden md:flex"
                         >
                             <ArrowLeft size={11} />
                             Back to Sales
@@ -161,7 +172,7 @@ export default function MarketplaceSalesEntryPage() {
                         <Search className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400" size={11} />
                         <input
                             type="text"
-                            placeholder="Search orders, customer..."
+                            placeholder="Search orders..."
                             value={searchInput}
                             onChange={(e) => setSearchInput(e.target.value)}
                             onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
@@ -178,20 +189,20 @@ export default function MarketplaceSalesEntryPage() {
                         )}
                     </div>
 
-                    {/* Action Buttons */}
+                    {/* Action Buttons - Desktop */}
                     <button
                         onClick={() => setIsModalOpen(true)}
-                        className="flex items-center gap-1 px-2 py-1 text-[15px] bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors whitespace-nowrap"
+                        className="items-center gap-1 px-2 py-1 text-[15px] bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors whitespace-nowrap hidden md:flex"
                     >
                         <Plus size={11} />
                         Add
                     </button>
 
-                    {/* Right Aligned Navigation Group */}
+                    {/* Right Aligned Navigation Group - Desktop */}
                     <div className="ml-auto flex items-center gap-2">
                         <Link
                             href="/dashboard/sales/marketplace/dashboard"
-                            className="flex items-center gap-1 px-2 py-1 text-[15px] bg-purple-600 hover:bg-purple-700 text-white rounded transition-colors whitespace-nowrap"
+                            className="items-center gap-1 px-2 py-1 text-[15px] bg-purple-600 hover:bg-purple-700 text-white rounded transition-colors whitespace-nowrap hidden md:flex"
                         >
                             <List size={11} />
                             Sales Dashboard
@@ -201,9 +212,45 @@ export default function MarketplaceSalesEntryPage() {
                 </div>
             </div>
 
-            {/* Orders Table */}
-            <div className="flex-1 overflow-auto px-2 md:px-3 py-2 md:py-3">
-                <Card className="overflow-hidden">
+            {/* Orders Table / Mobile List */}
+            <div className="flex-1 overflow-auto px-2 md:px-3 py-2 md:py-3 pb-24 md:pb-3">
+
+                {/* Mobile Card List */}
+                <div className="md:hidden space-y-3">
+                    {isLoading ? (
+                        <div className="text-center py-8 text-gray-500">Loading...</div>
+                    ) : !data || data.orders.length === 0 ? (
+                        <div className="text-center py-8 text-gray-500">No orders found.</div>
+                    ) : (
+                        data.orders.map((order: any) => (
+                            <div key={order.id} className="bg-white dark:bg-zinc-900 p-3 rounded-lg border dark:border-zinc-800 shadow-sm relative" onClick={() => setViewingOrder(order)}>
+                                <div className="flex justify-between items-start mb-2">
+                                    <div className="flex flex-col">
+                                        <span className="font-bold text-sm text-blue-600">#{order.sales_id}</span>
+                                        <span className="text-[11px] text-gray-500">{new Date(order.order_date).toLocaleDateString()}</span>
+                                    </div>
+                                    <span className={`px-2 py-0.5 text-[10px] font-bold rounded ${order.order_status === 'Pending' ? 'bg-yellow-100 text-yellow-800' : 'bg-gray-100 text-gray-800'}`}>
+                                        {order.order_status}
+                                    </span>
+                                </div>
+                                <div className="mb-2">
+                                    <div className="font-medium text-sm text-gray-800 dark:text-gray-200">{order.customer_name}</div>
+                                    <div className="text-xs text-gray-500">{order.items?.[0]?.product_name} {order.items?.length > 1 && `+${order.items.length - 1}`}</div>
+                                </div>
+                                <div className="flex justify-between items-center border-t dark:border-zinc-800 pt-2 mt-2">
+                                    <span className="font-bold text-sm">Rs {order.total_amount.toFixed(2)}</span>
+                                    <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
+                                        <button onClick={() => { setEditingOrder(order); setIsEditModalOpen(true); }} className="text-blue-600 text-xs px-2 py-1 bg-blue-50 rounded">Edit</button>
+                                        <button onClick={() => handleDelete(order.id)} className="text-red-600 text-xs px-2 py-1 bg-red-50 rounded">Delete</button>
+                                    </div>
+                                </div>
+                            </div>
+                        ))
+                    )}
+                </div>
+
+                {/* Desktop Table */}
+                <Card className="overflow-hidden hidden md:block">
                     <div className="overflow-x-auto">
                         <table className="w-full text-left">
                             <thead className="bg-gray-50 dark:bg-zinc-800">
@@ -334,6 +381,26 @@ export default function MarketplaceSalesEntryPage() {
                     </div>
                 </Card>
             </div>
+
+            {/* Mobile Footer Navigation */}
+            <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-zinc-900 border-t dark:border-zinc-800 shadow-[0_-2px_10px_rgba(0,0,0,0.1)] z-40 h-16 flex items-center justify-around pb-safe">
+                <div className="flex flex-col items-center justify-center w-full h-full text-blue-600 dark:text-blue-400">
+                    <List size={20} />
+                    <span className="text-[10px] font-medium mt-1">Sales Entry</span>
+                </div>
+                <Link href="/dashboard/sales/marketplace/dashboard" className="flex flex-col items-center justify-center w-full h-full text-gray-500 hover:text-gray-900 dark:hover:text-gray-300">
+                    <List size={20} />
+                    <span className="text-[10px] font-medium mt-1">Dashboard</span>
+                </Link>
+            </div>
+
+            {/* Mobile FAB Add Button */}
+            <button
+                onClick={() => setIsModalOpen(true)}
+                className="md:hidden fixed bottom-20 right-4 h-12 w-12 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-lg flex items-center justify-center z-50 active:scale-95 transition-transform"
+            >
+                <Plus size={24} />
+            </button>
 
             {/* Add Order Modal */}
             {isModalOpen && (

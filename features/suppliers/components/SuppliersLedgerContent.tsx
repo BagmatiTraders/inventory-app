@@ -60,7 +60,7 @@ export default function SuppliersLedgerContent({ isEmbedded = false }: Suppliers
             <div className={`sticky ${!isEmbedded ? 'top-16 md:top-[61px]' : 'top-0'} z-10 bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 px-4 py-3 shadow-sm`}>
                 <div className="flex flex-row gap-2">
                     {/* Fiscal Year Filter */}
-                    <div className="w-[140px] md:w-64 shrink-0">
+                    <div className="hidden md:block w-[140px] md:w-64 shrink-0">
                         <label className="block text-xs font-medium mb-1 text-gray-600 dark:text-gray-400">Financial Year</label>
                         <select
                             value={selectedFiscalYear}
@@ -96,7 +96,7 @@ export default function SuppliersLedgerContent({ isEmbedded = false }: Suppliers
 
             {/* Ledger Table */}
             <div className="flex-1 overflow-auto p-0 md:p-4">
-                <Card className="overflow-hidden bg-white shadow-sm dark:bg-zinc-900 border-y md:border rounded-none md:rounded-lg">
+                <Card className="hidden md:block overflow-hidden bg-white shadow-sm dark:bg-zinc-900 border-y md:border rounded-none md:rounded-lg">
                     <div className="overflow-x-auto">
                         <table className="w-full text-left">
                             <thead className="bg-gray-50 dark:bg-zinc-800 sticky top-0 z-20 shadow-sm">
@@ -159,6 +159,48 @@ export default function SuppliersLedgerContent({ isEmbedded = false }: Suppliers
                         </table>
                     </div>
                 </Card>
+
+                {/* Mobile Card View */}
+                <div className="md:hidden space-y-3 pb-24">
+                    {isLoadingLedger ? (
+                        <div className="text-center p-8 text-gray-500">Loading...</div>
+                    ) : ledgerEntries.length === 0 ? (
+                        <div className="text-center p-8 text-sm text-gray-500">No records found.</div>
+                    ) : (
+                        ledgerEntries.map((entry: any) => (
+                            <Link
+                                key={entry.supplier_id}
+                                href={`/dashboard/suppliers/suppliers-account/${entry.supplier_id}?fiscalYearId=${selectedFiscalYear}`}
+                                className="block bg-white dark:bg-zinc-900 p-3 rounded-lg border shadow-sm active:bg-gray-50 transition-colors"
+                            >
+                                <div className="flex justify-between items-start mb-2">
+                                    <div className="font-medium text-gray-900 dark:text-gray-100 text-[15px]">{entry.supplier_name}</div>
+                                    <div className={`text-[15px] font-bold ${entry.running_balance > 1 ? 'text-red-600' :
+                                        entry.running_balance < -1 ? 'text-green-600' :
+                                            'text-gray-900 dark:text-gray-100'
+                                        }`}>
+                                        Rs {entry.running_balance.toLocaleString('en-NP', { minimumFractionDigits: 0 })}
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-3 gap-2 text-xs border-t pt-2 dark:border-zinc-800">
+                                    <div>
+                                        <div className="text-gray-500">Opening</div>
+                                        <div className="font-medium">Rs {entry.opening_balance.toLocaleString('en-NP', { minimumFractionDigits: 0 })}</div>
+                                    </div>
+                                    <div className="text-center border-l border-r dark:border-zinc-800">
+                                        <div className="text-gray-500">Debit</div>
+                                        <div className="font-medium text-red-600">Rs {entry.debit.toLocaleString('en-NP', { minimumFractionDigits: 0 })}</div>
+                                    </div>
+                                    <div className="text-right">
+                                        <div className="text-gray-500">Credit</div>
+                                        <div className="font-medium text-green-600">Rs {entry.credit.toLocaleString('en-NP', { minimumFractionDigits: 0 })}</div>
+                                    </div>
+                                </div>
+                            </Link>
+                        ))
+                    )}
+                </div>
+
             </div>
         </div>
     )

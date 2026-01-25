@@ -18,6 +18,7 @@ export default function SuppliersListContent({ isEmbedded = false }: SuppliersLi
     const [searchInput, setSearchInput] = useState('')
     const [isModalOpen, setIsModalOpen] = useState(false)
     const [editingSupplier, setEditingSupplier] = useState<any>(null)
+    const [viewingSupplier, setViewingSupplier] = useState<any>(null)
     const queryClient = useQueryClient()
 
     // Fetch suppliers with pagination and search
@@ -104,10 +105,10 @@ export default function SuppliersListContent({ isEmbedded = false }: SuppliersLi
                         </div>
                     </div>
 
-                    {/* Add Supplier Button */}
+                    {/* Add Supplier Button (Desktop) */}
                     <button
                         onClick={() => setIsModalOpen(true)}
-                        className="flex items-center gap-1 px-2 py-1 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors"
+                        className="hidden md:flex items-center gap-1 px-2 py-1 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors"
                     >
                         <Plus size={12} />
                         Add Suppliers
@@ -115,9 +116,9 @@ export default function SuppliersListContent({ isEmbedded = false }: SuppliersLi
                 </div>
             </div>
 
-            {/* Suppliers Table */}
-            <div className="flex-1 overflow-auto px-3 py-3">
-                <Card className="overflow-hidden">
+            {/* Suppliers Table (Desktop) */}
+            <div className="flex-1 overflow-auto px-3 py-3 pb-24 md:pb-3">
+                <Card className="hidden md:block overflow-hidden">
                     <div className="overflow-x-auto">
                         <table className="w-full text-left">
                             <thead className="bg-gray-50 dark:bg-zinc-800">
@@ -188,58 +189,105 @@ export default function SuppliersListContent({ isEmbedded = false }: SuppliersLi
                             </tbody>
                         </table>
                     </div>
+                </Card>
 
-                    {/* Pagination */}
-                    {data && data.pagination.totalPages > 1 && (
-                        <div className="border-t dark:border-zinc-800 px-3 py-2">
-                            <div className="flex items-center justify-center gap-1.5">
-                                <button
-                                    onClick={() => setPage(p => Math.max(1, p - 1))}
-                                    disabled={page === 1}
-                                    className="px-2 py-0.5 text-[13px] border dark:border-zinc-700 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 dark:hover:bg-zinc-800"
-                                >
-                                    Previous
-                                </button>
-
-                                {/* Smart Pagination */}
-                                {Array.from({ length: data.pagination.totalPages }, (_, i) => i + 1)
-                                    .filter(p => {
-                                        return p === 1 ||
-                                            p === data.pagination.totalPages ||
-                                            Math.abs(p - page) <= 1
-                                    })
-                                    .map((p, i, arr) => (
-                                        <div key={p} className="flex items-center gap-1.5">
-                                            {i > 0 && arr[i - 1] !== p - 1 && (
-                                                <span className="px-1 text-[13px] text-gray-400">...</span>
-                                            )}
-                                            <button
-                                                onClick={() => setPage(p)}
-                                                className={`px-2 py-0.5 text-[13px] rounded ${p === page
-                                                    ? 'bg-blue-600 text-white'
-                                                    : 'border dark:border-zinc-700 hover:bg-gray-50 dark:hover:bg-zinc-800'
-                                                    }`}
-                                            >
-                                                {p}
-                                            </button>
-                                        </div>
-                                    ))}
-
-                                <button
-                                    onClick={() => setPage(p => Math.min(data.pagination.totalPages, p + 1))}
-                                    disabled={page === data.pagination.totalPages}
-                                    className="px-2 py-0.5 text-[13px] border dark:border-zinc-700 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 dark:hover:bg-zinc-800"
-                                >
-                                    Next
-                                </button>
+                {/* Mobile Card View */}
+                <div className="md:hidden space-y-3">
+                    {isLoading ? (
+                        <div className="text-center p-4 text-gray-500">Loading suppliers...</div>
+                    ) : !data || data.suppliers.length === 0 ? (
+                        <div className="text-center p-4 text-gray-500">No suppliers found.</div>
+                    ) : (
+                        data.suppliers.map((supplier: any) => (
+                            <div
+                                key={supplier.id}
+                                onClick={() => setViewingSupplier(supplier)}
+                                className="bg-white dark:bg-zinc-900 p-3 rounded-lg border shadow-sm active:bg-gray-50 transition-colors"
+                            >
+                                <div className="font-medium text-gray-900 dark:text-gray-100">{supplier.supplier_name}</div>
+                                <div className="text-xs text-gray-500 mt-1">{supplier.contact_details || 'No contact info'}</div>
                             </div>
-                            <div className="text-center text-xs text-gray-500 mt-1">
-                                Page {page} of {data.pagination.totalPages} ({data.pagination.total} total suppliers)
+                        ))
+                    )}
+                </div>
+
+                {/* Pagination (Common) */}
+                {data && data.pagination.totalPages > 1 && (
+                    <div className="border-t dark:border-zinc-800 px-3 py-2 mt-2 md:mt-0 bg-white dark:bg-zinc-900 md:bg-transparent">
+                        <div className="flex items-center justify-center gap-1.5">
+                            <button
+                                onClick={() => setPage(p => Math.max(1, p - 1))}
+                                disabled={page === 1}
+                                className="px-2 py-0.5 text-[13px] border dark:border-zinc-700 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 dark:hover:bg-zinc-800"
+                            >
+                                Previous
+                            </button>
+                            <span className="text-xs text-gray-500">
+                                Page {page} of {data.pagination.totalPages}
+                            </span>
+                            <button
+                                onClick={() => setPage(p => Math.min(data.pagination.totalPages, p + 1))}
+                                disabled={page === data.pagination.totalPages}
+                                className="px-2 py-0.5 text-[13px] border dark:border-zinc-700 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 dark:hover:bg-zinc-800"
+                            >
+                                Next
+                            </button>
+                        </div>
+                    </div>
+                )}
+            </div>
+
+            {/* Mobile Actions: FAB */}
+            <div className="md:hidden fixed bottom-20 right-4 z-40">
+                <button
+                    onClick={() => setIsModalOpen(true)}
+                    className="h-12 w-12 bg-blue-600 text-white rounded-xl shadow-lg flex items-center justify-center hover:bg-blue-700 active:scale-95 transition-all"
+                >
+                    <Plus size={24} />
+                </button>
+            </div>
+
+            {/* View Box Modal (Mobile) */}
+            {viewingSupplier && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setViewingSupplier(null)}>
+                    <div className="w-full max-w-sm bg-white dark:bg-zinc-900 rounded-lg shadow-xl overflow-hidden" onClick={e => e.stopPropagation()}>
+                        <div className="p-4 border-b dark:border-zinc-800 flex justify-between items-center">
+                            <h3 className="font-bold text-lg">{viewingSupplier.supplier_name}</h3>
+                            <button onClick={() => setViewingSupplier(null)}><X size={20} className="text-gray-500" /></button>
+                        </div>
+                        <div className="p-4 space-y-4">
+                            <div>
+                                <label className="text-xs font-bold text-gray-500 uppercase">Contact Details</label>
+                                <div className="text-sm">{viewingSupplier.contact_details || '-'}</div>
+                            </div>
+                            <div>
+                                <label className="text-xs font-bold text-gray-500 uppercase">Remarks</label>
+                                <div className="text-sm">{viewingSupplier.remarks || '-'}</div>
                             </div>
                         </div>
-                    )}
-                </Card>
-            </div>
+                        <div className="p-4 border-t dark:border-zinc-800 flex gap-2">
+                            <button
+                                onClick={() => {
+                                    setEditingSupplier(viewingSupplier)
+                                    setViewingSupplier(null)
+                                }}
+                                className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-blue-50 text-blue-600 rounded-lg font-medium"
+                            >
+                                <Edit2 size={16} /> Edit
+                            </button>
+                            <button
+                                onClick={() => {
+                                    handleDelete(viewingSupplier.id, viewingSupplier.supplier_name)
+                                    setViewingSupplier(null)
+                                }}
+                                className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-red-50 text-red-600 rounded-lg font-medium"
+                            >
+                                <Trash2 size={16} /> Delete
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Add Supplier Modal */}
             <AddSupplierModal

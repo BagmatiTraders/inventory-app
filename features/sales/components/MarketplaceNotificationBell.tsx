@@ -5,7 +5,7 @@ import { Bell, CheckCheck } from 'lucide-react'
 import { getMarketplaceRedirectNotifications, RedirectNotification } from '@/features/sales/actions/marketplace-notification-actions'
 import { useQuery } from '@tanstack/react-query'
 
-export function MarketplaceNotificationBell() {
+export function MarketplaceNotificationBell({ align = 'right' }: { align?: 'left' | 'right' }) {
     const [isOpen, setIsOpen] = useState(false)
     const [readIds, setReadIds] = useState<string[]>([])
 
@@ -64,6 +64,7 @@ export function MarketplaceNotificationBell() {
             <button
                 onClick={handleToggle}
                 className="relative p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-full transition-colors"
+                title="Notifications"
             >
                 <Bell size={18} />
                 {unreadCount > 0 && (
@@ -74,7 +75,7 @@ export function MarketplaceNotificationBell() {
             </button>
 
             {isOpen && (
-                <div className="absolute right-0 mt-2 w-80 md:w-96 bg-white dark:bg-zinc-900 border dark:border-zinc-800 rounded-lg shadow-xl z-50 overflow-hidden">
+                <div className={`absolute ${align === 'left' ? 'left-0' : 'right-0'} mt-2 w-[85vw] max-w-[320px] md:w-96 md:max-w-none bg-white dark:bg-zinc-900 border dark:border-zinc-800 rounded-lg shadow-xl z-50 overflow-hidden`}>
                     <div className="px-4 py-3 border-b dark:border-zinc-800 bg-gray-50 dark:bg-zinc-800/50 flex justify-between items-center">
                         <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Notifications</h3>
                         <span className="text-xs text-gray-500">
