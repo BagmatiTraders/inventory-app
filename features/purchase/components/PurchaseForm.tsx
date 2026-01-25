@@ -185,7 +185,8 @@ export default function PurchaseForm({ onClose, onSuccess, editMode = false, pur
             ...base,
             backgroundColor: state.isFocused ? '#f3f4f6' : 'white',
             color: 'black'
-        })
+        }),
+        menuPortal: (base: any) => ({ ...base, zIndex: 99999 })
     }
 
     return (

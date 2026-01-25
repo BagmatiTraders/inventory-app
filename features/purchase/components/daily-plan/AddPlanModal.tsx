@@ -292,7 +292,8 @@ export function AddPlanModal({
                                             ...base,
                                             zIndex: 9999,
                                             color: 'black'
-                                        })
+                                        }),
+                                        menuPortal: (base) => ({ ...base, zIndex: 99999 })
                                     }}
                                     menuPortalTarget={document.body}
                                     menuPosition="fixed"
