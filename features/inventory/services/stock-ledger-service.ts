@@ -99,10 +99,7 @@ export async function getStockLedger(page = 1, limit = 100, search = ''): Promis
             purchases,
             darazOrderItems,
             marketplaceOrderItems,
-            storeSalesItems,
-            darazComboSales,
-            marketplaceComboSales,
-            storeComboSales
+            storeSalesItems
         ] = await Promise.all([
             supabase.from('opening_stocks').select('product_id, quantity').in('product_id', chunkIds),
             supabase.from('manual_adjustments').select('product_id, quantity').in('product_id', chunkIds),
@@ -116,45 +113,7 @@ export async function getStockLedger(page = 1, limit = 100, search = ''): Promis
                 .in('product_id', chunkIds),
             supabase.from('store_sales_items')
                 .select('product_id, qty')
-                .in('product_id', chunkIds),
-            supabase.from('daraz_order_items')
-                .select(`
-                    quantity,
-                    order:daraz_orders!inner(order_status),
-                    product:products!inner(
-                        id,
-                        product_combos!product_combos_parent_product_id_fkey(
-                            child_product_id,
-                            quantity
-                        )
-                    )
-                `)
-                .eq('product.product_type', 'combo'),
-            supabase.from('marketplace_order_items')
-                .select(`
-                    quantity,
-                    order:marketplace_orders!inner(order_status),
-                    product:products!inner(
-                        id,
-                        product_combos!product_combos_parent_product_id_fkey(
-                            child_product_id,
-                            quantity
-                        )
-                    )
-                `)
-                .eq('product.product_type', 'combo'),
-            supabase.from('store_sales_items')
-                .select(`
-                    qty,
-                    product:products!inner(
-                        id,
-                        product_combos!product_combos_parent_product_id_fkey(
-                            child_product_id,
-                            quantity
-                        )
-                    )
-                `)
-                .eq('product.product_type', 'combo')
+                .in('product_id', chunkIds)
         ])
 
         allOpeningStocks.push(...(openingStocks.data || []))
@@ -164,10 +123,58 @@ export async function getStockLedger(page = 1, limit = 100, search = ''): Promis
         allDarazOrderItems.push(...(darazOrderItems.data || []))
         allMarketplaceOrderItems.push(...(marketplaceOrderItems.data || []))
         allStoreSalesItems.push(...(storeSalesItems.data || []))
-        allDarazComboSales.push(...(darazComboSales.data || []))
-        allMarketplaceComboSales.push(...(marketplaceComboSales.data || []))
-        allStoreComboSales.push(...(storeComboSales.data || []))
     }
+
+    // 2.1 Fetch Combo Sales ONCE (Global)
+    // Fix: Moved outside the loop to prevent double-counting
+    const [
+        darazComboSales,
+        marketplaceComboSales,
+        storeComboSales
+    ] = await Promise.all([
+        supabase.from('daraz_order_items')
+            .select(`
+                quantity,
+                order:daraz_orders!inner(order_status),
+                product:products!inner(
+                    id,
+                    product_combos!product_combos_parent_product_id_fkey(
+                        child_product_id,
+                        quantity
+                    )
+                )
+            `)
+            .eq('product.product_type', 'combo'),
+        supabase.from('marketplace_order_items')
+            .select(`
+                quantity,
+                order:marketplace_orders!inner(order_status),
+                product:products!inner(
+                    id,
+                    product_combos!product_combos_parent_product_id_fkey(
+                        child_product_id,
+                        quantity
+                    )
+                )
+            `)
+            .eq('product.product_type', 'combo'),
+        supabase.from('store_sales_items')
+            .select(`
+                qty,
+                product:products!inner(
+                    id,
+                    product_combos!product_combos_parent_product_id_fkey(
+                        child_product_id,
+                        quantity
+                    )
+                )
+            `)
+            .eq('product.product_type', 'combo')
+    ])
+
+    allDarazComboSales.push(...(darazComboSales.data || []))
+    allMarketplaceComboSales.push(...(marketplaceComboSales.data || []))
+    allStoreComboSales.push(...(storeComboSales.data || []))
 
     // 3. Calculate Auto Adjust for Component Products
     // When combo products are sold, component products' stock is auto-adjusted

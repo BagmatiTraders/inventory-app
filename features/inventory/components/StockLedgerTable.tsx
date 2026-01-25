@@ -64,15 +64,15 @@ export default function StockLedgerTable({ initialData, initialTotal, initialPag
                     <table className="w-full text-sm text-left">
                         <thead className="bg-gray-50 dark:bg-zinc-800 text-gray-900 dark:text-gray-100 font-medium border-b dark:border-zinc-700 sticky top-0 z-10">
                             <tr>
-                                <th className="px-4 py-3 w-16">S.N</th>
+                                <th className="px-4 py-3 w-16 whitespace-nowrap">S.N</th>
                                 <th className="px-4 py-3 min-w-[250px]">Product Name</th>
-                                <th className="px-4 py-3 text-right">Store Stock</th>
-                                <th className="px-4 py-3 text-right">Auto Adjust</th>
-                                <th className="px-4 py-3 text-right">Damage Stock</th>
-                                <th className="px-4 py-3 text-right">Purchase</th>
-                                <th className="px-4 py-3 text-right text-green-600 dark:text-green-400">Sales</th>
-                                <th className="px-4 py-3 text-right text-red-600 dark:text-red-400">Sales Return</th>
-                                <th className="px-4 py-3 text-right font-bold text-blue-700 dark:text-blue-300">Total Stock</th>
+                                <th className="px-4 py-3 text-right whitespace-nowrap">Store Stock</th>
+                                <th className="px-4 py-3 text-right whitespace-nowrap">Auto Adjust</th>
+                                <th className="px-4 py-3 text-right whitespace-nowrap">Damage Stock</th>
+                                <th className="px-4 py-3 text-right whitespace-nowrap">Purchase</th>
+                                <th className="px-4 py-3 text-right whitespace-nowrap text-green-600 dark:text-green-400">Sales</th>
+                                <th className="px-4 py-3 text-right whitespace-nowrap text-red-600 dark:text-red-400">Sales Return</th>
+                                <th className="px-4 py-3 text-right whitespace-nowrap font-bold text-blue-700 dark:text-blue-300">Total Stock</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100 dark:divide-zinc-700">
@@ -107,25 +107,25 @@ export default function StockLedgerTable({ initialData, initialTotal, initialPag
                                                 {item.product_name}
                                             </Link>
                                         </td>
-                                        <td className="px-4 py-3 text-right font-mono text-gray-700 dark:text-gray-300">
+                                        <td className="px-4 py-3 text-right font-mono text-gray-700 dark:text-gray-300 whitespace-nowrap">
                                             {item.store_stock}
                                         </td>
-                                        <td className="px-4 py-3 text-right font-mono text-purple-600 dark:text-purple-400">
+                                        <td className="px-4 py-3 text-right font-mono text-purple-600 dark:text-purple-400 whitespace-nowrap">
                                             {item.auto_adjust}
                                         </td>
-                                        <td className="px-4 py-3 text-right font-mono text-orange-600 dark:text-orange-400">
+                                        <td className="px-4 py-3 text-right font-mono text-orange-600 dark:text-orange-400 whitespace-nowrap">
                                             {item.damage_stock}
                                         </td>
-                                        <td className="px-4 py-3 text-right font-mono text-gray-700 dark:text-gray-300">
+                                        <td className="px-4 py-3 text-right font-mono text-gray-700 dark:text-gray-300 whitespace-nowrap">
                                             {item.purchase}
                                         </td>
-                                        <td className="px-4 py-3 text-right font-mono font-bold text-green-600 dark:text-green-400">
+                                        <td className="px-4 py-3 text-right font-mono font-bold text-green-600 dark:text-green-400 whitespace-nowrap">
                                             {item.sales}
                                         </td>
-                                        <td className="px-4 py-3 text-right font-mono font-bold text-red-600 dark:text-red-400">
+                                        <td className="px-4 py-3 text-right font-mono font-bold text-red-600 dark:text-red-400 whitespace-nowrap">
                                             {item.sales_return}
                                         </td>
-                                        <td className="px-4 py-3 text-right font-mono font-bold text-blue-700 dark:text-blue-300 bg-blue-50/50 dark:bg-blue-900/10">
+                                        <td className="px-4 py-3 text-right font-mono font-bold text-blue-700 dark:text-blue-300 bg-blue-50/50 dark:bg-blue-900/10 whitespace-nowrap">
                                             {item.total_stock}
                                             {item.product_type === 'combo' && (
                                                 <span className="ml-1 text-xs text-purple-600 dark:text-purple-400">{'{Combo}'}</span>

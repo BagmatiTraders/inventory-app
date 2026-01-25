@@ -43,7 +43,7 @@ export function getProminentStatus(statuses: string[], currentStatus: string = '
 }
 
 export function OrderSyncPageContent({ isEmbedded = false }: { isEmbedded?: boolean }) {
-    const { data: stores, isLoading } = useOnlineStores()
+    const { data: stores, isLoading, isError, error, refetch } = useOnlineStores()
     const searchParams = useSearchParams()
     const router = useRouter()
     const [syncedOrders, setSyncedOrders] = useState<any[]>([])
@@ -274,6 +274,20 @@ export function OrderSyncPageContent({ isEmbedded = false }: { isEmbedded?: bool
                             <div className="flex justify-center p-4">
                                 <RefreshCw className="animate-spin text-gray-400" size={24} />
                             </div>
+                        ) : isError ? (
+                            <div className="text-center py-8 text-red-500 text-[15px]">
+                                <p>Failed to load online stores.</p>
+                                <p className="text-xs text-gray-500 mt-1 mb-3">{(error as Error)?.message || 'Unknown error'}</p>
+                                <Button
+                                    onClick={() => refetch()}
+                                    variant="outline"
+                                    size="sm"
+                                    className="gap-2 text-red-600 border-red-200 hover:bg-red-50"
+                                >
+                                    <RefreshCw size={14} />
+                                    Retry
+                                </Button>
+                            </div>
                         ) : stores && stores.length > 0 ? (
                             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
                                 {stores.map((store: any) => (
@@ -462,7 +476,7 @@ export default function OrderSyncPage() {
 }
 
 function StoreCard({ store, onSyncSuccess }: { store: any, onSyncSuccess: (orders: any[]) => void }) {
-    const [status, setStatus] = useState<'idle' | 'linking' | 'syncing' | 'syncing-pending' | 'syncing-shipped' | 'success' | 'error'>('idle')
+    const [status, setStatus] = useState<'idle' | 'linking' | 'syncing' | 'syncing-pending' | 'syncing-shipped' | 'syncing-ready-to-ship' | 'success' | 'error'>('idle')
     const [message, setMessage] = useState('')
 
     const handleConnect = async () => {
@@ -482,11 +496,12 @@ function StoreCard({ store, onSyncSuccess }: { store: any, onSyncSuccess: (order
         }
     }
 
-    const handleSync = async (mode: 'all' | 'pending' | 'shipped') => {
+    const handleSync = async (mode: 'all' | 'pending' | 'shipped' | 'ready_to_ship') => {
         try {
             if (mode === 'all') setStatus('syncing')
             else if (mode === 'pending') setStatus('syncing-pending')
             else if (mode === 'shipped') setStatus('syncing-shipped')
+            else if (mode === 'ready_to_ship') setStatus('syncing-ready-to-ship')
 
             setMessage('')
 
@@ -529,6 +544,7 @@ function StoreCard({ store, onSyncSuccess }: { store: any, onSyncSuccess: (order
     const handleSyncAll = () => handleSync('all')
     const handleSyncPending = () => handleSync('pending')
     const handleSyncShipped = () => handleSync('shipped')
+    const handleSyncReadyToShip = () => handleSync('ready_to_ship')
 
     return (
         <div className="flex flex-col gap-3 p-4 border rounded-lg bg-white dark:bg-zinc-900 shadow-sm border-gray-200 dark:border-zinc-800">
@@ -558,7 +574,7 @@ function StoreCard({ store, onSyncSuccess }: { store: any, onSyncSuccess: (order
                     variant="default"
                     size="sm"
                     className="w-full bg-orange-600 hover:bg-orange-700 text-white"
-                    disabled={status === 'syncing' || status === 'syncing-pending' || status === 'syncing-shipped' || status === 'linking'}
+                    disabled={status.startsWith('syncing') || status === 'linking'}
                 >
                     {status === 'syncing' ? (
                         <RefreshCw className="animate-spin mr-2 h-4 w-4" />
@@ -573,7 +589,7 @@ function StoreCard({ store, onSyncSuccess }: { store: any, onSyncSuccess: (order
                     variant="outline"
                     size="sm"
                     className="w-full text-indigo-700 border-indigo-300 hover:bg-indigo-50 bg-indigo-50/50"
-                    disabled={status === 'syncing' || status === 'syncing-pending' || status === 'syncing-shipped' || status === 'linking'}
+                    disabled={status.startsWith('syncing') || status === 'linking'}
                 >
                     {status === 'syncing-shipped' ? (
                         <RefreshCw className="animate-spin mr-2 h-4 w-4" />
@@ -584,11 +600,26 @@ function StoreCard({ store, onSyncSuccess }: { store: any, onSyncSuccess: (order
                 </Button>
 
                 <Button
+                    onClick={handleSyncReadyToShip}
+                    variant="outline"
+                    size="sm"
+                    className="w-full text-blue-700 border-blue-300 hover:bg-blue-50 bg-blue-50/50"
+                    disabled={status.startsWith('syncing') || status === 'linking'}
+                >
+                    {status === 'syncing-ready-to-ship' ? (
+                        <RefreshCw className="animate-spin mr-2 h-4 w-4" />
+                    ) : (
+                        <RefreshCw className="mr-2 h-4 w-4" />
+                    )}
+                    Sync Ready to Ship Only
+                </Button>
+
+                <Button
                     onClick={handleSyncPending}
                     variant="outline"
                     size="sm"
                     className="w-full text-yellow-700 border-yellow-300 hover:bg-yellow-50 bg-yellow-50/50"
-                    disabled={status === 'syncing' || status === 'syncing-pending' || status === 'syncing-shipped' || status === 'linking'}
+                    disabled={status.startsWith('syncing') || status === 'linking'}
                 >
                     {status === 'syncing-pending' ? (
                         <RefreshCw className="animate-spin mr-2 h-4 w-4" />

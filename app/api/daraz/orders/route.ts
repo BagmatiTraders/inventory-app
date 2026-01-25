@@ -173,7 +173,12 @@ export async function GET(request: NextRequest) {
         }
 
         console.log(`Total orders fetched: ${allOrders.length}`)
-        const orders = allOrders
+
+        // 2.1 Deduplicate Orders (Fix for potential API duplicates)
+        const uniqueOrderMap = new Map()
+        allOrders.forEach(o => uniqueOrderMap.set(String(o.order_id), o))
+        const orders = Array.from(uniqueOrderMap.values())
+        console.log(`Unique orders to process: ${orders.length}`)
 
         // 3. Enrich with Items (Concurrent Fetching with Rate Limiting)
         // Rate limits are often tight (e.g. 5 req/sec). We use chunks of 5 to speed up.
