@@ -191,7 +191,7 @@ export default function PurchaseForm({ onClose, onSuccess, editMode = false, pur
     return (
         <div className="flex flex-col h-full bg-white dark:bg-zinc-900">
             {/* Header */}
-            <div className="flex items-center justify-between px-4 py-3 border-b dark:border-zinc-800">
+            <div className="flex items-center justify-between px-4 py-3 border-b dark:border-zinc-800 shrink-0">
                 <h2 className="text-lg font-semibold">{editMode ? 'Edit Purchase' : 'Add Purchase'}</h2>
                 <button onClick={onClose} className="p-1 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded">
                     <X size={20} />
@@ -199,7 +199,7 @@ export default function PurchaseForm({ onClose, onSuccess, editMode = false, pur
             </div>
 
             {/* Form Content */}
-            <div className="flex-1 overflow-y-auto p-4">
+            <div className="flex-1 overflow-y-auto p-4 pb-20 md:pb-4">
                 <form id="purchase-form" onSubmit={handleSubmit} className="space-y-4 max-w-2xl mx-auto">
 
                     {/* Custom Layout for Buy/Sell Mode (showExtraFields=true) */}
@@ -240,6 +240,8 @@ export default function PurchaseForm({ onClose, onSuccess, editMode = false, pur
                                     className="text-sm"
                                     placeholder={loadingProducts ? "Loading products..." : "Search product..."}
                                     styles={customSelectStyles}
+                                    menuPortalTarget={document.body}
+                                    menuPosition="fixed"
                                 />
                             </div>
 
@@ -290,6 +292,8 @@ export default function PurchaseForm({ onClose, onSuccess, editMode = false, pur
                                         className="text-sm"
                                         placeholder={loadingSuppliers ? "Loading..." : "Select supplier..."}
                                         styles={customSelectStyles}
+                                        menuPortalTarget={document.body}
+                                        menuPosition="fixed"
                                     />
                                 </div>
                                 <div>
@@ -347,6 +351,8 @@ export default function PurchaseForm({ onClose, onSuccess, editMode = false, pur
                                     className="text-sm"
                                     placeholder={loadingProducts ? "Loading products..." : "Search product..."}
                                     styles={customSelectStyles}
+                                    menuPortalTarget={document.body}
+                                    menuPosition="fixed"
                                 />
                             </div>
 
@@ -396,6 +402,8 @@ export default function PurchaseForm({ onClose, onSuccess, editMode = false, pur
                                     className="text-sm"
                                     placeholder={loadingSuppliers ? "Loading..." : "Select supplier..."}
                                     styles={customSelectStyles}
+                                    menuPortalTarget={document.body}
+                                    menuPosition="fixed"
                                 />
                             </div>
 
@@ -432,7 +440,7 @@ export default function PurchaseForm({ onClose, onSuccess, editMode = false, pur
             </div>
 
             {/* Footer Actions */}
-            <div className="px-4 py-3 border-t dark:border-zinc-800 bg-gray-50 dark:bg-zinc-800/50 flex justify-end gap-2">
+            <div className="px-4 py-3 border-t dark:border-zinc-800 bg-gray-50 dark:bg-zinc-800/50 flex justify-end gap-2 fixed bottom-0 left-0 right-0 md:static shrink-0 z-10 w-full md:w-auto">
                 <button
                     type="button"
                     onClick={onClose}

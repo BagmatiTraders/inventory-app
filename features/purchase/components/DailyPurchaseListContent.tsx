@@ -227,8 +227,8 @@ export default function DailyPurchaseListContent({ isEmbedded = false }: DailyPu
 
             {/* Add Purchase Modal */}
             {isAddPurchaseModalOpen && (
-                <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4 animate-in fade-in duration-200">
-                    <div className="w-full max-w-3xl h-[80vh] bg-white dark:bg-zinc-900 rounded-lg shadow-xl overflow-hidden animate-in zoom-in-95 duration-200">
+                <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 md:p-4 animate-in fade-in duration-200">
+                    <div className="w-full max-w-3xl h-full md:h-[80vh] bg-white dark:bg-zinc-900 md:rounded-lg shadow-xl overflow-hidden animate-in zoom-in-95 duration-200">
                         <PurchaseForm
                             onClose={() => setIsAddPurchaseModalOpen(false)}
                             onSuccess={handlePurchaseAdded}

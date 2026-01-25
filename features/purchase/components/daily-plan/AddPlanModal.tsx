@@ -246,15 +246,15 @@ export function AddPlanModal({
             ) : null}
 
             {open && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+                <div className="fixed inset-0 z-50 flex items-center justify-center md:p-4">
                     <div className="absolute inset-0 bg-black/50" onClick={handleClose} />
-                    <div className="relative bg-white dark:bg-zinc-900 rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+                    <div className="relative bg-white dark:bg-zinc-900 md:rounded-lg shadow-xl w-full max-w-2xl h-full md:h-auto md:max-h-[90vh] overflow-hidden flex flex-col">
                         <div className="flex items-center justify-between px-4 py-3 border-b dark:border-zinc-700">
                             <h2 className="text-lg font-bold">Add Daily Purchase Plan</h2>
                             <button onClick={handleClose}><X size={20} className="text-gray-500" /></button>
                         </div>
 
-                        <form onSubmit={handleSubmit} className="p-4 space-y-4 overflow-y-auto flex-1">
+                        <form onSubmit={handleSubmit} className="p-4 space-y-4 overflow-y-auto flex-1 pb-20 md:pb-4">
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-1">
                                     <label className="text-sm font-medium">Date</label>
@@ -294,6 +294,8 @@ export function AddPlanModal({
                                             color: 'black'
                                         })
                                     }}
+                                    menuPortalTarget={document.body}
+                                    menuPosition="fixed"
                                 />
                             </div>
 
@@ -334,7 +336,7 @@ export function AddPlanModal({
                                 )}
                             </div>
 
-                            <div className="flex justify-end gap-3 pt-4 border-t dark:border-zinc-700">
+                            <div className="flex justify-end gap-3 px-4 py-3 border-t dark:border-zinc-700 fixed bottom-0 left-0 right-0 md:static bg-white dark:bg-zinc-900 shrink-0 z-10 w-full md:w-auto">
                                 <button type="button" onClick={handleClose} className="px-4 py-2 text-sm border rounded-md hover:bg-gray-100 dark:hover:bg-zinc-800">Cancel</button>
                                 <button type="submit" disabled={loading} className="px-4 py-2 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2">
                                     {loading && <Loader2 className="h-3 w-3 animate-spin" />}
