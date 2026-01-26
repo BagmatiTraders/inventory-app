@@ -140,16 +140,16 @@ export async function getProductPurchaseStats(productId: string): Promise<Produc
 }
 
 /**
- * Check if product already has a plan for the given date
+ * Check if product already has an active pending plan
  */
-export async function checkProductPlan(productId: string, planDate: string): Promise<boolean> {
+export async function checkActiveProductPlan(productId: string): Promise<boolean> {
     const supabase = await createClient()
 
     const { count } = await supabase
         .from('purchase_plans')
         .select('*', { count: 'exact', head: true })
         .eq('product_id', productId)
-        .eq('plan_date', planDate)
+        .eq('status', 'Pending')
 
     return (count && count > 0) ? true : false
 }
@@ -175,15 +175,15 @@ export async function createPurchasePlan(data: {
 
     if (!user) throw new Error('Not authenticated')
 
-    // Check for duplicate
+    // Check for duplicate pending plan
     const { count } = await supabase
         .from('purchase_plans')
         .select('*', { count: 'exact', head: true })
         .eq('product_id', data.product_id)
-        .eq('plan_date', data.plan_date)
+        .eq('status', 'Pending')
 
     if (count && count > 0) {
-        throw new Error('Didnot add purchase product duplicate')
+        throw new Error('Product Already in Purchase List')
     }
 
     const { error } = await supabase

@@ -22,6 +22,7 @@ interface DashboardContextType {
     isMobileMenuOpen: boolean
     setIsMobileMenuOpen: (isOpen: boolean) => void
     isCollapsed: boolean
+    setHeaderTitle?: (title: string | null) => void
 }
 
 const DashboardContext = createContext<DashboardContextType | undefined>(undefined)
@@ -54,6 +55,7 @@ function DashboardLayout({
     const [isCollapsed, setIsCollapsed] = useState(false)
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
     const [isAddProductModalOpen, setIsAddProductModalOpen] = useState(false)
+    const [headerTitle, setHeaderTitle] = useState<string | null>(null)
     const queryClient = useQueryClient()
     const { isMobileMode } = useMobileMode()
 
@@ -66,12 +68,11 @@ function DashboardLayout({
     return (
         // Temporarily disabled LocationGuard - will re-enable after setup
         // <LocationGuard>
-        <DashboardContext.Provider value={{ isMobileMenuOpen, setIsMobileMenuOpen, isCollapsed }}>
+        <DashboardContext.Provider value={{ isMobileMenuOpen, setIsMobileMenuOpen, isCollapsed, setHeaderTitle }}>
             <div className="flex h-screen bg-gray-100 dark:bg-zinc-900 relative">
                 {/* Mobile Header - Hide for Stock Ledger and other specific pages */}
                 {pathname !== '/dashboard/purchase/daily-purchase-list' &&
                     pathname !== '/dashboard/suppliers/dashboard' &&
-                    pathname !== '/dashboard/suppliers' &&
                     pathname !== '/dashboard/sales/daraz/dashboard' &&
                     !pathname?.includes('/dashboard/inventory/stock-ledger') && (
                         <div className={`md:hidden fixed top-0 left-0 right-0 h-16 bg-white dark:bg-zinc-800 border-b z-30 flex items-center justify-between px-4 transition-all ${isMobileMode ? 'shadow-sm' : ''}`}>
@@ -88,102 +89,114 @@ function DashboardLayout({
 
                             {/* Centered Titles */}
                             <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-10 pointer-events-none">
-                                {pathname === '/dashboard/sales/daraz' && (
-                                    <span className="font-bold text-lg whitespace-nowrap">E-commerce Sales & Orders</span>
-                                )}
-                                {pathname === '/dashboard/sales/marketplace' && (
-                                    <span className="font-bold text-lg whitespace-nowrap">Marketplace Sales & Orders</span>
-                                )}
-                                {pathname === '/dashboard/sales/daraz/sales-entry' && (
-                                    <span className="font-bold text-lg whitespace-nowrap">Order Entry</span>
-                                )}
-                                {pathname === '/dashboard/sales/marketplace/sales-entry' && (
-                                    <span className="font-bold text-lg whitespace-nowrap">Marketplace Sales Entry</span>
-                                )}
-                                {pathname === '/dashboard/sales/daraz/update-status' && (
-                                    <span className="font-bold text-lg whitespace-nowrap">Update Order Status</span>
-                                )}
-                                {pathname === '/dashboard/sales/daraz/dashboard' && (
-                                    <span className="font-bold text-lg whitespace-nowrap">Order Summary</span>
-                                )}
-                                {pathname === '/dashboard/inventory/stock-adjustment' && (
-                                    <span className="font-bold text-lg whitespace-nowrap">Stock Adjustment</span>
-                                )}
-                                {pathname === '/dashboard/inventory/product-list' && (
-                                    <span className="font-bold text-lg whitespace-nowrap">Inventory List</span>
-                                )}
-                                {pathname === '/dashboard/inventory/damaged-stocks' && (
-                                    <span className="font-bold text-lg whitespace-nowrap">Damaged Goods</span>
-                                )}
-                                {pathname === '/dashboard/purchase' && (
-                                    <span className="font-bold text-lg whitespace-nowrap">Purchasing</span>
-                                )}
-                                {pathname === '/dashboard/purchase/purchase-entry' && (
-                                    <span className="font-bold text-lg whitespace-nowrap">Purchase Entry</span>
-                                )}
-                                {pathname === '/dashboard/purchase/all-purchase-list' && (
-                                    <span className="font-bold text-lg whitespace-nowrap">Purchase History</span>
-                                )}
-                                {pathname === '/dashboard/purchase/daily-purchase-list' && (
-                                    <span className="font-bold text-lg whitespace-nowrap">Daily Purchases</span>
-                                )}
-                                {pathname === '/dashboard/purchase/buy-sell-suppliers' && (
-                                    <span className="font-bold text-lg whitespace-nowrap">Vendor Trade Report</span>
-                                )}
-                                {pathname === '/dashboard/suppliers/suppliers-transaction' && (
-                                    <span className="font-bold text-lg whitespace-nowrap">Supplier Transactions</span>
-                                )}
-                                {pathname === '/dashboard/suppliers/suppliers-account' && (
-                                    <span className="font-bold text-lg whitespace-nowrap">Supplier Ledger</span>
-                                )}
-                                {pathname === '/dashboard/sales/daraz/status-sync' && (
-                                    <span className="font-bold text-lg whitespace-nowrap">Order Status Sync</span>
-                                )}
-                                {pathname === '/dashboard/sales/daraz/order-sync' && (
-                                    <span className="font-bold text-lg whitespace-nowrap">Order Sync</span>
-                                )}
-                                {pathname === '/dashboard/profile' && (
-                                    <span className="font-bold text-lg whitespace-nowrap">My Profile</span>
-                                )}
-                                {pathname === '/dashboard/sales/daraz/profit-tracker' && (
-                                    <span className="font-bold text-lg whitespace-nowrap">Profit Tracker</span>
-                                )}
-                                {pathname === '/dashboard/mobile-uploads' && (
-                                    <span className="font-bold text-lg whitespace-nowrap">Field Data Entry</span>
-                                )}
-                                {pathname === '/dashboard/stock-analysis' && (
-                                    <span className="font-bold text-lg whitespace-nowrap">Stock Analysis</span>
-                                )}
-                                {pathname === '/dashboard/account' && (
-                                    <span className="font-bold text-lg whitespace-nowrap">Finance & Accounts</span>
-                                )}
+                                {headerTitle ? (
+                                    <span className="font-bold text-lg whitespace-nowrap">{headerTitle}</span>
+                                ) : (
+                                    <>
 
-                                {/* Default Title */}
-                                {pathname !== '/dashboard/sales/daraz' &&
-                                    pathname !== '/dashboard/sales/marketplace' &&
-                                    pathname !== '/dashboard/sales/daraz/sales-entry' &&
-                                    pathname !== '/dashboard/sales/marketplace/sales-entry' &&
-                                    pathname !== '/dashboard/sales/daraz/update-status' &&
-                                    pathname !== '/dashboard/sales/daraz/dashboard' &&
-                                    pathname !== '/dashboard/inventory/product-list' &&
-                                    pathname !== '/dashboard/inventory/stock-adjustment' &&
-                                    pathname !== '/dashboard/inventory/damaged-stocks' &&
-                                    pathname !== '/dashboard/purchase' &&
-                                    pathname !== '/dashboard/purchase/purchase-entry' &&
-                                    pathname !== '/dashboard/purchase/all-purchase-list' &&
-                                    pathname !== '/dashboard/purchase/daily-purchase-list' &&
-                                    pathname !== '/dashboard/purchase/buy-sell-suppliers' &&
-                                    pathname !== '/dashboard/suppliers/suppliers-transaction' &&
-                                    pathname !== '/dashboard/suppliers/suppliers-account' &&
-                                    pathname !== '/dashboard/sales/daraz/status-sync' &&
-                                    pathname !== '/dashboard/sales/daraz/order-sync' &&
-                                    pathname !== '/dashboard/profile' &&
-                                    pathname !== '/dashboard/sales/daraz/profit-tracker' &&
-                                    pathname !== '/dashboard/mobile-uploads' &&
-                                    pathname !== '/dashboard/stock-analysis' &&
-                                    pathname !== '/dashboard/account' && (
-                                        <span className="font-bold text-lg text-black dark:text-white whitespace-nowrap">BAGMATI TRADERS</span>
-                                    )}
+                                        {pathname === '/dashboard/sales/daraz' && (
+                                            <span className="font-bold text-lg whitespace-nowrap">E-commerce Sales & Orders</span>
+                                        )}
+                                        {pathname === '/dashboard/sales/marketplace' && (
+                                            <span className="font-bold text-lg whitespace-nowrap">Marketplace Sales & Orders</span>
+                                        )}
+                                        {pathname === '/dashboard/sales/daraz/sales-entry' && (
+                                            <span className="font-bold text-lg whitespace-nowrap">Order Entry</span>
+                                        )}
+                                        {pathname === '/dashboard/sales/marketplace/sales-entry' && (
+                                            <span className="font-bold text-lg whitespace-nowrap">Marketplace Sales Entry</span>
+                                        )}
+                                        {pathname === '/dashboard/sales/daraz/update-status' && (
+                                            <span className="font-bold text-lg whitespace-nowrap">Update Order Status</span>
+                                        )}
+                                        {pathname === '/dashboard/sales/daraz/dashboard' && (
+                                            <span className="font-bold text-lg whitespace-nowrap">Order Summary</span>
+                                        )}
+                                        {pathname === '/dashboard/inventory/stock-adjustment' && (
+                                            <span className="font-bold text-lg whitespace-nowrap">Stock Adjustment</span>
+                                        )}
+                                        {pathname === '/dashboard/inventory/product-list' && (
+                                            <span className="font-bold text-lg whitespace-nowrap">Inventory List</span>
+                                        )}
+                                        {pathname === '/dashboard/inventory/damaged-stocks' && (
+                                            <span className="font-bold text-lg whitespace-nowrap">Damaged Goods</span>
+                                        )}
+                                        {pathname === '/dashboard/purchase' && (
+                                            <span className="font-bold text-lg whitespace-nowrap">Purchasing</span>
+                                        )}
+                                        {pathname === '/dashboard/purchase/purchase-entry' && (
+                                            <span className="font-bold text-lg whitespace-nowrap">Purchase Entry</span>
+                                        )}
+                                        {pathname === '/dashboard/purchase/all-purchase-list' && (
+                                            <span className="font-bold text-lg whitespace-nowrap">Purchase History</span>
+                                        )}
+                                        {pathname === '/dashboard/purchase/daily-purchase-list' && (
+                                            <span className="font-bold text-lg whitespace-nowrap">Daily Purchases</span>
+                                        )}
+                                        {pathname === '/dashboard/purchase/buy-sell-suppliers' && (
+                                            <span className="font-bold text-lg whitespace-nowrap">Vendor Trade Report</span>
+                                        )}
+                                        {pathname === '/dashboard/suppliers' && (
+                                            <span className="font-bold text-lg whitespace-nowrap">Supplier Management</span>
+                                        )}
+                                        {pathname === '/dashboard/suppliers/suppliers-transaction' && (
+                                            <span className="font-bold text-lg whitespace-nowrap">Supplier Transactions</span>
+                                        )}
+                                        {pathname === '/dashboard/suppliers/suppliers-account' && (
+                                            <span className="font-bold text-lg whitespace-nowrap">Supplier Ledger</span>
+                                        )}
+                                        {pathname === '/dashboard/sales/daraz/status-sync' && (
+                                            <span className="font-bold text-lg whitespace-nowrap">Order Status Sync</span>
+                                        )}
+                                        {pathname === '/dashboard/sales/daraz/order-sync' && (
+                                            <span className="font-bold text-lg whitespace-nowrap">Order Sync</span>
+                                        )}
+                                        {pathname === '/dashboard/profile' && (
+                                            <span className="font-bold text-lg whitespace-nowrap">My Profile</span>
+                                        )}
+                                        {pathname === '/dashboard/sales/daraz/profit-tracker' && (
+                                            <span className="font-bold text-lg whitespace-nowrap">Profit Tracker</span>
+                                        )}
+                                        {pathname === '/dashboard/mobile-uploads' && (
+                                            <span className="font-bold text-lg whitespace-nowrap">Field Data Entry</span>
+                                        )}
+                                        {pathname === '/dashboard/stock-analysis' && (
+                                            <span className="font-bold text-lg whitespace-nowrap">Stock Analysis</span>
+                                        )}
+                                        {pathname === '/dashboard/account' && (
+                                            <span className="font-bold text-lg whitespace-nowrap">Finance & Accounts</span>
+                                        )}
+
+                                        {/* Default Title */}
+                                        {pathname !== '/dashboard/sales/daraz' &&
+                                            pathname !== '/dashboard/sales/marketplace' &&
+                                            pathname !== '/dashboard/sales/daraz/sales-entry' &&
+                                            pathname !== '/dashboard/sales/marketplace/sales-entry' &&
+                                            pathname !== '/dashboard/sales/daraz/update-status' &&
+                                            pathname !== '/dashboard/sales/daraz/dashboard' &&
+                                            pathname !== '/dashboard/inventory/product-list' &&
+                                            pathname !== '/dashboard/inventory/stock-adjustment' &&
+                                            pathname !== '/dashboard/inventory/damaged-stocks' &&
+                                            pathname !== '/dashboard/purchase' &&
+                                            pathname !== '/dashboard/purchase/purchase-entry' &&
+                                            pathname !== '/dashboard/purchase/all-purchase-list' &&
+                                            pathname !== '/dashboard/purchase/daily-purchase-list' &&
+                                            pathname !== '/dashboard/purchase/buy-sell-suppliers' &&
+                                            pathname !== '/dashboard/suppliers' &&
+                                            pathname !== '/dashboard/suppliers/suppliers-transaction' &&
+                                            pathname !== '/dashboard/suppliers/suppliers-account' &&
+                                            pathname !== '/dashboard/sales/daraz/status-sync' &&
+                                            pathname !== '/dashboard/sales/daraz/order-sync' &&
+                                            pathname !== '/dashboard/profile' &&
+                                            pathname !== '/dashboard/sales/daraz/profit-tracker' &&
+                                            pathname !== '/dashboard/mobile-uploads' &&
+                                            pathname !== '/dashboard/stock-analysis' &&
+                                            pathname !== '/dashboard/account' && (
+                                                <span className="font-bold text-lg text-black dark:text-white whitespace-nowrap">BAGMATI TRADERS</span>
+                                            )}
+                                    
+                                    </>
+                                )}
                             </div>
 
                             {/* Portal Target for Page Actions */}

@@ -8,20 +8,50 @@ import { ArrowLeft, Loader2 } from 'lucide-react'
 import { getSupplierStats, getSupplierDetailedTransactions, LedgerDetailType } from '@/features/suppliers/actions/supplier-ledger-actions'
 import { Card } from '@/components/ui-shim'
 
+import { useDashboard } from '@/app/dashboard/layout'
+import { useEffect } from 'react'
+
 export default function SupplierDetailLedgerPage({ params }: { params: Promise<{ supplierId: string }> }) {
     const { supplierId } = use(params)
     const searchParams = useSearchParams()
     const fiscalYearId = searchParams.get('fiscalYearId') || undefined
+    const paramSupplierName = searchParams.get('supplierName') ? decodeURIComponent(searchParams.get('supplierName')!) : null
+    const { setHeaderTitle } = useDashboard()
 
     // State
     const [activeTab, setActiveTab] = useState<LedgerDetailType>('CASH_BUY')
     const [page, setPage] = useState(1)
+
+    // Set Global Header Title Immediately if param exists
+    useEffect(() => {
+        if (setHeaderTitle) {
+            if (paramSupplierName) {
+                setHeaderTitle(paramSupplierName)
+            }
+        }
+        // Don't clear on cleanup here to avoid flashing, we only update if/when statsData comes
+    }, [setHeaderTitle, paramSupplierName])
 
     // 1. Fetch Stats
     const { data: statsData, isLoading: statsLoading } = useQuery({
         queryKey: ['supplier-stats', supplierId, fiscalYearId],
         queryFn: () => getSupplierStats({ supplierId, fiscalYearId })
     })
+
+    // Update Global Header with fetched name (in case param was missing or wrong)
+    useEffect(() => {
+        if (setHeaderTitle && statsData?.supplierName) {
+            setHeaderTitle(statsData.supplierName)
+        }
+        // Only clear on unmount of the page component
+        return () => {
+            // We can clear it, but layout handles navigation change clearing automatically usually? 
+            // Actually layout doesn't clear automatically unless we tell it. 
+            // But if we navigate away, the next page might set it or clear it.
+            // Best to clear here to be safe.
+            if (setHeaderTitle) setHeaderTitle(null)
+        }
+    }, [setHeaderTitle, statsData?.supplierName])
 
     // 2. Fetch Transactions
     const { data: transData, isLoading: transLoading } = useQuery({
@@ -30,7 +60,7 @@ export default function SupplierDetailLedgerPage({ params }: { params: Promise<{
     })
 
     const stats = statsData?.stats
-    const supplierName = statsData?.supplierName || 'Loading...'
+    const supplierName = statsData?.supplierName || paramSupplierName || 'Loading...'
 
     // Calculate Totals
     const totalDebit = (stats?.cashBuy || 0) + (stats?.cashSell || 0) + (stats?.dueSell || 0) + (stats?.paid || 0)
@@ -51,7 +81,7 @@ export default function SupplierDetailLedgerPage({ params }: { params: Promise<{
     return (
         <div className="flex flex-col h-full bg-gray-50 dark:bg-zinc-900">
             {/* Header */}
-            <div className="sticky top-0 z-10 bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 px-4 py-3 flex items-center justify-between shadow-sm">
+            <div className="hidden md:flex sticky top-0 z-10 bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 px-4 py-3 items-center justify-between shadow-sm">
                 <div className="flex items-center gap-3">
                     <Link
                         href={`/dashboard/suppliers/suppliers-account?fiscalYearId=${fiscalYearId || ''}`}
@@ -68,6 +98,16 @@ export default function SupplierDetailLedgerPage({ params }: { params: Promise<{
                 <div className="text-right">
                     <div className="text-xs text-gray-500 uppercase font-semibold">Running Balance</div>
                     <div className={`text-xl font-bold ${runningBalance > 1 ? 'text-red-600' : runningBalance < -1 ? 'text-green-600' : 'text-gray-900 dark:text-gray-100'}`}>
+                        Rs {runningBalance.toLocaleString('en-NP', { minimumFractionDigits: 2 })}
+                    </div>
+                </div>
+            </div>
+
+            {/* Mobile Running Balance Only (Header is global) */}
+            <div className="md:hidden sticky top-0 bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 px-4 py-2 z-10">
+                <div className="flex justify-between items-center">
+                    <div className="text-xs text-gray-500 uppercase font-semibold">Running Balance</div>
+                    <div className={`text-lg font-bold ${runningBalance > 1 ? 'text-red-600' : runningBalance < -1 ? 'text-green-600' : 'text-gray-900 dark:text-gray-100'}`}>
                         Rs {runningBalance.toLocaleString('en-NP', { minimumFractionDigits: 2 })}
                     </div>
                 </div>

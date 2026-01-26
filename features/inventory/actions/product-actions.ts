@@ -189,7 +189,7 @@ export async function getAllProductOptions() {
 
         const { data, error } = await supabase
             .from('products')
-            .select('id, product_name, seller_sku1, seller_sku2')
+            .select('id, product_name, seller_sku1, seller_sku2, product_type')
             .eq('is_deleted', false) // Only show non-deleted products
             // .eq('status', 'Active') // Removed to show Inactive products too
             .order('product_name', { ascending: true })

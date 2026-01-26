@@ -42,7 +42,15 @@ export default function SuppliersLedgerContent({ isEmbedded = false }: Suppliers
     })
 
     const fiscalYears = fiscalYearsData?.data || []
-    const ledgerEntries = ledgerData?.ledger || []
+
+    // Sort: Suppliers with running balance (pos/neg) come first
+    const ledgerEntries = [...(ledgerData?.ledger || [])].sort((a: any, b: any) => {
+        const aHasBalance = Math.abs(Number(a.running_balance)) > 0
+        const bHasBalance = Math.abs(Number(b.running_balance)) > 0
+
+        if (aHasBalance === bHasBalance) return 0
+        return aHasBalance ? -1 : 1
+    })
 
     return (
         <div className={`flex flex-col h-full bg-gray-50 dark:bg-zinc-900 ${!isEmbedded ? 'pt-16 md:pt-0' : 'overflow-hidden'}`}>
@@ -130,8 +138,9 @@ export default function SuppliersLedgerContent({ isEmbedded = false }: Suppliers
                                         <tr key={entry.supplier_id} className="hover:bg-gray-50 dark:hover:bg-zinc-800/50">
                                             <td className="px-4 py-2 text-sm text-gray-500">{index + 1}</td>
                                             <td className="px-4 py-2 text-sm font-medium text-gray-900 dark:text-gray-100">
+
                                                 <Link
-                                                    href={`/dashboard/suppliers/suppliers-account/${entry.supplier_id}?fiscalYearId=${selectedFiscalYear}`}
+                                                    href={`/dashboard/suppliers/suppliers-account/${entry.supplier_id}?fiscalYearId=${selectedFiscalYear}&supplierName=${encodeURIComponent(entry.supplier_name)}`}
                                                     className="text-blue-600 hover:underline dark:text-blue-400"
                                                 >
                                                     {entry.supplier_name}
@@ -170,7 +179,7 @@ export default function SuppliersLedgerContent({ isEmbedded = false }: Suppliers
                         ledgerEntries.map((entry: any) => (
                             <Link
                                 key={entry.supplier_id}
-                                href={`/dashboard/suppliers/suppliers-account/${entry.supplier_id}?fiscalYearId=${selectedFiscalYear}`}
+                                href={`/dashboard/suppliers/suppliers-account/${entry.supplier_id}?fiscalYearId=${selectedFiscalYear}&supplierName=${encodeURIComponent(entry.supplier_name)}`}
                                 className="block bg-white dark:bg-zinc-900 p-3 rounded-lg border shadow-sm active:bg-gray-50 transition-colors"
                             >
                                 <div className="flex justify-between items-start mb-2">

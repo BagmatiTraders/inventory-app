@@ -37,7 +37,19 @@ export function PlanList({ plans, completedProductIds, onPlanUpdated }: PlanList
     // Dynamic Grouping
     const isPurchased = (plan: PurchasePlan) => completedProductIds.includes(plan.product_id)
 
-    const purchasedPlans = plans.filter(isPurchased)
+    const rawPurchasedPlans = plans.filter(isPurchased)
+
+    // Aggregate purchased plans by product_id
+    const purchasedPlans = Object.values(rawPurchasedPlans.reduce((acc, plan) => {
+        const key = plan.product_id
+        if (!acc[key]) {
+            acc[key] = { ...plan }
+        } else {
+            acc[key].quantity += plan.quantity
+        }
+        return acc
+    }, {} as Record<string, PurchasePlan>))
+
     const pendingPlans = plans.filter(p => p.status === 'Pending' && !isPurchased(p))
     const manualCompletePlans = plans.filter(p => p.status === 'Complete' && !isPurchased(p))
     const cancelPlans = plans.filter(p => p.status === 'Cancel')
@@ -385,8 +397,8 @@ export function PlanList({ plans, completedProductIds, onPlanUpdated }: PlanList
 
             {/* Add Purchase Modal */}
             {purchaseModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-                    <div className="w-full max-w-3xl h-[80vh] bg-white dark:bg-zinc-900 rounded-lg shadow-xl overflow-hidden">
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 md:p-4">
+                    <div className="w-full max-w-3xl h-full md:h-[80vh] bg-white dark:bg-zinc-900 md:rounded-lg shadow-xl overflow-hidden">
                         <PurchaseForm
                             onClose={() => setPurchaseModalOpen(false)}
                             onSuccess={onPurchaseSuccess}

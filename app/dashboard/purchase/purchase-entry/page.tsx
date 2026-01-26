@@ -264,8 +264,8 @@ export default function PurchaseEntryPage() {
             {/* Add Purchase Modal */}
             {
                 isAddModalOpen && (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-                        <div className="w-full max-w-3xl h-[80vh] bg-white dark:bg-zinc-900 rounded-lg shadow-xl overflow-hidden">
+                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 md:p-4">
+                        <div className="w-full max-w-3xl h-full md:h-[80vh] bg-white dark:bg-zinc-900 md:rounded-lg shadow-xl overflow-hidden">
                             <PurchaseForm
                                 onClose={() => setIsAddModalOpen(false)}
                                 onSuccess={() => { }}
@@ -278,8 +278,8 @@ export default function PurchaseEntryPage() {
             {/* Edit Purchase Modal */}
             {
                 editingPurchase && (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-                        <div className="w-full max-w-3xl h-[80vh] bg-white dark:bg-zinc-900 rounded-lg shadow-xl overflow-hidden">
+                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 md:p-4">
+                        <div className="w-full max-w-3xl h-full md:h-[80vh] bg-white dark:bg-zinc-900 md:rounded-lg shadow-xl overflow-hidden">
                             <PurchaseForm
                                 editMode={true}
                                 purchaseData={editingPurchase}

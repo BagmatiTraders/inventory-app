@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Calendar, Save, Upload, Download, Search, AlertTriangle, Trash2, Edit2, X, Check } from 'lucide-react'
+import { Calendar, Save, Upload, Download, Search, AlertTriangle, Trash2, Edit2, X, Check, Layers } from 'lucide-react'
 import Select from 'react-select'
 import { getAllProductOptions } from '@/features/inventory/actions/product-actions'
 import { saveOpeningStock, getOpeningStocks, deleteOpeningStock, updateOpeningStock, OpeningStock as OpeningStockType } from '@/features/inventory/actions/stock-adjustment-actions'
@@ -72,6 +72,8 @@ export default function OpeningStock() {
 
     const handleProductChange = (option: any) => {
         setComboWarning(null)
+        // Check removed as combo is disabled in UI
+        /*
         if (option?.product_type === 'combo') {
             // Show modal instead of warning
             setComboResolving({
@@ -82,6 +84,7 @@ export default function OpeningStock() {
             setSelectedProduct(null)
             return
         }
+        */
         setSelectedProduct(option)
     }
 
@@ -215,6 +218,13 @@ export default function OpeningStock() {
                             value={selectedProduct}
                             placeholder={isLoadingProducts ? "Loading products..." : "Search product..."}
                             className="text-sm"
+                            isOptionDisabled={(option: any) => option.product_type?.toLowerCase() === 'combo'}
+                            formatOptionLabel={(option: any) => (
+                                <div className="flex items-center gap-2">
+                                    {option.product_type?.toLowerCase() === 'combo' && <Layers size={16} className="text-blue-500" />}
+                                    <span>{option.label}</span>
+                                </div>
+                            )}
                             styles={{
                                 control: (base, state) => ({
                                     ...base,

@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { Plus } from 'lucide-react'
-import { checkProductPlan } from '@/features/purchase/actions/plan-actions'
+import { checkActiveProductPlan } from '@/features/purchase/actions/plan-actions'
 import { ProductSelectionModal } from './ProductSelectionModal'
 import { AddPlanModal } from '@/features/purchase/components/daily-plan/AddPlanModal'
 import { toast } from 'sonner'
@@ -56,12 +56,11 @@ export function QuickPlanButton({ order, stockInfo }: QuickPlanButtonProps) {
             return
         }
 
-        const today = new Date().toISOString().split('T')[0]
-        const alreadyPlanned = await checkProductPlan(productId, today)
+        const alreadyPlanned = await checkActiveProductPlan(productId)
 
         if (alreadyPlanned) {
-            toast.error('Product Already Planned', {
-                description: 'This product already has a purchase plan for today.'
+            toast.error('Product Already in Purchase List', {
+                description: 'This product is already in the pending purchase list.'
             })
             return
         }

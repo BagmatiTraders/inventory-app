@@ -29,14 +29,7 @@ export default function SuppliersPage() {
                 </Link>
             </div>
 
-            {/* Header - Mobile (Dynamic Title) */}
-            <div className="md:hidden sticky top-0 z-10 bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 px-4 py-3 shadow-sm flex items-center justify-center">
-                <h1 className="text-lg font-bold">
-                    {activeTab === 'list' && 'Supplier List'}
-                    {activeTab === 'transaction' && 'Suppliers Transaction'}
-                    {activeTab === 'ledger' && 'Supplier Ledger'}
-                </h1>
-            </div>
+
 
             {/* Tab Bar - Desktop Only */}
             <div className="hidden md:block sticky top-0 md:top-[44px] z-10 bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 px-3 py-1.5 shadow-sm overflow-x-auto">

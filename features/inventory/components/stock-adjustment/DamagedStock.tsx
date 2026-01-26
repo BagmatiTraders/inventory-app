@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
-import { Save, Search, Trash2, Edit2, X, AlertTriangle, PenTool, Check, Filter, Plus } from 'lucide-react'
+import { Save, Search, Trash2, Edit2, X, AlertTriangle, PenTool, Check, Filter, Plus, Layers } from 'lucide-react'
 import AsyncSelect from 'react-select/async'
 import { getProducts } from '@/features/inventory/actions/product-actions'
 import { saveDamagedStock, getDamagedStocks, deleteDamagedStock, updateDamagedStock, DamagedStock as DamagedStockType } from '@/features/inventory/actions/damaged-stock-actions'
@@ -216,8 +216,8 @@ export default function DamagedStock() {
                     <button
                         onClick={() => setFilterStatus(prev => prev === 'Damaged' ? 'All' : 'Damaged')}
                         className={`flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg transition-colors border whitespace-nowrap ${filterStatus === 'Damaged'
-                                ? 'bg-red-100 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-300 dark:border-red-800'
-                                : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50 dark:bg-zinc-800 dark:text-gray-300 dark:border-zinc-700'
+                            ? 'bg-red-100 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-300 dark:border-red-800'
+                            : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50 dark:bg-zinc-800 dark:text-gray-300 dark:border-zinc-700'
                             }`}
                     >
                         <Filter size={16} />
@@ -387,6 +387,13 @@ export default function DamagedStock() {
                                     value={selectedProduct}
                                     placeholder="Search product..."
                                     className="text-sm"
+                                    isOptionDisabled={(option: any) => option.product_type?.toLowerCase() === 'combo'}
+                                    formatOptionLabel={(option: any) => (
+                                        <div className="flex items-center gap-2">
+                                            {option.product_type?.toLowerCase() === 'combo' && <Layers size={16} className="text-red-500" />}
+                                            <span>{option.label}</span>
+                                        </div>
+                                    )}
                                     classNames={{
                                         control: (state) => `${state.isFocused ? 'ring-2 ring-red-500 border-red-500' : 'border-gray-300 dark:border-zinc-700'} !bg-white dark:!bg-zinc-800 !text-gray-900 dark:!text-white rounded-lg`,
                                         menu: () => '!bg-white dark:!bg-zinc-900 border border-gray-200 dark:border-zinc-700 shadow-lg',
