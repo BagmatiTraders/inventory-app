@@ -564,6 +564,8 @@ export async function getDailyProfitStats(params: GetOrderReportParams) {
             date: dateRaw, // ISO String
             seller,
             profit: netProfit,
+            revenue: revenue, // Added revenue
+            cost: totalPurchaseCost, // Added cost
             missing: totalPurchaseCost <= 0 ? 1 : 0
         })
     })
@@ -690,19 +692,31 @@ export async function syncOrderPurchaseCost(orderNumber: string) {
             .limit(10000)
 
         // Fetch product types to identify combo products
-        const productIds = products?.map(p => p.product_id).filter(Boolean) || []
-        const { data: productTypes } = await supabase
+        // CRITICAL FIX: Do NOT fetch details for all 10,000 view items. Only fetch for currently linked items.
+        // Fetching 10k IDs causes "Bad Request" (URI too long) from Supabase.
+        // We really only need deep details (product_type) for the items we are processing (linked) to calculate their combo cost.
+        // For search candidates (viewProductIds), we rely on the View's last_price/est_price.
+
+        // const viewProductIds = products?.map(p => p.product_id).filter(Boolean) || [] // CAUSES ERROR
+        const linkedItemIds = itemsToUpdate.map((i: any) => i.product_id).filter(Boolean)
+        const allProductIds = Array.from(new Set(linkedItemIds)) // Only fetch details for ~10-20 items per order
+
+
+        const { data: productDetails, error: pdError } = await supabase
             .from('products')
-            .select('id, product_type')
-            .in('id', productIds)
+            .select('id, product_type, est_price') // Fetch prices too for fallback (removed last_price as it's not in table)
+            .in('id', allProductIds)
 
         const productTypeMap = new Map<string, string>()
-        productTypes?.forEach(pt => {
+        const productDetailsMap = new Map<string, any>()
+
+        productDetails?.forEach(pt => {
             productTypeMap.set(pt.id, pt.product_type)
+            productDetailsMap.set(pt.id, pt)
         })
 
         // Fetch combo components for all combo products
-        const comboProductIds = productTypes?.filter(pt => pt.product_type === 'combo').map(pt => pt.id) || []
+        const comboProductIds = productDetails?.filter(pt => pt.product_type === 'combo').map(pt => pt.id) || []
         const { data: comboComponents } = await supabase
             .from('product_combos')
             .select('parent_product_id, child_product_id, quantity')
@@ -720,7 +734,8 @@ export async function syncOrderPurchaseCost(orderNumber: string) {
             })
         })
 
-        // Fetch est_prices for all child products
+        // Fetch prices (last_price, est_price) for all child products
+        // CRITICAL: We must query the VIEW, not the table, because last_price is often an aggregate calculated in the view.
         const allChildIds = Array.from(new Set(
             Array.from(comboComponentsMap.values())
                 .flat()
@@ -730,13 +745,30 @@ export async function syncOrderPurchaseCost(orderNumber: string) {
         const childPriceMap = new Map<string, number>()
         if (allChildIds.length > 0) {
             const { data: childPrices } = await supabase
-                .from('products')
-                .select('id, est_price, last_price')
-                .in('id', allChildIds)
+                .from('inventory_price_reports_view')
+                .select('product_id, est_price, last_price')
+                .in('product_id', allChildIds)
 
             childPrices?.forEach(cp => {
-                childPriceMap.set(cp.id, cp.last_price || cp.est_price || 0)
+                // Priority for Component Cost: Last Price -> Est Price -> 0
+                childPriceMap.set(cp.product_id, cp.last_price || cp.est_price || 0)
             })
+
+            // Fallback: If view misses some items (e.g. no history at all), check products table for est_price
+            const foundIds = new Set(childPrices?.map(cp => cp.product_id) || [])
+            const missingChildIds = allChildIds.filter(id => !foundIds.has(id))
+
+            if (missingChildIds.length > 0) {
+                const { data: fallbackPrices } = await supabase
+                    .from('products')
+                    .select('id, est_price')
+                    .in('id', missingChildIds)
+
+                fallbackPrices?.forEach(fp => {
+                    // Only have est_price here as last_price wasn't in view
+                    childPriceMap.set(fp.id, fp.est_price || 0)
+                })
+            }
         }
 
         // Build Maps
@@ -754,13 +786,9 @@ export async function syncOrderPurchaseCost(orderNumber: string) {
                     const childPrice = childPriceMap.get(comp.child_product_id) || 0
                     return sum + (comp.quantity * childPrice)
                 }, 0)
-                console.log(`💰 [COMBO COST] ${p.product_name} (${p.product_id}): ${components.length} components = Rs. ${effectivePrice}`)
             } else {
                 // For single products, use last_price or est_price
                 effectivePrice = p.last_price || p.est_price || 0
-                if (productTypeMap.get(p.product_id) === 'combo') {
-                    console.log(`⚠️  [COMBO WARNING] ${p.product_name} is combo but has no components!`)
-                }
             }
 
             const pData = { ...p, effective_price: effectivePrice }
@@ -780,6 +808,8 @@ export async function syncOrderPurchaseCost(orderNumber: string) {
             // Identify best match
             const itemSku = (item.seller_sku || '').toLowerCase().trim()
             const itemName = (item.product_name || '').toLowerCase().trim()
+
+            // detailed_debug_start
 
             // 1. Try SKU Match
             let matchedProduct = skuMap.get(itemSku)
@@ -809,17 +839,36 @@ export async function syncOrderPurchaseCost(orderNumber: string) {
                 updates.push(
                     supabase.from('daraz_order_items').update({ purchase_cost: finalPrice }).eq('id', item.id)
                 )
-            } else if (currentPid && !matchedProduct) {
-                // If already linked but we didn't search/match above, check if it has price in our loaded products
-                const existingProduct = products?.find((p: any) => p.product_id === currentPid)
-                if (existingProduct) {
-                    // Priority: Last -> Est
-                    const price = existingProduct.last_price || existingProduct.est_price || 0
-                    if (price > 0) {
-                        updates.push(
-                            supabase.from('daraz_order_items').update({ purchase_cost: price }).eq('id', item.id)
-                        )
+            } else if (currentPid && (!matchedProduct || finalPrice === 0)) {
+                // If already linked but we didn't search/match above, check if it has price in our loaded details
+                // This handles cases where the product is missing from the View (no history) but exists in DB
+
+                // Check if it's a combo
+                const pType = productTypeMap.get(currentPid)
+                const hasComps = comboComponentsMap.has(currentPid)
+
+                if (pType === 'combo' && hasComps) {
+                    const components = comboComponentsMap.get(currentPid)!
+                    finalPrice = components.reduce((sum, comp) => {
+                        const childPrice = childPriceMap.get(comp.child_product_id) || 0
+                        return sum + (comp.quantity * childPrice)
+                    }, 0)
+                    debugLog.push(`Item (Linked Combo): Calculated Cost Rs. ${finalPrice}`)
+                } else {
+                    // Single Product Fallback
+                    const pd = productDetailsMap.get(currentPid)
+                    if (pd) {
+                        // For single product fallback from 'products' table, we only have est_price
+                        // The view query above handles last_price usually, this is just a backup
+                        finalPrice = pd.est_price || 0
+                        debugLog.push(`Item (Linked Single): Cost Rs. ${finalPrice}`)
                     }
+                }
+
+                if (finalPrice > 0) {
+                    updates.push(
+                        supabase.from('daraz_order_items').update({ purchase_cost: finalPrice }).eq('id', item.id)
+                    )
                 }
             }
         }
@@ -891,10 +940,12 @@ export async function syncSpecificOrders(orderNumbers: string[]) {
     // Limit to 50 to avoid timeouts
     const targets = orderNumbers.slice(0, 50)
     let successCount = 0
+    let debugMsg = ''
 
     await Promise.all(targets.map(async (orderNo) => {
         try {
-            await syncOrderPurchaseCost(orderNo)
+            const res = await syncOrderPurchaseCost(orderNo)
+            if (res && res.debug) debugMsg += (res.debug + '\n')
             successCount++
         } catch (e) {
             console.error(`Specific sync failed for ${orderNo}`, e)
@@ -902,5 +953,5 @@ export async function syncSpecificOrders(orderNumbers: string[]) {
     }))
 
     revalidatePath('/dashboard/sales/daraz/profit-tracker')
-    return { count: successCount, message: `Synced ${successCount} orders.` }
+    return { count: successCount, message: `Synced ${successCount} orders.`, debug: debugMsg }
 }

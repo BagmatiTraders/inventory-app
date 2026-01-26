@@ -38,6 +38,7 @@ export function BulkSyncButton({ orderNumbers = [] }: BulkSyncButtonProps) {
 
             // Show first debug message if available for clarity
             setMessage(`✓ ${result.message}`)
+            // if (result.debug) alert(result.debug) // DEBUG: Show debug info explicitly
 
             // Invalidate and refetch the profit tracker data
             await queryClient.invalidateQueries({ queryKey: ['profit-tracker'] })

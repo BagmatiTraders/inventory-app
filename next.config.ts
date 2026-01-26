@@ -42,6 +42,10 @@ const nextConfig: NextConfig = {
         protocol: 'https',
         hostname: 'shblzjrzulnrsarfxptv.supabase.co',
       },
+      {
+        protocol: 'https',
+        hostname: 'm.media-amazon.com',
+      },
     ],
   },
 };

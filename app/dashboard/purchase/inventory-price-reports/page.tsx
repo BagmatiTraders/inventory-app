@@ -251,6 +251,20 @@ export default function InventoryPriceReportsPage() {
                     <div className="w-8 md:hidden"></div>
                 </div>
 
+                {/* Center Search - Desktop Only */}
+                <div className="hidden md:flex flex-1 justify-center px-4">
+                    <div className="relative w-full max-w-md">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                        <input
+                            type="text"
+                            placeholder="Search products..."
+                            className="w-full pl-9 pr-4 py-2 text-sm border dark:border-zinc-700 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-zinc-800 dark:text-gray-100 placeholder:text-gray-400 font-normal"
+                            value={search}
+                            onChange={(e) => setSearch(e.target.value)}
+                        />
+                    </div>
+                </div>
+
                 <div className="flex items-center gap-2 md:gap-3 w-full md:w-auto">
                     {/* Export Button */}
                     <button
@@ -275,8 +289,8 @@ export default function InventoryPriceReportsPage() {
                         />
                     </label>
 
-                    {/* Search */}
-                    <div className="relative w-full md:w-72">
+                    {/* Search (Mobile Only - kept here, Desktop moved to center) */}
+                    <div className="relative w-full md:hidden">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                         <input
                             type="text"
@@ -411,6 +425,12 @@ export default function InventoryPriceReportsPage() {
                                                     </div>
                                                 </div>
                                             )}
+                                            {/* Combo Price Info Helper */}
+                                            {item.product_type === 'combo' && (
+                                                <div className="md:hidden text-[10px] text-orange-500 text-right mt-0.5">
+                                                    (Sum of components)
+                                                </div>
+                                            )}
                                         </td>
 
                                         <td className="px-4 py-3 text-sm text-right text-gray-600 dark:text-gray-400 hidden md:table-cell">
@@ -444,6 +464,10 @@ export default function InventoryPriceReportsPage() {
                                                         <X size={16} />
                                                     </button>
                                                 </div>
+                                            ) : item.product_type === 'combo' ? (
+                                                <span className="text-gray-400 text-xs italic cursor-help" title="Combo price is calculated from components">
+                                                    Auto-Calc
+                                                </span>
                                             ) : (
                                                 <button
                                                     onClick={() => startEditing(item)}
@@ -461,8 +485,10 @@ export default function InventoryPriceReportsPage() {
                     </table>
                 </div>
 
-                {renderPagination()}
+                {/* renderPagination was here, moving it outside to stick to bottom properly */}
             </div>
+            {/* Footer / Pagination (Outside scroll area) */}
+            {renderPagination()}
         </div>
     )
 }

@@ -115,23 +115,26 @@ function ProfitTrackerContent({ isEmbedded = false }: { isEmbedded?: boolean }) 
 
     // Client-Side Aggregation of Stats
     // We process the raw list from backend to match Frontend/Local Timezone grouping
-    const stats: Record<string, { statsBySeller: Record<string, { profit: number, missing: number }>, totalProfit: number }> = {}
+    const stats: Record<string, { statsBySeller: Record<string, { profit: number, missing: number, revenue: number, cost: number }>, totalProfit: number, totalRevenue: number }> = {}
 
     rawStatsList.forEach((stat: any) => {
         if (!stat.date) return
         const dateKey = format(new Date(stat.date), 'yyyy-MM-dd') // Local Time Grouping
 
         if (!stats[dateKey]) {
-            stats[dateKey] = { statsBySeller: {}, totalProfit: 0 }
+            stats[dateKey] = { statsBySeller: {}, totalProfit: 0, totalRevenue: 0 }
         }
 
         const seller = stat.seller || 'Unknown'
         if (!stats[dateKey].statsBySeller[seller]) {
-            stats[dateKey].statsBySeller[seller] = { profit: 0, missing: 0 }
+            stats[dateKey].statsBySeller[seller] = { profit: 0, missing: 0, revenue: 0, cost: 0 }
         }
 
         stats[dateKey].totalProfit += stat.profit
+        stats[dateKey].totalRevenue += (stat.revenue || 0)
         stats[dateKey].statsBySeller[seller].profit += stat.profit
+        stats[dateKey].statsBySeller[seller].revenue += (stat.revenue || 0)
+        stats[dateKey].statsBySeller[seller].cost += (stat.cost || 0)
         stats[dateKey].statsBySeller[seller].missing += stat.missing
     })
 
@@ -148,6 +151,7 @@ function ProfitTrackerContent({ isEmbedded = false }: { isEmbedded?: boolean }) 
             groups[dateKey] = {
                 orders: [],
                 totalProfit: dayStats.totalProfit || 0,
+                totalRevenue: dayStats.totalRevenue || 0,
                 dateLabel: dateRaw ? format(new Date(dateRaw), 'EEEE, MMMM d, yyyy') : 'Unknown Date',
                 statsBySeller: dayStats.statsBySeller || {}
             }
@@ -293,6 +297,20 @@ function ProfitTrackerContent({ isEmbedded = false }: { isEmbedded?: boolean }) 
                                                                                     Rs. {stats.profit.toLocaleString(undefined, { minimumFractionDigits: 0 })}
                                                                                 </span>
                                                                             </span>
+                                                                            <span className="text-gray-300 dark:text-zinc-700">|</span>
+                                                                            <span className="flex items-center gap-1 w-[180px]">
+                                                                                <span className="text-gray-500">Total Price:</span>
+                                                                                <span className="font-medium text-gray-700 dark:text-gray-300">
+                                                                                    Rs. {(stats.revenue || 0).toLocaleString()}
+                                                                                </span>
+                                                                            </span>
+                                                                            <span className="text-gray-300 dark:text-zinc-700">|</span>
+                                                                            <span className="flex items-center gap-1 w-[180px]">
+                                                                                <span className="text-gray-500">Total Cost:</span>
+                                                                                <span className="font-medium text-gray-700 dark:text-gray-300">
+                                                                                    Rs. {(stats.cost || 0).toLocaleString()}
+                                                                                </span>
+                                                                            </span>
                                                                             {stats.missing > 0 && (
                                                                                 <>
                                                                                     <span className="text-gray-300 dark:text-zinc-700">|</span>
@@ -307,15 +325,14 @@ function ProfitTrackerContent({ isEmbedded = false }: { isEmbedded?: boolean }) 
                                                             </div>
                                                         </div>
                                                     </TableCell>
-                                                    <TableCell className="text-right font-bold py-3 pr-4 text-gray-900 dark:text-gray-100 align-top">
-                                                        <div className="flex flex-col items-end">
-                                                            <span className="text-xs text-gray-500 font-normal uppercase">Total Profit</span>
+                                                    <TableCell colSpan={2} className="text-right font-bold py-3 pr-4 text-gray-900 dark:text-gray-100 align-top">
+                                                        <div className="flex items-center justify-end gap-2 h-full min-h-[28px]">
+                                                            <span className="text-xs text-gray-500 font-normal uppercase">TP :</span>
                                                             <span className={`${group.totalProfit > 0 ? 'text-green-600' : 'text-red-600'}`}>
                                                                 Rs. {group.totalProfit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                                             </span>
                                                         </div>
                                                     </TableCell>
-                                                    <TableCell />
                                                 </TableRow>
 
                                                 {/* Group Rows */}
