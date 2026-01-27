@@ -22,13 +22,13 @@ export function LoginForm() {
     const [isLoading, setIsLoading] = React.useState(false)
     const [error, setError] = React.useState<string | null>(null)
     const [showBiometric, setShowBiometric] = React.useState(false)
-    const [debugMobile, setDebugMobile] = React.useState(false)
+
 
     const [biometricSupported, setBiometricSupported] = React.useState(true)
 
     React.useEffect(() => {
         const isMobile = isMobileApp()
-        setDebugMobile(isMobile)
+
 
         if (isMobile) {
             // Check if the browser environment supports WebAuthn
