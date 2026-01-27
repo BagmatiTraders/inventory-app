@@ -181,35 +181,7 @@ export function LoginForm() {
                 </CardContent>
             </Card>
 
-            <p>Is Mobile: {debugMobile ? 'YES' : 'NO'}</p>
-            <p className="break-all">{typeof window !== 'undefined' ? window.navigator.userAgent : ''}</p>
-            <button
-                type="button"
-                onClick={() => {
-                    const auth = supabase.auth;
-                    // @ts-ignore
-                    const hasWebAuthn = typeof auth.signInWithWebAuthn === 'function';
-                    // @ts-ignore
-                    const hasPassword = typeof auth.signInWithPassword === 'function';
-                    const isSecure = typeof window !== 'undefined' && window.isSecureContext;
-                    // @ts-ignore
-                    const hasCreds = typeof navigator.credentials !== 'undefined';
-                    // @ts-ignore
-                    const hasPKC = typeof window.PublicKeyCredential !== 'undefined';
 
-                    alert(
-                        `WebAuthn: ${hasWebAuthn}\n` +
-                        `Password: ${hasPassword}\n` +
-                        `Secure: ${isSecure}\n` +
-                        `Creds: ${hasCreds}\n` +
-                        `PKC: ${hasPKC}\n` +
-                        `Keys: ${Object.keys(auth).filter(k => !k.startsWith('_')).slice(0, 5).join(',')}`
-                    );
-                }}
-                className="mt-2 text-blue-500 underline"
-            >
-                Deep Debug
-            </button>
 
         </>
     )
