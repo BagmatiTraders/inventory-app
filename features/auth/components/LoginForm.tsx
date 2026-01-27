@@ -36,7 +36,7 @@ export function LoginForm() {
         setIsLoading(true)
         setError(null)
         try {
-            // @ts-ignore
+            console.log('🔍 Checking Supabase Auth methods:', Object.keys(supabase.auth))
             const { data, error } = await supabase.auth.signInWithWebAuthn()
 
             if (error) throw error
@@ -165,6 +165,15 @@ export function LoginForm() {
             <div className="mt-4 p-2 text-xs text-gray-400 bg-gray-100 rounded text-center max-w-[350px]">
                 <p>Is Mobile: {debugMobile ? 'YES' : 'NO'}</p>
                 <p className="break-all">{typeof window !== 'undefined' ? window.navigator.userAgent : ''}</p>
+                <button
+                    type="button"
+                    onClick={() => {
+                        alert(Object.keys(supabase.auth).join(', '))
+                    }}
+                    className="mt-2 text-blue-500 underline"
+                >
+                    Show Auth Methods
+                </button>
             </div>
         </>
     )
