@@ -24,11 +24,19 @@ export function LoginForm() {
     const [showBiometric, setShowBiometric] = React.useState(false)
     const [debugMobile, setDebugMobile] = React.useState(false)
 
+    const [biometricSupported, setBiometricSupported] = React.useState(true)
+
     React.useEffect(() => {
         const isMobile = isMobileApp()
         setDebugMobile(isMobile)
+
         if (isMobile) {
-            setShowBiometric(true)
+            // Check if the browser environment supports WebAuthn
+            const isSupported = typeof window !== 'undefined' &&
+                !!window.PublicKeyCredential;
+
+            setBiometricSupported(isSupported)
+            setShowBiometric(true) // Show the section, but might display error inside
         }
     }, [])
 
@@ -129,16 +137,25 @@ export function LoginForm() {
                         )}
 
                         {showBiometric && (
-                            <Button
-                                type="button"
-                                variant="outline"
-                                className="w-full border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 mb-2"
-                                onClick={handleBiometricLogin}
-                                disabled={isLoading}
-                            >
-                                <Fingerprint className="mr-2 h-4 w-4" />
-                                Login with Fingerprint
-                            </Button>
+                            <>
+                                {biometricSupported ? (
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        className="w-full border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 mb-2"
+                                        onClick={handleBiometricLogin}
+                                        disabled={isLoading}
+                                    >
+                                        <Fingerprint className="mr-2 h-4 w-4" />
+                                        Login with Fingerprint
+                                    </Button>
+                                ) : (
+                                    <div className="mb-2 p-2 text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded text-center">
+                                        Fingerprint not supported in this App/Browser.
+                                        <br />(Missing PublicKeyCredential)
+                                    </div>
+                                )}
+                            </>
                         )}
 
                         <Button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white" disabled={isLoading}>
