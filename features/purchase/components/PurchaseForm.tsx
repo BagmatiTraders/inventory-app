@@ -441,7 +441,7 @@ export default function PurchaseForm({ onClose, onSuccess, editMode = false, pur
             </div>
 
             {/* Footer Actions */}
-            <div className="px-4 py-3 border-t dark:border-zinc-800 bg-gray-50 dark:bg-zinc-800/50 flex justify-end gap-2 fixed bottom-0 left-0 right-0 md:static shrink-0 z-10 w-full md:w-auto">
+            <div className="px-4 py-3 border-t dark:border-zinc-800 bg-gray-50 dark:bg-zinc-800/50 flex justify-end gap-2 fixed bottom-[60px] md:bottom-0 left-0 right-0 md:static shrink-0 z-[101] w-full md:w-auto">
                 <button
                     type="button"
                     onClick={onClose}

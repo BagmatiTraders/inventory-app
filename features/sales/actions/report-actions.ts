@@ -415,162 +415,36 @@ export async function getProfitTrackerData(params: GetOrderReportParams) {
     }
 }
 
-// Fetch Global Daily Stats (Ignoring Pagination) for Group Headers
+// Output: { date, seller: 'Global', profit, revenue, cost, missing }
+// Note: We aggregate everything to 'Global' seller for this high-level view to simplify,
+// as the view groups by date.
 export async function getDailyProfitStats(params: GetOrderReportParams) {
-    const { search, startDate, endDate, syncStatus = 'all' } = params
+    const { startDate, endDate } = params
     const supabase = await createClient()
 
-
-    // 1. Fetch ALL matching orders (Minimal fields for calculation)
     let query = supabase
-        .from('daraz_orders')
-        .select(`
-            order_number,
-            delivered_at,
-            delivered_by_daraz,
-            daraz_fees,
-            items:daraz_order_items(
-                seller_account,
-                purchase_cost,
-                amount,
-                quantity,
-                product_id,
-                item_status
-            )
-        `)
-        .in('order_status', ['Delivered', 'Customer Return Delivered'])
+        .from('daily_sales_stats_view')
+        .select('*')
+        .order('report_date', { ascending: false })
 
-    // Apply same filters as main table
-    if (search && search.trim()) {
-        query = query.or(`order_number.ilike.%${search.trim()}%,invoice_number.ilike.%${search.trim()}%`)
+    if (startDate) query = query.gte('report_date', startDate)
+    if (endDate) query = query.lte('report_date', endDate)
+
+    const { data, error } = await query
+
+    if (error) {
+        console.error('Error fetching daily stats from view:', error)
+        return []
     }
 
-    if (syncStatus === 'synced') {
-        query = query.not('daraz_fees', 'is', null)
-    } else if (syncStatus === 'not_synced') {
-        query = query.is('daraz_fees', null)
-    }
-
-    if (startDate) query = query.gte('delivered_at', startDate)
-    if (endDate) query = query.lte('delivered_at', endDate)
-
-    let allOrders: any[] = []
-    let page = 0
-    const pageSize = 1000
-    let hasMore = true
-
-
-
-    while (hasMore) {
-        const from = page * pageSize
-        const to = from + pageSize - 1
-
-        const { data, error } = await query.range(from, to)
-
-        if (error) {
-            console.error('Error fetching global stats chunk:', error)
-            break
-        }
-
-        if (data) {
-            allOrders = [...allOrders, ...data]
-
-            if (data.length < pageSize) {
-                hasMore = false
-            } else {
-                page++
-            }
-        } else {
-            hasMore = false
-        }
-
-        // Safety break to prevent infinite loops if DB is huge (max 20k for now)
-        if (allOrders.length > 20000) {
-            break
-        }
-    }
-
-
-
-
-    const data = allOrders
-
-
-
-    // 2. Fetch Prices for calculation if needed (Heavy, but necessary for accuracy)
-    // To optimize, we might rely on what we can get. 
-    // Ideally, cost should be synced. If purchase_cost is missing on item, we trying to fetch is expensive for ALL orders.
-    // Compromise: For "Global Stats", if purchase_cost is missing on item, try to fetch from View in Batch.
-
-    // Collect Product IDs for price lookup
-    const allProductIds = [...new Set(
-        (data || []).flatMap((order: any) =>
-            order.items?.map((item: any) => item.product_id).filter(Boolean) || []
-        )
-    )]
-
-    let priceMap: Record<string, { last_price: number | null, est_price: number | null }> = {}
-
-    // Optimization: Chunk product ID fetching if too many (Supabase might limit IN clause)
-    if (allProductIds.length > 0) {
-        // Fetch in chunks of 1000 if needed, for now assume < 5000 unique products active in filter
-        const { data: priceData } = await supabase
-            .from('inventory_price_reports_view')
-            .select('product_id, last_price, est_price')
-            .in('product_id', allProductIds)
-
-        priceData?.forEach((p: any) => {
-            priceMap[p.product_id] = { last_price: p.last_price, est_price: p.est_price }
-        })
-    }
-
-    // 3. Process & Return Raw List
-    // We return a list of stats so the Frontend can aggregate by its User Local Timezone
-    // to matches the UI grouping perfectly.
-    const statsList: any[] = []
-
-    data?.forEach((order: any) => {
-        // Priority: delivered_by_daraz > delivered_at
-        const dateRaw = order.delivered_by_daraz || order.delivered_at
-        if (!dateRaw) return
-
-        // Filter for Delivered Items
-        const deliveredItems = order.items?.filter((i: any) => {
-            const iStatus = (i.item_status || '').toLowerCase()
-            return iStatus === 'delivered' || (!iStatus && order.order_status === 'Delivered')
-        }) || []
-
-        if (deliveredItems.length === 0) return
-
-        // Calculate Order Profit using ONLY delivered items
-        const totalPurchaseCost = deliveredItems.reduce((sum: number, item: any) => {
-            if (item.purchase_cost && item.purchase_cost > 0) {
-                return sum + (item.purchase_cost * (item.quantity || 1))
-            }
-            const productCode = item.product_id
-            const priceInfo = priceMap[productCode]
-            const purchasePrice = priceInfo?.last_price || priceInfo?.est_price || 0
-            return sum + (purchasePrice * (item.quantity || 1))
-        }, 0) || 0
-
-        const revenue = deliveredItems.reduce((sum: number, item: any) => sum + ((item.amount || 0) * (item.quantity || 1)), 0) || 0
-        const totalFee = order.daraz_fees || 0
-        const otherFee = 30
-        const netProfit = revenue - totalFee - otherFee - totalPurchaseCost
-
-        const seller = deliveredItems[0]?.seller_account || 'Unknown'
-
-        statsList.push({
-            date: dateRaw, // ISO String
-            seller,
-            profit: netProfit,
-            revenue: revenue, // Added revenue
-            cost: totalPurchaseCost, // Added cost
-            missing: totalPurchaseCost <= 0 ? 1 : 0
-        })
-    })
-
-    return statsList
+    return (data || []).map((row: any) => ({
+        date: row.report_date,
+        seller: 'Global', // View aggregates across all sellers
+        profit: Number(row.total_profit || 0),
+        revenue: Number(row.total_revenue || 0),
+        cost: Number(row.total_cost || 0),
+        missing: 0 // View assumes accurate calculation, flag irrelevant for high-level unless we add a col to view
+    }))
 }
 
 // Sync/Lock Purchase Cost for an Order

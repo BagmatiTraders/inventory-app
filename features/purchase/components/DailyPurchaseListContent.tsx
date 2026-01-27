@@ -23,6 +23,7 @@ interface DailyPurchaseListContentProps {
 export default function DailyPurchaseListContent({ isEmbedded = false }: DailyPurchaseListContentProps) {
     const [viewMode, setViewMode] = useState<'plan' | 'transactions'>('plan')
     const [isAddPurchaseModalOpen, setIsAddPurchaseModalOpen] = useState(false)
+    const [isPlanModalOpen, setIsPlanModalOpen] = useState(false)
     const searchParams = useSearchParams()
     const queryClient = useQueryClient()
     const searchQuery = searchParams.get('q')?.toLowerCase() || ''
@@ -133,7 +134,7 @@ export default function DailyPurchaseListContent({ isEmbedded = false }: DailyPu
                             <div className="w-64">
                                 <SearchInput />
                             </div>
-                            <AddPlanModal onPlanAdded={handlePlanAdded} />
+                            <AddPlanModal onPlanAdded={handlePlanAdded} onOpenChange={setIsPlanModalOpen} />
                         </div>
                     )}
                 </div>
@@ -190,6 +191,7 @@ export default function DailyPurchaseListContent({ isEmbedded = false }: DailyPu
                 <div className="md:hidden fixed bottom-20 right-4 z-40">
                     <AddPlanModal
                         onPlanAdded={handlePlanAdded}
+                        onOpenChange={setIsPlanModalOpen}
                         trigger={
                             <button className="h-12 w-12 bg-blue-600 text-white rounded-xl shadow-lg flex items-center justify-center hover:bg-blue-700 active:scale-95 transition-all">
                                 <Plus size={24} />
@@ -200,30 +202,32 @@ export default function DailyPurchaseListContent({ isEmbedded = false }: DailyPu
             )}
 
             {/* Mobile Bottom Navigation */}
-            <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-zinc-900 border-t dark:border-zinc-800 z-50 px-2 py-2 pb-safe">
-                <div className="flex items-center gap-2">
-                    <button
-                        onClick={() => setViewMode('plan')}
-                        className={`flex-1 flex flex-col items-center justify-center gap-1 py-2 rounded-lg transition-colors ${viewMode === 'plan'
-                            ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400'
-                            : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-zinc-800'
-                            }`}
-                    >
-                        <FileText size={20} />
-                        <span className="text-xs font-medium">Purchase Plan</span>
-                    </button>
-                    <button
-                        onClick={() => setViewMode('transactions')}
-                        className={`flex-1 flex flex-col items-center justify-center gap-1 py-2 rounded-lg transition-colors ${viewMode === 'transactions'
-                            ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400'
-                            : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-zinc-800'
-                            }`}
-                    >
-                        <ListIcon size={20} />
-                        <span className="text-xs font-medium">Transaction Details</span>
-                    </button>
+            {!isAddPurchaseModalOpen && !isPlanModalOpen && (
+                <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-zinc-900 border-t dark:border-zinc-800 z-50 px-2 py-2 pb-safe">
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={() => setViewMode('plan')}
+                            className={`flex-1 flex flex-col items-center justify-center gap-1 py-2 rounded-lg transition-colors ${viewMode === 'plan'
+                                ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400'
+                                : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-zinc-800'
+                                }`}
+                        >
+                            <FileText size={20} />
+                            <span className="text-xs font-medium">Purchase Plan</span>
+                        </button>
+                        <button
+                            onClick={() => setViewMode('transactions')}
+                            className={`flex-1 flex flex-col items-center justify-center gap-1 py-2 rounded-lg transition-colors ${viewMode === 'transactions'
+                                ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400'
+                                : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-zinc-800'
+                                }`}
+                        >
+                            <ListIcon size={20} />
+                            <span className="text-xs font-medium">Transaction Details</span>
+                        </button>
+                    </div>
                 </div>
-            </div>
+            )}
 
             {/* Add Purchase Modal */}
             {isAddPurchaseModalOpen && (

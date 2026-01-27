@@ -701,7 +701,7 @@ function DashboardContent() {
                             <div className="border-t-4 border-double border-gray-300 dark:border-zinc-700 my-6"></div>
 
                             <h2 className="text-lg font-bold mb-3">Order Status Sync Data</h2>
-                            <Card className="overflow-hidden">
+                            <Card className="overflow-hidden hidden md:block">
                                 <div className="overflow-x-auto">
                                     <table className="w-full text-sm text-left">
                                         <thead className="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-zinc-800 dark:text-gray-400">
@@ -802,63 +802,7 @@ function DashboardContent() {
                                 )}
                             </div>
 
-                            {/* Double line separator hidden on mobile to save space if needed, or keep it */}
-                            <div className="border-t-4 border-double border-gray-300 dark:border-zinc-700 my-6 hidden md:block"></div>
-                            <h2 className="text-lg font-bold mb-3 hidden md:block">Order Status Sync Data</h2>
 
-                            {/* Desktop Table for Status Sync */}
-                            <Card className="overflow-hidden hidden md:block">
-                                <div className="overflow-x-auto">
-                                    <table className="w-full text-sm text-left">
-                                        <thead className="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-zinc-800 dark:text-gray-400">
-                                            <tr>
-                                                <th className="px-2 py-3">S.N</th>
-                                                <th className="px-2 py-3">Seller Account</th>
-                                                <th className="px-2 py-3 text-center">Pending</th>
-                                                <th className="px-2 py-3 text-center">Packed</th>
-                                                <th className="px-2 py-3 text-center">Ready to Ship</th>
-                                                <th className="px-2 py-3 text-center">Shipped</th>
-                                                <th className="px-2 py-3 text-center">Delivered</th>
-                                                <th className="px-2 py-3 text-center">Returning to Seller</th>
-                                                <th className="px-2 py-3 text-center">Returned Delivered</th>
-                                                <th className="px-2 py-3 text-center">Customer Return</th>
-                                                <th className="px-2 py-3 text-center">Customer Return Delivered</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {isStatusSummaryLoading ? (
-                                                <tr>
-                                                    <td colSpan={11} className="px-4 py-8 text-center text-sm text-gray-500">
-                                                        Loading status data...
-                                                    </td>
-                                                </tr>
-                                            ) : !statusSummary || statusSummary.length === 0 ? (
-                                                <tr>
-                                                    <td colSpan={11} className="px-4 py-8 text-center text-sm text-gray-500">
-                                                        No status data available.
-                                                    </td>
-                                                </tr>
-                                            ) : (
-                                                statusSummary.map((row: any, idx: number) => (
-                                                    <tr key={idx} className="bg-white border-b dark:bg-zinc-900 dark:border-zinc-800 hover:bg-gray-50 dark:hover:bg-zinc-800/50">
-                                                        <td className="px-2 py-3 text-[13px]">{idx + 1}</td>
-                                                        <td className="px-2 py-3 font-medium text-gray-900 dark:text-white">{row.seller_account}</td>
-                                                        <td className="px-2 py-3 text-center text-yellow-700 dark:text-yellow-400">{row.pending}</td>
-                                                        <td className="px-2 py-3 text-center text-blue-700 dark:text-blue-400">{row.packed}</td>
-                                                        <td className="px-2 py-3 text-center text-green-700 dark:text-green-400">{row.ready_to_ship}</td>
-                                                        <td className="px-2 py-3 text-center text-indigo-700 dark:text-indigo-400">{row.shipped}</td>
-                                                        <td className="px-2 py-3 text-center text-green-800 dark:text-green-300 font-medium">{row.delivered}</td>
-                                                        <td className="px-2 py-3 text-center text-orange-700 dark:text-orange-400">{row.returning_to_seller}</td>
-                                                        <td className="px-2 py-3 text-center text-orange-800 dark:text-orange-300">{row.returned_delivered}</td>
-                                                        <td className="px-2 py-3 text-center text-red-700 dark:text-red-400">{row.customer_return}</td>
-                                                        <td className="px-2 py-3 text-center text-red-800 dark:text-red-300">{row.customer_return_delivered}</td>
-                                                    </tr>
-                                                ))
-                                            )}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </Card>
                         </>
                     )
                 }

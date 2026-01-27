@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { X, Plus, Loader2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { createPurchasePlan, getProductPurchaseStats, ProductPurchaseStats } from '@/features/purchase/actions/plan-actions'
@@ -15,7 +16,8 @@ export function AddPlanModal({
     prefilledRemarks,
     onSuccess,
     isOpen: externalIsOpen,
-    onClose: externalOnClose
+    onClose: externalOnClose,
+    onOpenChange
 }: {
     onPlanAdded: () => void
     trigger?: React.ReactNode
@@ -24,16 +26,27 @@ export function AddPlanModal({
     onSuccess?: () => void
     isOpen?: boolean
     onClose?: () => void
+    onOpenChange?: (isOpen: boolean) => void
 }) {
     const router = useRouter()
     const [internalOpen, setInternalOpen] = useState(false)
     const [loading, setLoading] = useState(false)
+    const [mounted, setMounted] = useState(false)
+
+    useEffect(() => {
+        setMounted(true)
+    }, [])
 
     // Use external control if provided, otherwise use internal state
     const open = externalIsOpen !== undefined ? externalIsOpen : internalOpen
-    const setOpen = externalOnClose ? (value: boolean) => {
-        if (!value) externalOnClose()
-    } : setInternalOpen
+    const setOpen = (value: boolean) => {
+        if (externalOnClose) {
+            if (!value) externalOnClose()
+        } else {
+            setInternalOpen(value)
+        }
+        onOpenChange?.(value)
+    }
 
     // Form State
     const [date, setDate] = useState(new Date().toISOString().split('T')[0])
@@ -235,18 +248,18 @@ export function AddPlanModal({
     return (
         <>
             {!externalIsOpen && trigger ? (
-                <div onClick={() => setInternalOpen(true)}>{trigger}</div>
+                <div onClick={() => setOpen(true)}>{trigger}</div>
             ) : !externalIsOpen && !trigger ? (
                 <button
-                    onClick={() => setInternalOpen(true)}
+                    onClick={() => setOpen(true)}
                     className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 flex items-center gap-2 text-sm font-medium"
                 >
                     <Plus size={16} /> Add List
                 </button>
             ) : null}
 
-            {open && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center md:p-4">
+            {mounted && open && createPortal(
+                <div className="fixed inset-0 z-[100] flex items-center justify-center md:p-4">
                     <div className="absolute inset-0 bg-black/50" onClick={handleClose} />
                     <div className="relative bg-white dark:bg-zinc-900 md:rounded-lg shadow-xl w-full max-w-2xl h-full md:h-auto md:max-h-[90vh] overflow-hidden flex flex-col">
                         <div className="flex items-center justify-between px-4 py-3 border-b dark:border-zinc-700">
@@ -337,7 +350,7 @@ export function AddPlanModal({
                                 )}
                             </div>
 
-                            <div className="flex justify-end gap-3 px-4 py-3 border-t dark:border-zinc-700 fixed bottom-0 left-0 right-0 md:static bg-white dark:bg-zinc-900 shrink-0 z-10 w-full md:w-auto">
+                            <div className="flex justify-end gap-3 px-4 py-3 border-t dark:border-zinc-700 fixed bottom-[60px] md:bottom-0 left-0 right-0 md:static bg-white dark:bg-zinc-900 shrink-0 z-[101] w-full md:w-auto">
                                 <button type="button" onClick={handleClose} className="px-4 py-2 text-sm border rounded-md hover:bg-gray-100 dark:hover:bg-zinc-800">Cancel</button>
                                 <button type="submit" disabled={loading} className="px-4 py-2 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2">
                                     {loading && <Loader2 className="h-3 w-3 animate-spin" />}
@@ -346,7 +359,8 @@ export function AddPlanModal({
                             </div>
                         </form>
                     </div>
-                </div>
+                </div>,
+                document.body
             )}
         </>
     )
