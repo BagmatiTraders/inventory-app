@@ -180,37 +180,37 @@ export function LoginForm() {
                     </form>
                 </CardContent>
             </Card>
-            <div className="mt-4 p-2 text-xs text-gray-400 bg-gray-100 rounded text-center max-w-[350px]">
-                <p>Is Mobile: {debugMobile ? 'YES' : 'NO'}</p>
-                <p className="break-all">{typeof window !== 'undefined' ? window.navigator.userAgent : ''}</p>
-                <button
-                    type="button"
-                    onClick={() => {
-                        const auth = supabase.auth;
-                        // @ts-ignore
-                        const hasWebAuthn = typeof auth.signInWithWebAuthn === 'function';
-                        // @ts-ignore
-                        const hasPassword = typeof auth.signInWithPassword === 'function';
-                        const isSecure = typeof window !== 'undefined' && window.isSecureContext;
-                        // @ts-ignore
-                        const hasCreds = typeof navigator.credentials !== 'undefined';
-                        // @ts-ignore
-                        const hasPKC = typeof window.PublicKeyCredential !== 'undefined';
 
-                        alert(
-                            `WebAuthn: ${hasWebAuthn}\n` +
-                            `Password: ${hasPassword}\n` +
-                            `Secure: ${isSecure}\n` +
-                            `Creds: ${hasCreds}\n` +
-                            `PKC: ${hasPKC}\n` +
-                            `Keys: ${Object.keys(auth).filter(k => !k.startsWith('_')).slice(0, 5).join(',')}`
-                        );
-                    }}
-                    className="mt-2 text-blue-500 underline"
-                >
-                    Deep Debug
-                </button>
-            </div>
+            <p>Is Mobile: {debugMobile ? 'YES' : 'NO'}</p>
+            <p className="break-all">{typeof window !== 'undefined' ? window.navigator.userAgent : ''}</p>
+            <button
+                type="button"
+                onClick={() => {
+                    const auth = supabase.auth;
+                    // @ts-ignore
+                    const hasWebAuthn = typeof auth.signInWithWebAuthn === 'function';
+                    // @ts-ignore
+                    const hasPassword = typeof auth.signInWithPassword === 'function';
+                    const isSecure = typeof window !== 'undefined' && window.isSecureContext;
+                    // @ts-ignore
+                    const hasCreds = typeof navigator.credentials !== 'undefined';
+                    // @ts-ignore
+                    const hasPKC = typeof window.PublicKeyCredential !== 'undefined';
+
+                    alert(
+                        `WebAuthn: ${hasWebAuthn}\n` +
+                        `Password: ${hasPassword}\n` +
+                        `Secure: ${isSecure}\n` +
+                        `Creds: ${hasCreds}\n` +
+                        `PKC: ${hasPKC}\n` +
+                        `Keys: ${Object.keys(auth).filter(k => !k.startsWith('_')).slice(0, 5).join(',')}`
+                    );
+                }}
+                className="mt-2 text-blue-500 underline"
+            >
+                Deep Debug
+            </button>
+
         </>
     )
 }
