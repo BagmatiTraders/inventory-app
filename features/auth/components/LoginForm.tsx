@@ -175,11 +175,17 @@ export function LoginForm() {
                         // @ts-ignore
                         const hasPassword = typeof auth.signInWithPassword === 'function';
                         const isSecure = typeof window !== 'undefined' && window.isSecureContext;
+                        // @ts-ignore
+                        const hasCreds = typeof navigator.credentials !== 'undefined';
+                        // @ts-ignore
+                        const hasPKC = typeof window.PublicKeyCredential !== 'undefined';
 
                         alert(
                             `WebAuthn: ${hasWebAuthn}\n` +
                             `Password: ${hasPassword}\n` +
                             `Secure: ${isSecure}\n` +
+                            `Creds: ${hasCreds}\n` +
+                            `PKC: ${hasPKC}\n` +
                             `Keys: ${Object.keys(auth).filter(k => !k.startsWith('_')).slice(0, 5).join(',')}`
                         );
                     }}
