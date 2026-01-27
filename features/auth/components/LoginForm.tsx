@@ -169,11 +169,17 @@ export function LoginForm() {
                 <button
                     type="button"
                     onClick={() => {
-                        alert(Object.keys(supabase.auth).join(', '))
+                        const auth = supabase.auth;
+                        // @ts-ignore
+                        const hasMethod = typeof auth.signInWithWebAuthn === 'function';
+                        // @ts-ignore
+                        const methodType = typeof auth.signInWithWebAuthn;
+
+                        alert(`Has signInWithWebAuthn: ${hasMethod}\nType: ${methodType}\nKeys: ${Object.keys(auth).join(', ')}`);
                     }}
                     className="mt-2 text-blue-500 underline"
                 >
-                    Show Auth Methods
+                    Check WebAuthn Function
                 </button>
             </div>
         </>
