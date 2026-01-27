@@ -31,7 +31,26 @@ function DashboardContent() {
         ? { href: '/dashboard/sales/daraz/sales-entry', label: 'Back to Sales Entry' }
         : { href: '/dashboard/sales/daraz', label: 'Back to Dashboard' }
 
-    const { isMobileMenuOpen, setIsMobileMenuOpen } = useDashboard()
+    const { isMobileMenuOpen, setIsMobileMenuOpen, setHeaderTitle } = useDashboard()
+
+    // Update Global Header based on active Tab
+    useEffect(() => {
+        if (!setHeaderTitle) return
+
+        const titles: Record<string, string> = {
+            'order-list': 'Order List',
+            'daily': 'Daily Sales Report',
+            'summary': 'Account Summary',
+            'status-sync': 'Order Status Sync',
+            'order-sync': 'Order Sync',
+            'profit-tracker': 'Profit Tracker',
+            'sales-report': 'Sales Report'
+        }
+
+        setHeaderTitle(titles[activeTab] || 'Sales Dashboard')
+
+        return () => setHeaderTitle(null)
+    }, [activeTab, setHeaderTitle])
 
     // Check user role
     useEffect(() => {
@@ -170,19 +189,7 @@ function DashboardContent() {
 
     return (
         <div className="flex flex-col h-full bg-gray-50 dark:bg-zinc-900">
-            {/* Custom Mobile Header */}
-            {activeTab !== 'order-list' && (
-                <div className="md:hidden sticky top-0 left-0 right-0 h-14 bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 z-20 flex items-center justify-between px-3 shadow-sm">
-                    <button
-                        onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-                        className="p-2 -ml-2 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-md"
-                    >
-                        <Menu size={20} />
-                    </button>
-                    <span className="font-bold text-base">Order Summary</span>
-                    <div className="w-8"></div>
-                </div>
-            )}
+
             {/* Compact Header - Hidden on mobile, visible on desktop */}
             <div className="hidden md:flex sticky top-0 z-10 bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 px-3 py-1.5 items-center justify-between shadow-sm">
                 <div>
@@ -279,7 +286,7 @@ function DashboardContent() {
             </div>
 
             {/* Content */}
-            <div className={`flex-1 ${activeTab === 'sales-report' ? 'overflow-hidden' : 'overflow-auto p-3 pb-20 md:pb-3'}`}>
+            <div className={`flex-1 ${(activeTab === 'sales-report' || activeTab === 'order-list') ? 'overflow-hidden p-0' : 'overflow-auto p-3 pb-20 md:pb-3'}`}>
                 {activeTab === 'sales-report' && (
                     <DarazSalesReport isEmbedded={true} />
                 )}
@@ -475,7 +482,7 @@ function DashboardContent() {
 
                                 return Object.entries(groupedReport || {}).map(([date, rows]) => (
                                     <div key={date} className="space-y-3">
-                                        <div className="sticky top-0 z-10 bg-gray-100 dark:bg-zinc-800 px-3 py-2 text-sm font-bold text-gray-700 dark:text-gray-300 border-b dark:border-zinc-700">
+                                        <div className="sticky top-0 z-10 bg-gray-100 dark:bg-zinc-800 px-3 py-2 text-sm font-bold text-gray-700 dark:text-gray-300 border-b dark:border-zinc-700 shadow-sm">
                                             {formatDate(date)}
                                         </div>
                                         {rows.map((row) => (
@@ -524,7 +531,7 @@ function DashboardContent() {
                 {
                     activeTab === 'summary' && (
                         <>
-                            <Card className="overflow-hidden">
+                            <Card className="overflow-hidden hidden md:block">
                                 <div className="overflow-x-auto">
                                     <table className="w-full text-left">
                                         <thead className="bg-gray-50 dark:bg-zinc-800">

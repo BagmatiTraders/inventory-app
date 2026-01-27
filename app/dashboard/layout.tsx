@@ -22,7 +22,8 @@ interface DashboardContextType {
     isMobileMenuOpen: boolean
     setIsMobileMenuOpen: (isOpen: boolean) => void
     isCollapsed: boolean
-    setHeaderTitle?: (title: string | null) => void
+    setHeaderTitle?: (title: string | React.ReactNode | null) => void
+    setHeaderAction?: (action: React.ReactNode | null) => void
 }
 
 const DashboardContext = createContext<DashboardContextType | undefined>(undefined)
@@ -55,7 +56,8 @@ function DashboardLayout({
     const [isCollapsed, setIsCollapsed] = useState(false)
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
     const [isAddProductModalOpen, setIsAddProductModalOpen] = useState(false)
-    const [headerTitle, setHeaderTitle] = useState<string | null>(null)
+    const [headerTitle, setHeaderTitle] = useState<string | React.ReactNode | null>(null)
+    const [headerAction, setHeaderAction] = useState<React.ReactNode | null>(null)
     const queryClient = useQueryClient()
     const { isMobileMode } = useMobileMode()
 
@@ -68,12 +70,10 @@ function DashboardLayout({
     return (
         // Temporarily disabled LocationGuard - will re-enable after setup
         // <LocationGuard>
-        <DashboardContext.Provider value={{ isMobileMenuOpen, setIsMobileMenuOpen, isCollapsed, setHeaderTitle }}>
+        <DashboardContext.Provider value={{ isMobileMenuOpen, setIsMobileMenuOpen, isCollapsed, setHeaderTitle, setHeaderAction }}>
             <div className="flex h-screen bg-gray-100 dark:bg-zinc-900 relative">
                 {/* Mobile Header - Hide for Stock Ledger and other specific pages */}
-                {pathname !== '/dashboard/purchase/daily-purchase-list' &&
-                    pathname !== '/dashboard/suppliers/dashboard' &&
-                    pathname !== '/dashboard/sales/daraz/dashboard' &&
+                {pathname !== '/dashboard/suppliers/dashboard' &&
                     !pathname?.includes('/dashboard/inventory/stock-ledger') && (
                         <div className={`md:hidden fixed top-0 left-0 right-0 h-16 bg-white dark:bg-zinc-800 border-b z-30 flex items-center justify-between px-4 transition-all ${isMobileMode ? 'shadow-sm' : ''}`}>
                             <div className="flex items-center gap-3 relative z-20">
@@ -88,9 +88,13 @@ function DashboardLayout({
                             </div>
 
                             {/* Centered Titles */}
-                            <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-10 pointer-events-none">
+                            <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-10">
                                 {headerTitle ? (
-                                    <span className="font-bold text-lg whitespace-nowrap">{headerTitle}</span>
+                                    typeof headerTitle === 'string' ? (
+                                        <span className="font-bold text-lg whitespace-nowrap">{headerTitle}</span>
+                                    ) : (
+                                        headerTitle
+                                    )
                                 ) : (
                                     <>
 
@@ -125,7 +129,7 @@ function DashboardLayout({
                                             <span className="font-bold text-lg whitespace-nowrap">Purchasing</span>
                                         )}
                                         {pathname === '/dashboard/purchase/purchase-entry' && (
-                                            <span className="font-bold text-lg whitespace-nowrap">Purchase Entry</span>
+                                            <span className="font-bold text-lg whitespace-nowrap">Purchase Summary</span>
                                         )}
                                         {pathname === '/dashboard/purchase/all-purchase-list' && (
                                             <span className="font-bold text-lg whitespace-nowrap">Purchase History</span>
@@ -194,7 +198,7 @@ function DashboardLayout({
                                             pathname !== '/dashboard/account' && (
                                                 <span className="font-bold text-lg text-black dark:text-white whitespace-nowrap">BAGMATI TRADERS</span>
                                             )}
-                                    
+
                                     </>
                                 )}
                             </div>
@@ -220,6 +224,11 @@ function DashboardLayout({
                                         />
                                     </>
                                 )}
+                            </div>
+
+                            {/* Right Side Actions */}
+                            <div className="flex items-center gap-2 relative z-20">
+                                {headerAction}
                             </div>
                         </div>
                     )}
@@ -368,7 +377,7 @@ function DashboardLayout({
                     ${pathname === '/dashboard/purchase/inventory-price-reports' || pathname === '/dashboard/purchase/daily-purchase-list' || pathname === '/dashboard/purchase/analytics' || pathname === '/dashboard/suppliers/suppliers-account' || pathname === '/dashboard/sales/daraz/status-sync' || pathname === '/dashboard/sales/daraz/order-sync' || pathname?.startsWith('/dashboard/inventory/stock-ledger') ? 'h-full' : 'h-[calc(100vh-4rem)] md:h-full'}
                     pointer-events-auto
                 `}>
-                    <div className={`${pathname === '/dashboard/purchase/inventory-price-reports' || pathname === '/dashboard/purchase/analytics' || pathname === '/dashboard/purchase/daily-purchase-list' || pathname === '/dashboard/suppliers/dashboard' || pathname === '/dashboard/suppliers' || pathname === '/dashboard/purchase/buy-sell-suppliers' || pathname === '/dashboard/suppliers/suppliers-account' || pathname === '/dashboard/sales/daraz/status-sync' || pathname === '/dashboard/sales/daraz/order-sync' || pathname === '/dashboard/sales/marketplace/sales-entry' || pathname === '/dashboard/sales/daraz/profit-tracker' ? 'p-0 h-full' : 'px-4 pb-4 pt-1'} md:p-8 ${isMobileMode ? 'pb-24' : ''}`}>
+                    <div className={`${pathname === '/dashboard/purchase/inventory-price-reports' || pathname === '/dashboard/purchase/analytics' || pathname === '/dashboard/purchase/daily-purchase-list' || pathname === '/dashboard/suppliers/dashboard' || pathname === '/dashboard/suppliers' || pathname === '/dashboard/purchase/buy-sell-suppliers' || pathname === '/dashboard/suppliers/suppliers-account' || pathname === '/dashboard/sales/daraz/status-sync' || pathname === '/dashboard/sales/daraz/order-sync' || pathname === '/dashboard/sales/marketplace/sales-entry' || pathname === '/dashboard/sales/daraz/dashboard' || pathname === '/dashboard/sales/daraz/profit-tracker' ? 'p-0 h-full' : 'px-4 pb-4 pt-1'} md:p-8 ${isMobileMode ? 'pb-24' : ''}`}>
                         {isMobileMode && pathname === '/dashboard' ? (
                             <MobileDashboard />
                         ) : (

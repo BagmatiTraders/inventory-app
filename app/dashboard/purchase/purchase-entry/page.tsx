@@ -390,29 +390,13 @@ export default function PurchaseEntryPage() {
                 )
             }
             {/* Mobile Footer Navigation */}
-            <div className="md:hidden fixed bottom-24 right-4 z-40">
-                <button
-                    onClick={() => setIsAddModalOpen(true)}
-                    className="h-12 w-12 bg-blue-600 text-white rounded-xl shadow-lg flex items-center justify-center hover:bg-blue-700 active:scale-95 transition-all"
-                >
-                    <Plus size={24} />
-                </button>
-            </div>
-
-            <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-zinc-900 border-t dark:border-zinc-800 p-2 grid grid-cols-2 gap-2 z-40">
+            <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-zinc-900 border-t dark:border-zinc-800 p-2 grid grid-cols-1 gap-2 z-40">
                 <Link
-                    href="/dashboard/purchase/daily-purchase-list"
-                    className="flex flex-col items-center justify-center p-2 rounded-lg bg-gray-50 dark:bg-zinc-800 text-gray-600 dark:text-gray-300 active:scale-95 transition-transform"
-                >
-                    <History size={20} className="mb-1" />
-                    <span className="text-[10px] font-medium text-center leading-tight">Daily<br />Purchase List</span>
-                </Link>
-                <Link
-                    href="/dashboard/purchase/all-purchase-list"
+                    href="/dashboard/purchase/dashboard"
                     className="flex flex-col items-center justify-center p-2 rounded-lg bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 active:scale-95 transition-transform"
                 >
-                    <FileStack size={20} className="mb-1" />
-                    <span className="text-[10px] font-medium text-center leading-tight">All<br />Purchase List</span>
+                    <LayoutDashboard size={20} className="mb-1" />
+                    <span className="text-[10px] font-medium text-center leading-tight">Purchase<br />Summary</span>
                 </Link>
             </div>
         </div >

@@ -20,7 +20,8 @@ export function PanVatBillList({ onAddBill }: PanVatBillListProps) {
     const [selectedBillId, setSelectedBillId] = useState<string | null>(null)
 
     // Fetch fiscal years
-    const { data: fiscalYears = [] } = useFiscalYears()
+    const { data: fiscalYearsData } = useFiscalYears()
+    const fiscalYears = fiscalYearsData || []
     const { data: activeFiscalYear } = useActiveFiscalYear()
 
     // Set active fiscal year as default on mount

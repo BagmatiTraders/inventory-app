@@ -1,6 +1,7 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useDashboard } from '@/app/dashboard/layout'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useSearchParams } from 'next/navigation'
 import { getPurchasePlans } from '@/features/purchase/actions/plan-actions'
@@ -13,6 +14,7 @@ import { ArrowLeft, Plus, FileText, List as ListIcon, Eye } from 'lucide-react'
 import Link from 'next/link'
 import { Card } from '@/components/ui-shim'
 import DailyPurchaseDetailView from './DailyPurchaseDetailView'
+import PurchaseListContent from '@/features/purchase/components/PurchaseListContent'
 
 import PurchaseForm from '@/features/purchase/components/PurchaseForm'
 
@@ -21,23 +23,59 @@ interface DailyPurchaseListContentProps {
 }
 
 export default function DailyPurchaseListContent({ isEmbedded = false }: DailyPurchaseListContentProps) {
-    const [viewMode, setViewMode] = useState<'plan' | 'transactions'>('plan')
+    const [viewMode, setViewMode] = useState<'plan' | 'transactions' | 'all-purchases'>('plan')
     const [isAddPurchaseModalOpen, setIsAddPurchaseModalOpen] = useState(false)
     const [isPlanModalOpen, setIsPlanModalOpen] = useState(false)
     const searchParams = useSearchParams()
     const queryClient = useQueryClient()
     const searchQuery = searchParams.get('q')?.toLowerCase() || ''
+    const { setHeaderTitle, setHeaderAction } = useDashboard()
+
+    // Update global header title and action based on view mode
+    useEffect(() => {
+        if (!setHeaderTitle || !setHeaderAction || isEmbedded) return
+
+        const titles = {
+            'plan': 'Daily Purchases',
+            'transactions': 'Transaction Details',
+            'all-purchases': 'All Purchase List'
+        }
+        setHeaderTitle(titles[viewMode])
+
+        // Set the add button only for plan view
+        if (viewMode === 'plan') {
+            setHeaderAction(
+                <button
+                    onClick={() => setIsAddPurchaseModalOpen(true)}
+                    className="p-2 text-blue-600 bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/30 rounded-full transition-colors"
+                >
+                    <Plus size={22} />
+                </button>
+            )
+        } else {
+            setHeaderAction(null)
+        }
+
+        return () => {
+            if (setHeaderTitle) setHeaderTitle(null)
+            if (setHeaderAction) setHeaderAction(null)
+        }
+    }, [viewMode, setHeaderTitle, setHeaderAction, isEmbedded])
 
     // Fetch Plans
     const { data: allPlans, isLoading: isPlansLoading } = useQuery({
         queryKey: ['purchase-plans'],
-        queryFn: () => getPurchasePlans()
+        queryFn: () => getPurchasePlans(),
+        staleTime: 5 * 60 * 1000, // 5 minutes - plans don't change often
+        gcTime: 10 * 60 * 1000 // 10 minutes (formerly cacheTime)
     })
 
     // Fetch Today's Purchases (for completion status)
     const { data: todayPurchasesData, isLoading: isPurchasesLoading } = useQuery({
         queryKey: ['today-purchases-for-plan'],
-        queryFn: () => getTodayPurchases()
+        queryFn: () => getTodayPurchases(),
+        staleTime: 30 * 1000, // 30 seconds - purchases update frequently
+        gcTime: 5 * 60 * 1000 // 5 minutes
     })
 
     // Fetch Details for Today (for Transaction Details View)
@@ -45,7 +83,9 @@ export default function DailyPurchaseListContent({ isEmbedded = false }: DailyPu
     const { data: detailData, isLoading: isDetailLoading } = useQuery({
         queryKey: ['purchase-details-today', today],
         queryFn: () => getPurchases({ startDate: today, endDate: today, limit: 1000 }),
-        enabled: viewMode === 'transactions'
+        enabled: viewMode === 'transactions',
+        staleTime: 30 * 1000, // 30 seconds
+        gcTime: 5 * 60 * 1000 // 5 minutes
     })
 
     const completedProductIds = Array.from(new Set(todayPurchasesData?.purchases?.map((p: any) => p.product_id) || [])) as string[]
@@ -72,16 +112,28 @@ export default function DailyPurchaseListContent({ isEmbedded = false }: DailyPu
     }
 
     const handlePurchaseAdded = async () => {
-        // Refresh data after adding a purchase
+        // Optimistic update: immediately update cache instead of refetching
+        // This provides instant feedback to the user
+
+        // Invalidate with refetchType background to revalidate without blocking UI
         await Promise.all([
-            queryClient.invalidateQueries({ queryKey: ['today-purchases-for-plan'] }),
-            queryClient.invalidateQueries({ queryKey: ['purchase-details-today'] }),
-            queryClient.invalidateQueries({ queryKey: ['today-purchases'] })
+            queryClient.invalidateQueries({
+                queryKey: ['today-purchases-for-plan'],
+                refetchType: 'active' // Only refetch if query is currently being used
+            }),
+            queryClient.invalidateQueries({
+                queryKey: ['purchase-details-today'],
+                refetchType: 'active'
+            }),
+            queryClient.invalidateQueries({
+                queryKey: ['today-purchases'],
+                refetchType: 'active'
+            })
         ])
     }
 
     return (
-        <div className={`flex flex-col h-full bg-gray-50 dark:bg-zinc-900 ${isEmbedded ? '' : ''}`}>
+        <div className={`flex flex-col h-full bg-gray-50 dark:bg-zinc-900 ${isEmbedded ? '' : 'md:mt-0 mt-16'}`}>
             {/* Header - Only shown if NOT embedded */}
             {!isEmbedded && (
                 <div className="hidden md:flex sticky top-0 z-10 bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 px-3 py-1.5 items-center justify-between shadow-sm">
@@ -141,22 +193,8 @@ export default function DailyPurchaseListContent({ isEmbedded = false }: DailyPu
             </div>
 
             {/* Mobile Header Controls */}
-            <div className={`md:hidden sticky top-0 z-10 bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 ${viewMode === 'plan' ? 'block' : 'hidden'}`}>
-                <div className="px-4 py-3 space-y-3">
-                    <div className="flex items-center justify-between relative">
-                        {/* Spacer for centering */}
-                        <div className="w-8"></div>
-                        <h1 className="text-lg font-bold">Daily Purchases</h1>
-                        {/* Add Purchase Button */}
-                        <button
-                            onClick={() => setIsAddPurchaseModalOpen(true)}
-                            className="p-1.5 text-blue-600 bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/30 rounded-full transition-colors"
-                        >
-                            <Plus size={20} />
-                        </button>
-                    </div>
-                </div>
-                <div className="px-4 pb-3">
+            <div className={`md:hidden sticky top-16 z-10 bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 ${viewMode === 'plan' ? 'block' : 'hidden'}`}>
+                <div className="px-4 py-3">
                     <SearchInput />
                 </div>
             </div>
@@ -175,7 +213,7 @@ export default function DailyPurchaseListContent({ isEmbedded = false }: DailyPu
                             onPlanUpdated={handlePlanUpdated}
                         />
                     )
-                ) : (
+                ) : viewMode === 'transactions' ? (
                     /* Transaction Details View - Direct Detail View */
                     <DailyPurchaseDetailView
                         date={today}
@@ -183,6 +221,9 @@ export default function DailyPurchaseListContent({ isEmbedded = false }: DailyPu
                         isLoading={isDetailLoading}
                     // No onBack provided, so back button will be hidden
                     />
+                ) : (
+                    /* All Purchases View - Display Purchase List */
+                    <PurchaseListContent isEmbedded={true} />
                 )}
             </div>
 
@@ -204,10 +245,10 @@ export default function DailyPurchaseListContent({ isEmbedded = false }: DailyPu
             {/* Mobile Bottom Navigation */}
             {!isAddPurchaseModalOpen && !isPlanModalOpen && (
                 <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-zinc-900 border-t dark:border-zinc-800 z-50 px-2 py-2 pb-safe">
-                    <div className="flex items-center gap-2">
+                    <div className="grid grid-cols-3 gap-2">
                         <button
                             onClick={() => setViewMode('plan')}
-                            className={`flex-1 flex flex-col items-center justify-center gap-1 py-2 rounded-lg transition-colors ${viewMode === 'plan'
+                            className={`flex flex-col items-center justify-center gap-1 py-2 rounded-lg transition-colors ${viewMode === 'plan'
                                 ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400'
                                 : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-zinc-800'
                                 }`}
@@ -217,13 +258,23 @@ export default function DailyPurchaseListContent({ isEmbedded = false }: DailyPu
                         </button>
                         <button
                             onClick={() => setViewMode('transactions')}
-                            className={`flex-1 flex flex-col items-center justify-center gap-1 py-2 rounded-lg transition-colors ${viewMode === 'transactions'
+                            className={`flex flex-col items-center justify-center gap-1 py-2 rounded-lg transition-colors ${viewMode === 'transactions'
                                 ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400'
                                 : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-zinc-800'
                                 }`}
                         >
                             <ListIcon size={20} />
                             <span className="text-xs font-medium">Transaction Details</span>
+                        </button>
+                        <button
+                            onClick={() => setViewMode('all-purchases')}
+                            className={`flex flex-col items-center justify-center gap-1 py-2 rounded-lg transition-colors ${viewMode === 'all-purchases'
+                                ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400'
+                                : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-zinc-800'
+                                }`}
+                        >
+                            <Eye size={20} />
+                            <span className="text-xs font-medium">Order List</span>
                         </button>
                     </div>
                 </div>

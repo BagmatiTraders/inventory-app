@@ -13,6 +13,7 @@ import { AdminDeleteConfirm } from '@/features/sales/components/AdminDeleteConfi
 import { AuditTrailHover } from '@/features/sales/components/AuditTrailHover'
 import { toast } from 'sonner'
 import { BarcodeScannerModal } from '@/components/BarcodeScannerModal'
+import { useDashboard } from '@/app/dashboard/layout'
 
 import { PartialReturnModal } from '@/features/sales/components/PartialReturnModal'
 
@@ -78,6 +79,20 @@ export function DarazOrderList({ isEmbedded = false }: DarazOrderListProps) {
 
         return () => clearTimeout(timeoutId)
     }, [searchInput])
+
+    // Global Header Integration
+    const { setHeaderTitle } = useDashboard()
+
+    useEffect(() => {
+        if (isEmbedded) return
+
+        if (setHeaderTitle) {
+            setHeaderTitle('Order List')
+        }
+        return () => {
+            if (setHeaderTitle) setHeaderTitle(null)
+        }
+    }, [setHeaderTitle, isEmbedded])
 
     // Fetch fiscal years
     const { data: fiscalYears } = useQuery({
@@ -334,13 +349,9 @@ export function DarazOrderList({ isEmbedded = false }: DarazOrderListProps) {
 
     return (
         <div className="flex flex-col h-full bg-gray-50 dark:bg-zinc-900">
-            {/* Mobile Header with Search - Visible only on mobile */}
-            <div className="md:hidden sticky top-0 z-20 bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 px-3 py-2 shadow-sm space-y-2">
-                <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                        <h1 className="text-base font-bold">Order List</h1>
-                    </div>
-                </div>
+            {/* Mobile Filter Section - Replaces Header & Action Bar on Mobile */}
+            <div className="md:hidden sticky top-0 z-20 bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 px-3 py-3 shadow-sm space-y-3">
+                {/* Row 1: Search */}
                 <div className="relative">
                     <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
                     <input
@@ -369,11 +380,115 @@ export function DarazOrderList({ isEmbedded = false }: DarazOrderListProps) {
                         <Camera size={16} />
                     </button>
                 </div>
+
+                {/* Row 2: Status & Account (Grid) */}
+                <div className="grid grid-cols-2 gap-2">
+                    <select
+                        value={timestampField}
+                        onChange={(e) => {
+                            const selectedField = e.target.value
+                            setTimestampField(selectedField)
+                            // Auto-set status logic (duplicated from desktop)
+                            const statusMap: Record<string, { status: string, timestampField: string }> = {
+                                'order_date': { status: 'all', timestampField: 'order_date' },
+                                'unpaid': { status: 'Unpaid', timestampField: 'order_date' },
+                                'pending': { status: 'Pending', timestampField: 'order_date' },
+                                'packed': { status: 'Packed', timestampField: 'order_date' },
+                                'ready_to_ship': { status: 'Ready to Ship', timestampField: 'order_date' },
+                                'shipped_at': { status: 'Shipped', timestampField: 'shipped_at' },
+                                'delivered_at': { status: 'Delivered', timestampField: 'delivered_at' },
+                                'returning_to_seller': { status: 'Returning to Seller', timestampField: 'order_date' },
+                                'returned_delivered': { status: 'Returned Delivered', timestampField: 'order_date' },
+                                'customer_return_at': { status: 'Customer Return', timestampField: 'customer_return_at' },
+                                'customer_return_delivered_at': { status: 'Customer Return Delivered', timestampField: 'customer_return_delivered_at' },
+                                'cancelled_at': { status: 'Cancel', timestampField: 'cancelled_at' }
+                            }
+                            const mapping = statusMap[selectedField] || { status: 'all', timestampField: 'order_date' }
+                            setStatusFilter(mapping.status)
+                            if (selectedField !== mapping.timestampField) {
+                                setTimestampField(mapping.timestampField)
+                            }
+                            setPage(1)
+                        }}
+                        className="w-full px-2 py-2 text-sm border dark:border-zinc-700 rounded-lg focus:ring-1 focus:ring-blue-500 dark:bg-zinc-800 dark:text-gray-50 bg-gray-50"
+                    >
+                        <option value="order_date">All Status</option>
+                        <option value="unpaid">Unpaid</option>
+                        <option value="pending">Pending</option>
+                        <option value="packed">Packed</option>
+                        <option value="ready_to_ship">Ready to Ship</option>
+                        <option value="shipped_at">Shipped</option>
+                        <option value="delivered_at">Delivered</option>
+                        <option value="returning_to_seller">Returning to Seller</option>
+                        <option value="returned_delivered">Returned Delivered</option>
+                        <option value="customer_return_at">Customer Return</option>
+                        <option value="customer_return_delivered_at">Customer Return Delivered</option>
+                        <option value="cancelled_at">Cancelled</option>
+                    </select>
+
+                    <select
+                        value={sellerAccount}
+                        onChange={(e) => { setSellerAccount(e.target.value); setPage(1); }}
+                        className="w-full px-2 py-2 text-sm border dark:border-zinc-700 rounded-lg focus:ring-1 focus:ring-blue-500 dark:bg-zinc-800 dark:text-gray-50 bg-gray-50"
+                    >
+                        <option value="all">All Accounts</option>
+                        {sellerAccounts?.map((account: string) => (
+                            <option key={account} value={account}>{account}</option>
+                        ))}
+                    </select>
+                </div>
+
+                {/* Row 3: Dates & Actions */}
+                <div className="flex gap-2 items-center">
+                    <div className="grid grid-cols-[1fr_auto_1fr] flex-1 gap-2 items-center bg-gray-50 dark:bg-zinc-800 border dark:border-zinc-700 rounded-lg px-2 py-1">
+                        <input
+                            type="date"
+                            value={startDate}
+                            onChange={(e) => { setStartDate(e.target.value); setPage(1); }}
+                            className="w-full bg-transparent text-sm focus:outline-none p-1"
+                            placeholder="Start"
+                        />
+                        <span className="text-xs text-gray-400">to</span>
+                        <input
+                            type="date"
+                            value={endDate}
+                            onChange={(e) => { setEndDate(e.target.value); setPage(1); }}
+                            className="w-full bg-transparent text-sm focus:outline-none p-1"
+                            placeholder="End"
+                        />
+                    </div>
+
+                    {(startDate || endDate || statusFilter !== 'all' || sellerAccount !== 'all' || searchInput) && (
+                        <button
+                            onClick={() => {
+                                setTimestampField('order_date')
+                                setStartDate('')
+                                setEndDate('')
+                                setStatusFilter('all')
+                                setSellerAccount('all')
+                                setSearchInput('')
+                                setSearch('')
+                                setPage(1)
+                            }}
+                            className="px-3 py-2 text-sm font-medium text-white bg-red-500 hover:bg-red-600 rounded-lg whitespace-nowrap"
+                        >
+                            <X size={16} />
+                        </button>
+                    )}
+                </div>
+                {/* Row 4: Total Count (Visible on mobile) */}
+                {pagination && pagination.total > 0 && (
+                    <div className="flex justify-between items-center text-xs text-gray-500 pt-1">
+                        <div className="bg-gray-100 dark:bg-zinc-800 px-2 py-1 rounded">
+                            Total: <span className="font-bold text-blue-600 dark:text-blue-400">{pagination.total}</span>
+                        </div>
+                    </div>
+                )}
             </div>
 
             {/* Compact Header - Conditionally rendered */}
             {!isEmbedded && (
-                <div className="sticky top-0 z-10 bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 px-3 py-1.5 flex items-center justify-between shadow-sm">
+                <div className="hidden md:flex sticky top-0 z-10 bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 px-3 py-1.5 items-center justify-between shadow-sm">
                     <div>
                         <h1 className="text-[17px] font-bold">Daraz Order List</h1>
                         <p className="text-[13px] text-gray-500 dark:text-gray-400">All History</p>
@@ -388,8 +503,8 @@ export function DarazOrderList({ isEmbedded = false }: DarazOrderListProps) {
                 </div>
             )}
 
-            {/* Compact Action Bar */}
-            <div className={`sticky ${isEmbedded ? 'top-0' : 'top-[44px]'} z-10 bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 px-3 py-1.5 shadow-sm`}>
+            {/* Compact Action Bar - Desktop Only */}
+            <div className={`hidden md:block sticky ${isEmbedded ? 'top-0' : 'top-[44px]'} z-10 bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 px-3 py-1.5 shadow-sm`}>
                 <div className="flex flex-wrap items-center gap-1.5">
                     {/* Fiscal Year Selector - Only show when coming from Sales Report */}
                     {searchParams.get('fiscalYear') && (

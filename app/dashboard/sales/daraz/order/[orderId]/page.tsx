@@ -11,6 +11,7 @@ import { Card } from '@/components/ui-shim'
 import { EditDarazOrderModal } from '@/features/sales/components/EditDarazOrderModal'
 import { PartialReturnModal } from '@/features/sales/components/PartialReturnModal'
 import { DeletionReasonModal } from '@/features/sales/components/DeletionReasonModal'
+import { useDashboard } from '@/app/dashboard/layout'
 // DarazInvoice removed
 
 
@@ -22,6 +23,7 @@ export default function DarazOrderViewPage() {
     const [isPartialReturnOpen, setIsPartialReturnOpen] = useState(false)
     const [isDeletionModalOpen, setIsDeletionModalOpen] = useState(false)
     const [userRole, setUserRole] = useState<'admin' | 'user' | null>(null)
+    const { setHeaderTitle } = useDashboard()
 
 
     const { data: order, isLoading } = useQuery({
@@ -32,10 +34,24 @@ export default function DarazOrderViewPage() {
         gcTime: 5 * 60 * 1000
     })
 
-    // Check user role on mount
+    // Check user role on mount and set header
     useEffect(() => {
         getUserRole().then(role => setUserRole(role))
     }, [])
+
+    useEffect(() => {
+        if (order && setHeaderTitle) {
+            setHeaderTitle(
+                <div className="flex flex-col items-center">
+                    <span className="text-[16px] font-bold">Order Details</span>
+                    <span className="text-[12px] font-normal">{order.invoice_number}</span>
+                </div>
+            )
+        }
+        return () => {
+            if (setHeaderTitle) setHeaderTitle(null)
+        }
+    }, [order, setHeaderTitle])
 
     const handleDelete = async (reason: string) => {
         // Import the deletion action when needed
@@ -73,11 +89,11 @@ export default function DarazOrderViewPage() {
                     <div className="flex items-center gap-3">
                         <Link
                             href={backLink}
-                            className="p-2 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded transition-colors"
+                            className="p-2 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded transition-colors hidden md:flex"
                         >
                             <ArrowLeft size={20} />
                         </Link>
-                        <div>
+                        <div className="hidden md:block">
                             <h1 className="text-xl font-bold">Order Details</h1>
                             {order && <p className="text-sm text-gray-500">{order.invoice_number}</p>}
                         </div>
@@ -105,7 +121,7 @@ export default function DarazOrderViewPage() {
 
                         <button
                             onClick={() => window.open(`/print/daraz-invoice/${orderId}`, '_blank')}
-                            className="flex items-center gap-2 px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded transition-colors"
+                            className="flex items-center gap-2 px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded transition-colors hidden md:flex"
                         >
                             <Printer size={16} />
                             Print Invoice
@@ -115,50 +131,50 @@ export default function DarazOrderViewPage() {
             </div>
 
             {/* Content */}
-            <div className="max-w-7xl mx-auto px-4 py-6">
+            <div className="max-w-7xl mx-auto px-2 md:px-4 py-3 md:py-6">
                 {isLoading ? (
                     <Card className="p-8 text-center text-gray-500">Loading...</Card>
                 ) : !order ? (
                     <div className="p-8 text-center text-red-500">Error loading order or not found.</div>
                 ) : (
-                    <div className="space-y-6">
-                        {/* Order Information Card */}
-                        <Card className="p-6">
+                    <div className="space-y-3 md:space-y-6">
+
+                        <Card className="p-4 md:p-6">
                             <h2 className="text-lg font-semibold mb-4">Order Information</h2>
                             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                                <div>
+                                <div className="grid grid-cols-2 md:block gap-4 md:gap-0 border-b md:border-none pb-2 md:pb-0">
                                     <p className="text-xs text-gray-500 mb-1">Invoice Number</p>
-                                    <p className="font-medium">{order.invoice_number}</p>
+                                    <p className="font-medium text-sm md:text-base">{order.invoice_number}</p>
                                 </div>
-                                <div>
+                                <div className="grid grid-cols-2 md:block gap-4 md:gap-0 border-b md:border-none pb-2 md:pb-0">
                                     <p className="text-xs text-gray-500 mb-1">Order Number</p>
-                                    <p className="font-medium">{order.order_number}</p>
+                                    <p className="font-medium text-sm md:text-base">{order.order_number}</p>
                                 </div>
-                                <div>
+                                <div className="grid grid-cols-2 md:block gap-4 md:gap-0 border-b md:border-none pb-2 md:pb-0">
                                     <p className="text-xs text-gray-500 mb-1">Tracking Number</p>
-                                    <p className="font-medium">{order.tracking_number}</p>
+                                    <p className="font-medium text-sm md:text-base">{order.tracking_number}</p>
                                 </div>
-                                <div>
+                                <div className="grid grid-cols-2 md:block gap-4 md:gap-0">
                                     <p className="text-xs text-gray-500 mb-1">Order Date</p>
-                                    <p className="font-medium">{new Date(order.order_date).toLocaleDateString()}</p>
+                                    <p className="font-medium text-sm md:text-base">{new Date(order.order_date).toLocaleDateString()}</p>
                                 </div>
                             </div>
                         </Card>
                         {/* Customer & Status Card */}
-                        <Card className="p-6">
+                        <Card className="p-4 md:p-6">
                             <h2 className="text-lg font-semibold mb-4">Customer & Status</h2>
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                <div>
+                                <div className="grid grid-cols-2 md:block gap-4 md:gap-0 border-b md:border-none pb-2 md:pb-0">
                                     <p className="text-xs text-gray-500 mb-1">Customer Name</p>
-                                    <p className="font-medium">{order.customer_name}</p>
+                                    <p className="font-medium text-sm md:text-base">{order.customer_name}</p>
                                 </div>
-                                <div>
+                                <div className="grid grid-cols-2 md:block gap-4 md:gap-0 border-b md:border-none pb-2 md:pb-0">
                                     <p className="text-xs text-gray-500 mb-1">Order Date</p>
-                                    <p className="font-medium">
+                                    <p className="font-medium text-sm md:text-base">
                                         {new Date(order.daraz_created_at || order.created_at).toLocaleString()}
                                     </p>
                                 </div>
-                                <div>
+                                <div className="grid grid-cols-2 md:block gap-4 md:gap-0">
                                     <p className="text-xs text-gray-500 mb-1">Status</p>
                                     <span className={`inline-block px-3 py-1 text-sm font-medium rounded ${order.order_status === 'Pending' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-200' :
                                         order.order_status === 'Shipped' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-200' :
@@ -168,16 +184,16 @@ export default function DarazOrderViewPage() {
                                         {order.order_status}
                                     </span>
                                 </div>
-                                <div>
+                                <div className="grid grid-cols-2 md:block gap-4 md:gap-0 pt-2 md:pt-0 border-t md:border-none">
                                     <p className="text-xs text-gray-500 mb-1">Remarks</p>
-                                    <p className="font-medium">{order.remarks || '-'}</p>
+                                    <p className="font-medium text-sm md:text-base">{order.remarks || '-'}</p>
                                 </div>
                             </div>
                         </Card>
 
                         {/* Order Items Card */}
-                        <Card className="p-6">
-                            <h2 className="text-lg font-semibold mb-4">Order Items</h2>
+                        <Card className="p-0 md:p-6 overflow-hidden">
+                            <h2 className="text-lg font-semibold m-4 md:mb-4">Order Items</h2>
                             <div className="overflow-x-auto">
                                 <table className="w-full">
                                     <thead className="bg-gray-50 dark:bg-zinc-800">
@@ -233,7 +249,7 @@ export default function DarazOrderViewPage() {
                         </Card>
 
                         {/* Audit Trail Card */}
-                        <Card className="p-6">
+                        <Card className="p-4 md:p-6">
                             <h2 className="text-lg font-semibold mb-4">Audit Trail</h2>
                             <div className="space-y-3">
                                 {order.created_at && (
@@ -360,37 +376,35 @@ export default function DarazOrderViewPage() {
                         </Card>
                     </div>
                 )}
-            </div >
+            </div>
 
             {/* Edit Modal */}
-            {
-                order && (
-                    <>
-                        <EditDarazOrderModal
-                            isOpen={isEditModalOpen}
-                            onClose={() => setIsEditModalOpen(false)}
-                            orderId={orderId}
-                            orderData={order}
-                            onTriggerPartialReturn={() => {
-                                setIsEditModalOpen(false)
-                                setIsPartialReturnOpen(true)
-                            }}
-                        />
-                        <PartialReturnModal
-                            order={order}
-                            isOpen={isPartialReturnOpen}
-                            onClose={() => setIsPartialReturnOpen(false)}
-                        />
-                        <DeletionReasonModal
-                            isOpen={isDeletionModalOpen}
-                            onClose={() => setIsDeletionModalOpen(false)}
-                            orderNumber={order.order_number}
-                            onSubmit={handleDelete}
-                        />
-                    </>
-                )
-            }
+            {order && (
+                <>
+                    <EditDarazOrderModal
+                        isOpen={isEditModalOpen}
+                        onClose={() => setIsEditModalOpen(false)}
+                        orderId={orderId}
+                        orderData={order}
+                        onTriggerPartialReturn={() => {
+                            setIsEditModalOpen(false)
+                            setIsPartialReturnOpen(true)
+                        }}
+                    />
+                    <PartialReturnModal
+                        order={order}
+                        isOpen={isPartialReturnOpen}
+                        onClose={() => setIsPartialReturnOpen(false)}
+                    />
+                    <DeletionReasonModal
+                        isOpen={isDeletionModalOpen}
+                        onClose={() => setIsDeletionModalOpen(false)}
+                        orderNumber={order.order_number}
+                        onSubmit={handleDelete}
+                    />
+                </>
+            )}
 
-        </div >
+        </div>
     )
 }

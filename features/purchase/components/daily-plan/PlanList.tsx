@@ -34,6 +34,9 @@ export function PlanList({ plans, completedProductIds, onPlanUpdated }: PlanList
     // Full Image State
     const [fullImage, setFullImage] = useState<string | null>(null)
 
+    // Action Menu State - tracks which plan is showing the complete action menu
+    const [actionMenuPlanId, setActionMenuPlanId] = useState<string | null>(null)
+
     // Dynamic Grouping
     const isPurchased = (plan: PurchasePlan) => completedProductIds.includes(plan.product_id)
 
@@ -150,14 +153,11 @@ export function PlanList({ plans, completedProductIds, onPlanUpdated }: PlanList
         <div className="flex items-center justify-end gap-2">
             {type === 'pending' && (
                 <>
+                    {/* Complete Button */}
                     <button
-                        onClick={() => {
-                            if (window.confirm("Complete Purchase? This will mark the plan as finished.")) {
-                                handleMarkComplete(plan)
-                            }
-                        }}
+                        onClick={() => setActionMenuPlanId(plan.id)}
                         className="px-2 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs rounded flex items-center gap-1 border border-gray-300"
-                        title="Mark as Complete"
+                        title="Choose action"
                     >
                         <Check size={14} /> Complete
                     </button>
@@ -311,11 +311,7 @@ export function PlanList({ plans, completedProductIds, onPlanUpdated }: PlanList
                                         <div className="grid grid-cols-2 gap-2">
                                             {/* Complete Button */}
                                             <button
-                                                onClick={() => {
-                                                    if (window.confirm("Complete Purchase? This will mark the plan as finished.")) {
-                                                        handleMarkComplete(plan)
-                                                    }
-                                                }}
+                                                onClick={() => setActionMenuPlanId(plan.id)}
                                                 className="w-full py-1.5 bg-green-50 hover:bg-green-100 text-green-700 font-medium text-[10px] rounded flex items-center justify-center gap-1 transition-all border border-green-200"
                                             >
                                                 <Check size={12} /> Complete
@@ -372,6 +368,19 @@ export function PlanList({ plans, completedProductIds, onPlanUpdated }: PlanList
                 .animate-shimmer-x {
                     animation: shimmer-x 2s infinite linear;
                 }
+                @keyframes slide-up {
+                    from {
+                        transform: translateY(100%);
+                        opacity: 0;
+                    }
+                    to {
+                        transform: translateY(0);
+                        opacity: 1;
+                    }
+                }
+                .animate-slide-up {
+                    animation: slide-up 0.3s ease-out;
+                }
             `}</style>
 
             <RenderTable data={pendingPlans} title="Pending Plans" colorClass="text-yellow-600" type="pending" />
@@ -404,6 +413,50 @@ export function PlanList({ plans, completedProductIds, onPlanUpdated }: PlanList
                             onSuccess={onPurchaseSuccess}
                             initialData={purchasePlanData}
                         />
+                    </div>
+                </div>
+            )}
+
+            {/* Complete Action Popup */}
+            {actionMenuPlanId && (
+                <div
+                    className="fixed inset-0 z-[60] flex items-center md:items-center items-end justify-center bg-black/40"
+                    onClick={() => setActionMenuPlanId(null)}
+                >
+                    <div
+                        className="w-full md:w-auto md:min-w-[400px] bg-white dark:bg-zinc-900 rounded-t-2xl md:rounded-2xl p-4 pb-6 mb-16 md:mb-0 shadow-xl animate-slide-up"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <div className="w-12 h-1 bg-gray-300 dark:bg-zinc-600 rounded-full mx-auto mb-4 md:hidden"></div>
+                        <h3 className="text-center font-semibold text-sm md:text-base mb-4 text-gray-700 dark:text-gray-300">
+                            Choose Action
+                        </h3>
+                        <div className="grid grid-cols-2 gap-3">
+                            <button
+                                onClick={() => {
+                                    const plan = plans.find(p => p.id === actionMenuPlanId)
+                                    if (plan && window.confirm("Mark as Complete? (No purchase entry)")) {
+                                        handleMarkComplete(plan)
+                                        setActionMenuPlanId(null)
+                                    }
+                                }}
+                                className="py-3 md:py-4 bg-green-600 hover:bg-green-700 text-white font-semibold text-sm md:text-base rounded-lg flex items-center justify-center gap-2 transition-all"
+                            >
+                                <Check size={18} /> Done
+                            </button>
+                            <button
+                                onClick={() => {
+                                    const plan = plans.find(p => p.id === actionMenuPlanId)
+                                    if (plan) {
+                                        setActionMenuPlanId(null)
+                                        handleOpenPurchaseModal(plan)
+                                    }
+                                }}
+                                className="py-3 md:py-4 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm md:text-base rounded-lg flex items-center justify-center gap-2 transition-all"
+                            >
+                                + Entry
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}
