@@ -9,8 +9,6 @@ import { Button, Input, Label, Card, CardHeader, CardTitle, CardContent } from "
 import { useRouter } from "next/navigation"
 import { loginAction } from "../actions/loginAction"
 import { supabase } from "@/lib/supabase/client"
-import { isMobileApp } from "@/lib/mobile-utils"
-import { Fingerprint } from "lucide-react"
 
 const formSchema = z.object({
     email: z.string().email({ message: "Invalid email address" }),
@@ -21,49 +19,8 @@ export function LoginForm() {
     const router = useRouter()
     const [isLoading, setIsLoading] = React.useState(false)
     const [error, setError] = React.useState<string | null>(null)
-    const [showBiometric, setShowBiometric] = React.useState(false)
+    const [showBiometric, setShowBiometric] = React.useState(false) // Left for future use but effectively disabled
 
-
-    const [biometricSupported, setBiometricSupported] = React.useState(true)
-
-    React.useEffect(() => {
-        const isMobile = isMobileApp()
-
-
-        if (isMobile) {
-            // Check if the browser environment supports WebAuthn
-            const isSupported = typeof window !== 'undefined' &&
-                !!window.PublicKeyCredential;
-
-            setBiometricSupported(isSupported)
-            setShowBiometric(true) // Show the section, but might display error inside
-        }
-    }, [])
-
-    const handleBiometricLogin = async () => {
-        setIsLoading(true)
-        setError(null)
-        try {
-            console.log('🔍 Checking Supabase Auth methods:', Object.keys(supabase.auth))
-            // @ts-ignore
-            const { data, error } = await supabase.auth.signInWithWebAuthn()
-
-            if (error) throw error
-
-            // If successful, Supabase handles the session. 
-            // We might need to refresh or redirect.
-            if (data) {
-                router.push('/dashboard')
-                router.refresh()
-            }
-
-        } catch (err: any) {
-            console.error("Biometric Error", err)
-            setError(err.message || "Biometric login failed")
-        } finally {
-            setIsLoading(false)
-        }
-    }
 
     const { register, handleSubmit, formState: { errors } } = useForm<z.infer<typeof formSchema>>({
         resolver: zodResolver(formSchema),
@@ -136,27 +93,7 @@ export function LoginForm() {
                             </div>
                         )}
 
-                        {showBiometric && (
-                            <>
-                                {biometricSupported ? (
-                                    <Button
-                                        type="button"
-                                        variant="outline"
-                                        className="w-full border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 mb-2"
-                                        onClick={handleBiometricLogin}
-                                        disabled={isLoading}
-                                    >
-                                        <Fingerprint className="mr-2 h-4 w-4" />
-                                        Login with Fingerprint
-                                    </Button>
-                                ) : (
-                                    <div className="mb-2 p-2 text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded text-center">
-                                        Fingerprint not supported in this App/Browser.
-                                        <br />(Missing PublicKeyCredential)
-                                    </div>
-                                )}
-                            </>
-                        )}
+
 
                         <Button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white" disabled={isLoading}>
                             {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
