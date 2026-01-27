@@ -37,6 +37,7 @@ export function LoginForm() {
         setError(null)
         try {
             console.log('🔍 Checking Supabase Auth methods:', Object.keys(supabase.auth))
+            // @ts-ignore
             const { data, error } = await supabase.auth.signInWithWebAuthn()
 
             if (error) throw error
