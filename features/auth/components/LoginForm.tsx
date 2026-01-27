@@ -22,9 +22,12 @@ export function LoginForm() {
     const [isLoading, setIsLoading] = React.useState(false)
     const [error, setError] = React.useState<string | null>(null)
     const [showBiometric, setShowBiometric] = React.useState(false)
+    const [debugMobile, setDebugMobile] = React.useState(false)
 
     React.useEffect(() => {
-        if (isMobileApp()) {
+        const isMobile = isMobileApp()
+        setDebugMobile(isMobile)
+        if (isMobile) {
             setShowBiometric(true)
         }
     }, [])
@@ -159,6 +162,10 @@ export function LoginForm() {
                     </form>
                 </CardContent>
             </Card>
+            <div className="mt-4 p-2 text-xs text-gray-400 bg-gray-100 rounded text-center max-w-[350px]">
+                <p>Is Mobile: {debugMobile ? 'YES' : 'NO'}</p>
+                <p className="break-all">{typeof window !== 'undefined' ? window.navigator.userAgent : ''}</p>
+            </div>
         </>
     )
 }

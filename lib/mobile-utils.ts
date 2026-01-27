@@ -4,8 +4,14 @@ export const isMobileApp = (): boolean => {
     const userAgent = window.navigator.userAgent || '';
 
     // Check for specific User Agent set by the Android App
-    // We strictly check for "BagmatiInventoryApp" OR standard Android WebView indicator ";wv"
-    const isCustomApp = /BagmatiInventoryApp/i.test(userAgent) || /;wv/.test(userAgent);
+    // We check for:
+    // 1. "BagmatiInventoryApp" (Custom)
+    // 2. ";wv" (Standard WebView)
+    // 3. "Version/" (Common in Android WebViews)
+    const isCustomApp =
+        /BagmatiInventoryApp/i.test(userAgent) ||
+        /;wv/.test(userAgent) ||
+        /Version\//.test(userAgent);
 
     if (isCustomApp) return true;
 
