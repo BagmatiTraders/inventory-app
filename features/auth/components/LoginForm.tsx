@@ -8,6 +8,9 @@ import { Loader2 } from "lucide-react"
 import { Button, Input, Label, Card, CardHeader, CardTitle, CardContent } from "@/components/ui-shim"
 import { useRouter } from "next/navigation"
 import { loginAction } from "../actions/loginAction"
+import { supabase } from "@/lib/supabase/client"
+import { isMobileApp } from "@/lib/mobile-utils"
+import { Fingerprint } from "lucide-react"
 
 const formSchema = z.object({
     email: z.string().email({ message: "Invalid email address" }),
@@ -18,6 +21,37 @@ export function LoginForm() {
     const router = useRouter()
     const [isLoading, setIsLoading] = React.useState(false)
     const [error, setError] = React.useState<string | null>(null)
+    const [showBiometric, setShowBiometric] = React.useState(false)
+
+    React.useEffect(() => {
+        if (isMobileApp()) {
+            setShowBiometric(true)
+        }
+    }, [])
+
+    const handleBiometricLogin = async () => {
+        setIsLoading(true)
+        setError(null)
+        try {
+            // @ts-ignore
+            const { data, error } = await supabase.auth.signInWithWebAuthn()
+
+            if (error) throw error
+
+            // If successful, Supabase handles the session. 
+            // We might need to refresh or redirect.
+            if (data) {
+                router.push('/dashboard')
+                router.refresh()
+            }
+
+        } catch (err: any) {
+            console.error("Biometric Error", err)
+            setError(err.message || "Biometric login failed")
+        } finally {
+            setIsLoading(false)
+        }
+    }
 
     const { register, handleSubmit, formState: { errors } } = useForm<z.infer<typeof formSchema>>({
         resolver: zodResolver(formSchema),
@@ -87,6 +121,19 @@ export function LoginForm() {
                         <div className="rounded-md bg-destructive/15 p-3 text-sm text-destructive text-red-600 bg-red-50 border border-red-200">
                             {error}
                         </div>
+                    )}
+
+                    {showBiometric && (
+                        <Button
+                            type="button"
+                            variant="outline"
+                            className="w-full border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 mb-2"
+                            onClick={handleBiometricLogin}
+                            disabled={isLoading}
+                        >
+                            <Fingerprint className="mr-2 h-4 w-4" />
+                            Login with Fingerprint
+                        </Button>
                     )}
 
                     <Button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white" disabled={isLoading}>
