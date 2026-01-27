@@ -13,7 +13,7 @@ import {
 } from '@/components/ui-shim'
 import { Search, Eye, AlertTriangle } from 'lucide-react'
 import Link from 'next/link'
-import { getProfitTrackerData, getDailyProfitStats } from '@/features/sales/actions/report-actions'
+import { getProfitTrackerData, getDailyProfitStats, getSellerAccounts } from '@/features/sales/actions/report-actions'
 import { format } from 'date-fns'
 import { BulkSyncButton } from './bulk-sync-button'
 import { MobileHeaderAction } from '@/components/MobileHeaderAction'
@@ -49,6 +49,8 @@ function ProfitTrackerContent({ isEmbedded = false }: { isEmbedded?: boolean }) 
     const [limit, setLimit] = useState(50)
     const [search, setSearch] = useState('')
     const [syncStatus, setSyncStatus] = useState<'all' | 'synced' | 'not_synced'>('all')
+    const [sellerAccount, setSellerAccount] = useState('All')
+    const [availableSellers, setAvailableSellers] = useState<string[]>([])
 
     // Initialize from URL on mount only
     useEffect(() => {
@@ -56,47 +58,63 @@ function ProfitTrackerContent({ isEmbedded = false }: { isEmbedded?: boolean }) 
         const l = Number(searchParams.get('limit')) || 50
         const s = searchParams.get('search') || ''
         const ss = (searchParams.get('syncStatus') as any) || 'all'
+        const sa = searchParams.get('sellerAccount') || 'All'
 
         setPage(p)
         setLimit(l)
         setSearch(s)
         setSyncStatus(ss)
+        setSellerAccount(sa)
+
+        // Fetch seller accounts
+        getSellerAccounts().then(setAvailableSellers)
     }, []) // Empty dependency to run only once on mount
 
     // Update URL when state changes (only if NOT embedded)
-    useEffect(() => {
-        if (!isEmbedded) {
-            const params = new URLSearchParams()
-            if (page > 1) params.set('page', String(page))
-            if (limit !== 50) params.set('limit', String(limit))
-            if (search) params.set('search', search)
-            if (syncStatus !== 'all') params.set('syncStatus', syncStatus)
-
-            const str = params.toString()
-            const url = str ? `?${str}` : window.location.pathname
-            router.replace(url, { scroll: false })
-        }
-    }, [page, limit, search, syncStatus, isEmbedded, router])
+    // useEffect(() => {
+    //     if (!isEmbedded) {
+    //         const params = new URLSearchParams()
+    //         if (page > 1) params.set('page', String(page))
+    //         if (limit !== 50) params.set('limit', String(limit))
+    //         if (search) params.set('search', search)
+    //         if (syncStatus !== 'all') params.set('syncStatus', syncStatus)
+    //         if (sellerAccount !== 'All') params.set('sellerAccount', sellerAccount)
+    //
+    //         const str = params.toString()
+    //         const url = str ? `?${str}` : window.location.pathname
+    //         router.replace(url, { scroll: false })
+    //     }
+    // }, [page, limit, search, syncStatus, sellerAccount, isEmbedded, router])
 
     // Data Fetching
-    const { data: profitData, isLoading: isOrdersLoading } = useQuery({
+
+    const { data: profitData, isLoading: isOrdersLoading, error: ordersError } = useQuery({
         queryKey: ['profit-tracker', page, limit, search, syncStatus],
         queryFn: async () => {
-            // Wrap the server action call
-            return getProfitTrackerData({
-                page,
-                limit,
-                search,
-                syncStatus,
-                startDate: undefined,
-                endDate: undefined
-            })
+            // console.log('[PROFIT TRACKER] Fetching orders...')
+            try {
+                const result = await getProfitTrackerData({
+                    page,
+                    limit,
+                    search,
+                    syncStatus,
+                    sellerAccount: sellerAccount === 'All' ? undefined : sellerAccount,
+                    startDate: undefined,
+                    endDate: undefined
+                })
+                // console.log('[PROFIT TRACKER] Orders fetched')
+                return result
+            } catch (err) {
+                console.error('[PROFIT TRACKER] Fetch Error:', err)
+                throw err
+            }
         }
     })
 
     const { data: dailyStats, isLoading: isStatsLoading } = useQuery({
         queryKey: ['daily-profit-stats', search, syncStatus],
         queryFn: async () => {
+            // console.log('[PROFIT TRACKER] Fetching stats...')
             return getDailyProfitStats({
                 search,
                 syncStatus,
@@ -111,7 +129,9 @@ function ProfitTrackerContent({ isEmbedded = false }: { isEmbedded?: boolean }) 
     const totalCount = profitData?.totalCount || 0
     const totalPages = profitData?.totalPages || 0
     const rawStatsList: any[] = Array.isArray(dailyStats) ? dailyStats : []
-    const isLoading = isOrdersLoading || isStatsLoading
+    const isLoading = isOrdersLoading // Only block table on orders loading. Stats can pop in later.
+
+    // console.log('[PROFIT TRACKER] Render. Orders Loading:', isOrdersLoading, 'Stats Loading:', isStatsLoading)
 
     // Client-Side Aggregation of Stats
     // We process the raw list from backend to match Frontend/Local Timezone grouping
@@ -152,7 +172,7 @@ function ProfitTrackerContent({ isEmbedded = false }: { isEmbedded?: boolean }) 
                 orders: [],
                 totalProfit: dayStats.totalProfit || 0,
                 totalRevenue: dayStats.totalRevenue || 0,
-                dateLabel: dateRaw ? format(new Date(dateRaw), 'EEEE, MMMM d, yyyy') : 'Unknown Date',
+                dateLabel: dateRaw ? format(new Date(dateRaw), 'EEEE, MMM d') : 'Unknown Date',
                 statsBySeller: dayStats.statsBySeller || {}
             }
         }
@@ -168,7 +188,8 @@ function ProfitTrackerContent({ isEmbedded = false }: { isEmbedded?: boolean }) 
         return b.localeCompare(a)
     })
 
-    let globalIndex = 0
+    // Remove globalIndex usage for S.N reset
+    // let globalIndex = 0
     const visibleOrderNumbers = orders.map((o: any) => o.order_number)
 
     return (
@@ -278,51 +299,52 @@ function ProfitTrackerContent({ isEmbedded = false }: { isEmbedded?: boolean }) 
                                             <Fragment key={dateKey}>
                                                 {/* Group Header */}
                                                 <TableRow className="bg-gray-100 dark:bg-zinc-800/80 border-b border-gray-200 dark:border-zinc-700">
-                                                    <TableCell colSpan={8} className="py-3 pl-4 align-top">
-                                                        <div className="relative min-h-[28px]">
-                                                            <span className="absolute left-0 top-1 font-bold text-gray-700 dark:text-gray-200 text-sm whitespace-nowrap">
-                                                                {group.dateLabel}
-                                                            </span>
-                                                            <div className="w-full flex justify-center">
-                                                                <div className="flex flex-col gap-1.5">
-                                                                    {Object.entries(group.statsBySeller).map(([seller, stats]: [string, any]) => (
-                                                                        <div key={seller} className="flex items-center gap-3 text-xs bg-white dark:bg-zinc-900/50 px-2 py-1 rounded border border-gray-200 dark:border-zinc-700 w-fit shadow-sm">
-                                                                            <span className="font-semibold text-gray-700 dark:text-gray-300 w-[140px] truncate" title={seller}>
-                                                                                {seller}
-                                                                            </span>
+                                                    {/* Date Cell */}
+                                                    <TableCell colSpan={2} className="py-3 pl-4 align-top border-r border-gray-200 dark:border-zinc-700/50">
+                                                        <span className="font-bold text-gray-700 dark:text-gray-200 text-sm whitespace-nowrap">
+                                                            {group.dateLabel}
+                                                        </span>
+                                                    </TableCell>
+
+                                                    {/* Stats Cell */}
+                                                    <TableCell colSpan={6} className="py-3 px-4 align-top">
+                                                        <div className="flex flex-wrap gap-2">
+                                                            {Object.entries(group.statsBySeller).map(([seller, stats]: [string, any]) => (
+                                                                <div key={seller} className="flex items-center gap-3 text-xs bg-white dark:bg-zinc-900/50 px-2 py-1 rounded border border-gray-200 dark:border-zinc-700 w-fit shadow-sm">
+                                                                    <span className="font-semibold text-gray-700 dark:text-gray-300 max-w-[120px] truncate" title={seller}>
+                                                                        {seller}
+                                                                    </span>
+                                                                    <span className="text-gray-300 dark:text-zinc-700">|</span>
+                                                                    <span className="flex items-center gap-1">
+                                                                        <span className="text-gray-500">Profit:</span>
+                                                                        <span className={`font-medium ${stats.profit > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                                                            Rs. {stats.profit.toLocaleString(undefined, { minimumFractionDigits: 0 })}
+                                                                        </span>
+                                                                    </span>
+                                                                    <span className="text-gray-300 dark:text-zinc-700">|</span>
+                                                                    <span className="flex items-center gap-1">
+                                                                        <span className="text-gray-500">Total:</span>
+                                                                        <span className="font-medium text-gray-700 dark:text-gray-300">
+                                                                            Rs. {(stats.revenue || 0).toLocaleString()}
+                                                                        </span>
+                                                                    </span>
+                                                                    <span className="text-gray-300 dark:text-zinc-700">|</span>
+                                                                    <span className="flex items-center gap-1">
+                                                                        <span className="text-gray-500">Cost:</span>
+                                                                        <span className="font-medium text-gray-700 dark:text-gray-300">
+                                                                            Rs. {(stats.cost || 0).toLocaleString()}
+                                                                        </span>
+                                                                    </span>
+                                                                    {stats.missing > 0 && (
+                                                                        <>
                                                                             <span className="text-gray-300 dark:text-zinc-700">|</span>
-                                                                            <span className="flex items-center gap-1 w-[140px]">
-                                                                                <span className="text-gray-500">Profit:</span>
-                                                                                <span className={`font-medium ${stats.profit > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                                                                    Rs. {stats.profit.toLocaleString(undefined, { minimumFractionDigits: 0 })}
-                                                                                </span>
+                                                                            <span className="text-red-600 font-medium flex items-center gap-1">
+                                                                                <AlertTriangle className="w-3 h-3 text-red-500" /> {stats.missing} Missing
                                                                             </span>
-                                                                            <span className="text-gray-300 dark:text-zinc-700">|</span>
-                                                                            <span className="flex items-center gap-1 w-[180px]">
-                                                                                <span className="text-gray-500">Total Price:</span>
-                                                                                <span className="font-medium text-gray-700 dark:text-gray-300">
-                                                                                    Rs. {(stats.revenue || 0).toLocaleString()}
-                                                                                </span>
-                                                                            </span>
-                                                                            <span className="text-gray-300 dark:text-zinc-700">|</span>
-                                                                            <span className="flex items-center gap-1 w-[180px]">
-                                                                                <span className="text-gray-500">Total Cost:</span>
-                                                                                <span className="font-medium text-gray-700 dark:text-gray-300">
-                                                                                    Rs. {(stats.cost || 0).toLocaleString()}
-                                                                                </span>
-                                                                            </span>
-                                                                            {stats.missing > 0 && (
-                                                                                <>
-                                                                                    <span className="text-gray-300 dark:text-zinc-700">|</span>
-                                                                                    <span className="text-red-600 font-medium flex items-center gap-1 w-[100px]">
-                                                                                        <AlertTriangle className="w-3 h-3 text-red-500" /> Missing: {stats.missing}
-                                                                                    </span>
-                                                                                </>
-                                                                            )}
-                                                                        </div>
-                                                                    ))}
+                                                                        </>
+                                                                    )}
                                                                 </div>
-                                                            </div>
+                                                            ))}
                                                         </div>
                                                     </TableCell>
                                                     <TableCell colSpan={2} className="text-right font-bold py-3 pr-4 text-gray-900 dark:text-gray-100 align-top">
@@ -337,13 +359,17 @@ function ProfitTrackerContent({ isEmbedded = false }: { isEmbedded?: boolean }) 
 
                                                 {/* Group Rows */}
                                                 {group.orders.map((order: any, i: number) => {
-                                                    const currentRowIndex = globalIndex++
+                                                    // Reset S.N per group, but respect pagination offset for the FIRST group on the page
+                                                    const groupSNIndex = (dateKey === sortedDateKeys[0])
+                                                        ? (profitData?.firstItemOffset || 0) + i + 1
+                                                        : i + 1
+
                                                     const isSynced = order.sync_status === 'synced'
 
                                                     return (
                                                         <TableRow key={order.order_primary_id} className="hover:bg-gray-50 dark:hover:bg-zinc-800/50">
-                                                            <TableCell className="text-gray-500">
-                                                                {((page - 1) * limit) + currentRowIndex + 1}
+                                                            <TableCell className="text-gray-500 font-medium">
+                                                                {groupSNIndex}
                                                             </TableCell>
                                                             <TableCell>
                                                                 <div className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${isSynced
