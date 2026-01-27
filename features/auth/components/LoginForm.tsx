@@ -171,15 +171,21 @@ export function LoginForm() {
                     onClick={() => {
                         const auth = supabase.auth;
                         // @ts-ignore
-                        const hasMethod = typeof auth.signInWithWebAuthn === 'function';
+                        const hasWebAuthn = typeof auth.signInWithWebAuthn === 'function';
                         // @ts-ignore
-                        const methodType = typeof auth.signInWithWebAuthn;
+                        const hasPassword = typeof auth.signInWithPassword === 'function';
+                        const isSecure = typeof window !== 'undefined' && window.isSecureContext;
 
-                        alert(`Has signInWithWebAuthn: ${hasMethod}\nType: ${methodType}\nKeys: ${Object.keys(auth).join(', ')}`);
+                        alert(
+                            `WebAuthn: ${hasWebAuthn}\n` +
+                            `Password: ${hasPassword}\n` +
+                            `Secure: ${isSecure}\n` +
+                            `Keys: ${Object.keys(auth).filter(k => !k.startsWith('_')).slice(0, 5).join(',')}`
+                        );
                     }}
                     className="mt-2 text-blue-500 underline"
                 >
-                    Check WebAuthn Function
+                    Deep Debug
                 </button>
             </div>
         </>
