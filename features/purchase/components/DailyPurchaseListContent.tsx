@@ -35,15 +35,8 @@ export default function DailyPurchaseListContent({ isEmbedded = false }: DailyPu
     useEffect(() => {
         if (!setHeaderTitle || !setHeaderAction || isEmbedded) return
 
-        const titles = {
-            'plan': 'Daily Purchases',
-            'transactions': 'Transaction Details',
-            'all-purchases': 'All Purchase List'
-        }
-        setHeaderTitle(titles[viewMode])
-
-        // Set the add button only for plan view
         if (viewMode === 'plan') {
+            setHeaderTitle('Daily Purchases')
             setHeaderAction(
                 <button
                     onClick={() => setIsAddPurchaseModalOpen(true)}
@@ -52,7 +45,17 @@ export default function DailyPurchaseListContent({ isEmbedded = false }: DailyPu
                     <Plus size={22} />
                 </button>
             )
+        } else if (viewMode === 'transactions') {
+            const todayStr = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })
+            setHeaderTitle(
+                <div className="flex flex-col items-center justify-center -space-y-0.5">
+                    <span className="text-sm font-bold">Transaction Details</span>
+                    <span className="text-[11px] font-medium text-gray-500">{todayStr}</span>
+                </div>
+            )
+            setHeaderAction(null)
         } else {
+            setHeaderTitle('All Purchase List')
             setHeaderAction(null)
         }
 

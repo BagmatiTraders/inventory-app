@@ -67,8 +67,8 @@ export function PlanDetailModal({ plan, open, onClose, onUpdate }: { plan: Purch
             <div className="absolute inset-0 bg-black/50" onClick={onClose} />
             <div className="relative bg-white dark:bg-zinc-900 rounded-lg shadow-xl w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
                 <div className="flex items-center justify-between px-4 py-3 border-b dark:border-zinc-700">
-                    <h2 className="text-lg font-bold">Plan Details: {plan.product?.product_name}</h2>
-                    <button onClick={onClose}><X size={20} className="text-gray-500" /></button>
+                    <h2 className="text-lg font-bold">Details: {plan.product?.product_name}</h2>
+                    <button onClick={onClose} className="hidden md:block"><X size={20} className="text-gray-500" /></button>
                 </div>
 
                 <div className="p-4 overflow-y-auto flex-1 space-y-6">
@@ -95,8 +95,8 @@ export function PlanDetailModal({ plan, open, onClose, onUpdate }: { plan: Purch
                                 </select>
                             ) : (
                                 <div className={`inline-flex px-2 py-1 rounded text-xs font-semibold ${plan.status === 'Pending' ? 'bg-yellow-100 text-yellow-700' :
-                                        plan.status === 'Complete' ? 'bg-green-100 text-green-700' :
-                                            'bg-red-100 text-red-700'
+                                    plan.status === 'Complete' ? 'bg-green-100 text-green-700' :
+                                        'bg-red-100 text-red-700'
                                     }`}>
                                     {plan.status}
                                 </div>
@@ -186,7 +186,7 @@ export function PlanDetailModal({ plan, open, onClose, onUpdate }: { plan: Purch
                     </div>
                 </div>
 
-                <div className="p-4 border-t dark:border-zinc-700 flex justify-end gap-2">
+                <div className="p-1 pb-11 md:pb-4 border-t dark:border-zinc-700 flex justify-end gap-2">
                     {isEditing ? (
                         <>
                             <button onClick={() => setIsEditing(false)} className="px-4 py-2 text-sm border rounded hover:bg-gray-50">Cancel</button>
@@ -196,9 +196,9 @@ export function PlanDetailModal({ plan, open, onClose, onUpdate }: { plan: Purch
                         </>
                     ) : (
                         <>
-                            <button onClick={onClose} className="px-4 py-2 text-sm border rounded hover:bg-gray-50">Close</button>
+                            <button onClick={onClose} className="px-4 py-2 text-sm border rounded hover:bg-gray-50 dark:hover:bg-zinc-800">Close</button>
                             {canEdit && (
-                                <button onClick={() => setIsEditing(true)} className="px-4 py-2 text-sm bg-gray-100 hover:bg-gray-200 rounded flex items-center gap-2">
+                                <button onClick={() => setIsEditing(true)} className="px-4 py-1 text-sm bg-gray-100 hover:bg-gray-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 rounded flex items-center gap-2">
                                     <Edit size={16} /> Edit
                                 </button>
                             )}

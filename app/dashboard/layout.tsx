@@ -371,8 +371,7 @@ function DashboardLayout({
                 {/* Main Content */}
                 <main className={`
                     flex-1 
-                    ${isMobileMode && pathname === '/dashboard' ? 'overflow-hidden' : 'overflow-y-auto'}
-                    ${isMobileMode && pathname === '/dashboard' ? 'overflow-hidden' : 'overflow-y-auto'}
+                    ${(isMobileMode && pathname === '/dashboard') || pathname === '/dashboard/purchase/daily-purchase-list' ? 'overflow-hidden' : 'overflow-y-auto'}
                     ${pathname === '/dashboard/purchase/inventory-price-reports' || pathname === '/dashboard/purchase/daily-purchase-list' || pathname === '/dashboard/purchase/analytics' || pathname === '/dashboard/suppliers/suppliers-account' || pathname === '/dashboard/sales/daraz/status-sync' || pathname === '/dashboard/sales/daraz/order-sync' || pathname?.startsWith('/dashboard/inventory/stock-ledger') ? 'pt-0' : 'mt-16 md:mt-0'} 
                     ${pathname === '/dashboard/purchase/inventory-price-reports' || pathname === '/dashboard/purchase/daily-purchase-list' || pathname === '/dashboard/purchase/analytics' || pathname === '/dashboard/suppliers/suppliers-account' || pathname === '/dashboard/sales/daraz/status-sync' || pathname === '/dashboard/sales/daraz/order-sync' || pathname?.startsWith('/dashboard/inventory/stock-ledger') ? 'h-full' : 'h-[calc(100vh-4rem)] md:h-full'}
                     pointer-events-auto

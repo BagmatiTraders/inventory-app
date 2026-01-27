@@ -120,21 +120,7 @@ export default function DailyPurchaseDetailView({ date, purchases, isLoading, on
             {/* Detail Header */}
             <div className="sticky top-0 z-20 bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 px-3 py-3 shadow-sm">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
-                    {/* Top Row: Back Button & Date - Centered on Mobile */}
-                    <div className="relative flex items-center justify-center md:justify-start">
-                        {onBack && (
-                            <button
-                                onClick={onBack}
-                                className="absolute left-0 p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors md:relative md:left-auto"
-                            >
-                                <ArrowLeft size={18} />
-                            </button>
-                        )}
-                        <div className="text-center md:text-left md:ml-2">
-                            <h2 className="text-lg font-bold">{formatDate(date)}</h2>
-                            <p className="hidden md:block text-xs text-gray-500 dark:text-gray-400">Daily Transaction Details</p>
-                        </div>
-                    </div>
+                    {/* Top Row Removed - Date moved to global header */}
 
                     {/* Bottom/Right Row: Totals */}
                     <div className="flex items-center justify-between md:justify-end gap-2 md:gap-6 bg-gray-50 dark:bg-zinc-800/50 p-2 md:p-0 rounded-lg md:bg-transparent">
