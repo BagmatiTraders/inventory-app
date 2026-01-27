@@ -159,10 +159,6 @@ export function LoginForm() {
                     </form>
                 </CardContent>
             </Card>
-            <div className="mt-4 p-2 text-xs text-gray-400 bg-gray-100 rounded text-center max-w-[350px]">
-                <p>Debug Info:</p>
-                <p className="break-all">{typeof window !== 'undefined' ? window.navigator.userAgent : ''}</p>
-            </div>
         </>
     )
 }
