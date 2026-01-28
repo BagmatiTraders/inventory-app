@@ -1,7 +1,7 @@
 
 import { Metadata } from 'next'
 import { getStockLedger } from '@/features/inventory/services/stock-ledger-service'
-import StockLedgerTable from '@/features/inventory/components/StockLedgerTable'
+import StockLedgerView from '@/features/inventory/components/StockLedgerView'
 import { ArrowLeft } from 'lucide-react'
 import Link from 'next/link'
 
@@ -36,7 +36,8 @@ export default async function StockLedgerPage() {
             <div className="h-16 md:hidden"></div>
 
             {/* Client Table */}
-            <StockLedgerTable
+            {/* Client View with Tabs */}
+            <StockLedgerView
                 initialData={data}
                 initialTotal={totalCount}
                 initialPages={totalPages}

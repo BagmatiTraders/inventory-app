@@ -77,7 +77,8 @@ export async function getStockLedger(page = 1, limit = 100, search = ''): Promis
     const productIds = products.map(p => p.id)
 
     // 2. Fetch Related Data in Chunks (Supabase has limits on .in() clause size)
-    const RELATED_CHUNK_SIZE = 500
+    // Reduce chunk size to 50 to avoid URL length limits (GET requests)
+    const RELATED_CHUNK_SIZE = 50
     const allOpeningStocks: any[] = []
     const allManualAdjustments: any[] = []
     const allDamagedStocks: any[] = []

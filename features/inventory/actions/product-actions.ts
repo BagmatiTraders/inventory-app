@@ -212,6 +212,45 @@ export async function getAllProductOptions() {
 }
 
 /**
+ * Get ALL products for POS (includes image & price)
+ * Optimized for client-side search/filtering
+ */
+export async function getAllPosProducts() {
+    const supabase = await createClient()
+
+    let allProducts: any[] = []
+    let page = 0
+    const pageSize = 1000
+
+    while (true) {
+        const from = page * pageSize
+        const to = from + pageSize - 1
+
+        const { data, error } = await supabase
+            .from('products')
+            .select('id, product_name, product_id, seller_sku1, image_url, est_price, product_type')
+            .eq('is_deleted', false)
+            .eq('status', 'Active')
+            .order('product_name', { ascending: true })
+            .range(from, to)
+
+        if (error) {
+            console.error('Get POS products error:', error)
+            throw new Error(error.message)
+        }
+
+        if (!data || data.length === 0) break
+
+        allProducts = allProducts.concat(data)
+
+        if (data.length < pageSize) break
+        page++
+    }
+
+    return allProducts
+}
+
+/**
  * Get inactive products (Status = 'Inactive' AND is_deleted = false)
  */
 export async function getInactiveProducts() {
