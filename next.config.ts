@@ -1,4 +1,6 @@
 import type { NextConfig } from "next";
+// @ts-ignore - next-pwa doesn't have types
+import withPWA from 'next-pwa';
 
 const nextConfig: NextConfig = {
   experimental: {
@@ -48,6 +50,19 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+  // Add empty turbopack config to silence Turbopack warning
+  // This allows next-pwa's webpack config to work properly
+  turbopack: {},
 };
 
-export default nextConfig;
+const pwaConfig = withPWA({
+  dest: 'public',
+  disable: process.env.NODE_ENV === 'development',
+  register: true,
+  skipWaiting: true,
+  sw: 'sw.js',
+  scope: '/',
+});
+
+export default pwaConfig(nextConfig);
+

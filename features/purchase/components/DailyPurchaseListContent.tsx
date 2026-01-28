@@ -10,13 +10,14 @@ import { getDailyPurchaseReport } from '@/features/purchase/actions/purchase-ana
 import { PlanList } from '@/features/purchase/components/daily-plan/PlanList'
 import { SearchInput } from '@/features/purchase/components/daily-plan/SearchInput'
 import { AddPlanModal } from '@/features/purchase/components/daily-plan/AddPlanModal'
-import { ArrowLeft, Plus, FileText, List as ListIcon, Eye } from 'lucide-react'
+import { ArrowLeft, Plus, FileText, List as ListIcon, Eye, WifiOff } from 'lucide-react'
 import Link from 'next/link'
 import { Card } from '@/components/ui-shim'
 import DailyPurchaseDetailView from './DailyPurchaseDetailView'
 import PurchaseListContent from '@/features/purchase/components/PurchaseListContent'
-
 import PurchaseForm from '@/features/purchase/components/PurchaseForm'
+import { useOfflineSync } from '@/hooks/useOfflineSync'
+import { cachePurchasePlans, getCachedPurchasePlans } from '@/features/purchase/actions/offline-purchase-actions'
 
 interface DailyPurchaseListContentProps {
     isEmbedded?: boolean
@@ -30,6 +31,7 @@ export default function DailyPurchaseListContent({ isEmbedded = false }: DailyPu
     const queryClient = useQueryClient()
     const searchQuery = searchParams.get('q')?.toLowerCase() || ''
     const { setHeaderTitle, setHeaderAction } = useDashboard()
+    const { isOnline, pendingCount } = useOfflineSync()
 
     // Update global header title and action based on view mode
     useEffect(() => {
@@ -65,10 +67,22 @@ export default function DailyPurchaseListContent({ isEmbedded = false }: DailyPu
         }
     }, [viewMode, setHeaderTitle, setHeaderAction, isEmbedded])
 
-    // Fetch Plans
+    // Fetch Plans (with offline support)
     const { data: allPlans, isLoading: isPlansLoading } = useQuery({
         queryKey: ['purchase-plans'],
-        queryFn: () => getPurchasePlans(),
+        queryFn: async () => {
+            if (isOnline) {
+                // Online: fetch from server and cache
+                const plans = await getPurchasePlans()
+                if (plans && plans.length > 0) {
+                    await cachePurchasePlans(plans)
+                }
+                return plans
+            } else {
+                // Offline: load from cache
+                return await getCachedPurchasePlans()
+            }
+        },
         staleTime: 5 * 60 * 1000, // 5 minutes - plans don't change often
         gcTime: 10 * 60 * 1000 // 10 minutes (formerly cacheTime)
     })

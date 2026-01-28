@@ -327,12 +327,8 @@ export async function getProfitTrackerData(params: GetOrderReportParams) {
         query = query.or(`order_number.ilike.%${search.trim()}%,invoice_number.ilike.%${search.trim()}%`)
     }
 
-    // Apply DB Level Filtering for Pagination Accuracy
-    if (syncStatus === 'synced') {
-        query = query.not('daraz_fees', 'is', null)
-    } else if (syncStatus === 'not_synced') {
-        query = query.is('daraz_fees', null)
-    }
+    // NOTE: We removed DB-level sync filter because sync_status is calculated AFTER query
+    // based on BOTH daraz_fees AND item purchase costs. We'll filter in JS instead.
 
     // Filter by Seller Account
     if (sellerAccount && sellerAccount !== 'All') {
@@ -355,12 +351,20 @@ export async function getProfitTrackerData(params: GetOrderReportParams) {
         query = query.lte('delivered_at', endDate)
     }
 
+    // Since sync_status is calculated after query, we need special handling
+    // If filtering by syncStatus, we Fetch ALL and filter in JS (no range yet)
+    // Otherwise, apply range immediately for efficiency
+
+    const needsPostFilter = syncStatus !== 'all'
+
+    if (!needsPostFilter) {
+        query = query.range(from, to)
+    }
     // Sort by Delivered At Descending (Prioritize official Daraz time)
     query = query
         .order('delivered_by_daraz', { ascending: false, nullsFirst: false })
         .order('delivered_at', { ascending: false, nullsFirst: false })
         .order('created_at', { ascending: false }) // Tie-breaker for same delivered time
-        .range(from, to)
 
     const { data, count, error } = await query
 
@@ -605,8 +609,8 @@ export async function getProfitTrackerData(params: GetOrderReportParams) {
         const financials = calculateOrderFinancials(orderForCalc, priceMap)
 
         // Enhanced Sync Status Logic:
-        // 1. Check if Daraz Fees are synced
-        let isSyncedFee = order.daraz_fees !== null && order.daraz_fees !== undefined
+        // 1. Check if Daraz Fees are synced AND calculated (must be > 0)
+        let isSyncedFee = order.daraz_fees !== null && order.daraz_fees !== undefined && order.daraz_fees > 0
 
         // 2. Check if ALL delivered items have valid purchase costs
         const allItemsHaveCost = deliveredItems.every((item: any) => {
@@ -660,10 +664,26 @@ export async function getProfitTrackerData(params: GetOrderReportParams) {
         }
     }).filter(Boolean)
 
+    // **FIX: Apply sync_status filter in JavaScript after calculation**
+    if (syncStatus === 'synced') {
+        formattedData = formattedData.filter((order: any) => order.sync_status === 'synced')
+    } else if (syncStatus === 'not_synced') {
+        formattedData = formattedData.filter((order: any) => order.sync_status === 'not_synced')
+    }
+
+    // If we did post-filtering, manually apply pagination
+    const finalData = needsPostFilter
+        ? formattedData.slice(from, to + 1)
+        : formattedData
+
+    const finalCount = needsPostFilter
+        ? formattedData.length
+        : (count || 0)
+
     return {
-        data: formattedData,
-        totalCount: count || 0,
-        totalPages: Math.ceil((count || 0) / limit),
+        data: finalData,
+        totalCount: finalCount,
+        totalPages: Math.ceil(finalCount / limit),
         currentPage: page,
         firstItemOffset
     }
@@ -698,12 +718,8 @@ export async function getDailyProfitStats(params: GetOrderReportParams) {
         query = query.or(`order_number.ilike.%${search.trim()}%,invoice_number.ilike.%${search.trim()}%`)
     }
 
-    // Sync Status
-    if (syncStatus === 'synced') {
-        query = query.not('daraz_fees', 'is', null)
-    } else if (syncStatus === 'not_synced') {
-        query = query.is('daraz_fees', null)
-    }
+    // NOTE: Removed sync_status DB filter to match getProfitTrackerData fix
+    // Stats are aggregated from all data anyway, filtering happens on frontend
 
     // Filter by Seller Account
     if (sellerAccount && sellerAccount !== 'All') {
