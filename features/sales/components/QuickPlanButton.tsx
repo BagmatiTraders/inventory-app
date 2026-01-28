@@ -10,13 +10,16 @@ import { toast } from 'sonner'
 interface QuickPlanButtonProps {
     order: any
     stockInfo?: any
+    allOrders?: any[]
+    activePlanProductIds?: string[]
 }
 
-export function QuickPlanButton({ order, stockInfo }: QuickPlanButtonProps) {
+export function QuickPlanButton({ order, stockInfo, allOrders = [], activePlanProductIds = [] }: QuickPlanButtonProps) {
     const [showProductSelection, setShowProductSelection] = useState(false)
     const [showPlanModal, setShowPlanModal] = useState(false)
     const [selectedProductId, setSelectedProductId] = useState<string | null>(null)
     const [selectedProductRemarks, setSelectedProductRemarks] = useState<string>('')
+    const [prefilledQuantity, setPrefilledQuantity] = useState<number>(1)
     const [isChecking, setIsChecking] = useState(false)
 
     // Don't show button for "Shipped" orders
@@ -65,6 +68,23 @@ export function QuickPlanButton({ order, stockInfo }: QuickPlanButtonProps) {
             return
         }
 
+        // Calculate quantity from all Pending/Packed/ReadyToShip orders
+        let totalQty = 0
+        if (allOrders.length > 0) {
+            const targetStatuses = ['pending', 'packed', 'ready to ship']
+            const matchingOrders = allOrders.filter(o => targetStatuses.includes(o.order_status?.toLowerCase()))
+
+            matchingOrders.forEach(o => {
+                const item = o.items?.find((i: any) => i.product_id === productId)
+                if (item) {
+                    totalQty += (item.quantity || 0)
+                }
+            })
+        }
+
+        // If calculated total > 0, use it. Otherwise default to 1.
+        setPrefilledQuantity(totalQty > 0 ? totalQty : 1)
+
         setSelectedProductId(productId)
         if (remarks) setSelectedProductRemarks(remarks)
         setShowPlanModal(true)
@@ -77,13 +97,21 @@ export function QuickPlanButton({ order, stockInfo }: QuickPlanButtonProps) {
         toast.success('Purchase plan created successfully!')
     }
 
+    // Check if any product in this order is already in active plans
+    // order.items contains { product_id }
+    const isPlanActive = order.items?.some((item: any) => activePlanProductIds.includes(item.product_id))
+
+    const buttonClass = isPlanActive
+        ? "flex items-center gap-0.5 px-1 py-0.5 text-[11px] font-medium bg-blue-100 text-blue-700 border border-blue-200 hover:bg-blue-200 rounded disabled:opacity-50 transition-colors" // Active (Plan Exists) - Light Blue
+        : "flex items-center gap-0.5 px-1 py-0.5 text-[11px] font-medium bg-transparent text-black dark:text-gray-200 border border-transparent hover:bg-gray-100 dark:hover:bg-zinc-800 rounded disabled:opacity-50 transition-colors" // Default - Text Only (Black)
+
     return (
         <>
             <button
                 onClick={handleClick}
                 disabled={isChecking}
-                className="flex items-center gap-0.5 px-1 py-0.5 text-[11px] font-medium bg-blue-50 text-blue-600 border border-blue-200 hover:bg-blue-100 rounded disabled:opacity-50 transition-colors"
-                title="Quick Purchase Plan"
+                className={buttonClass}
+                title={isPlanActive ? "View/Add Plan (Already in List)" : "Quick Purchase Plan"}
             >
                 <Plus size={12} />
                 Add
@@ -94,6 +122,20 @@ export function QuickPlanButton({ order, stockInfo }: QuickPlanButtonProps) {
                 isOpen={showProductSelection}
                 onClose={() => setShowProductSelection(false)}
                 products={orderItems.map((item: any) => {
+                    // Calculate total quantity for this product across all active orders
+                    let totalItemQty = 0
+                    if (allOrders.length > 0) {
+                        const targetStatuses = ['pending', 'packed', 'ready to ship']
+                        const matchingOrders = allOrders.filter(o => targetStatuses.includes(o.order_status?.toLowerCase()))
+
+                        matchingOrders.forEach(o => {
+                            const matchData = o.items?.find((i: any) => i.product_id === item.product_id)
+                            if (matchData) {
+                                totalItemQty += (matchData.quantity || 0)
+                            }
+                        })
+                    }
+
                     // Get stock for this product from stockInfo
                     // Note: In new design, stock is handled internally via stockBreakdown for resolved components
                     // But we still pass basic info here
@@ -102,7 +144,7 @@ export function QuickPlanButton({ order, stockInfo }: QuickPlanButtonProps) {
                         product_id: item.product_id,
                         product_name: item.product_name || 'Unknown Product',
                         image_url: productStock?.image_url,
-                        quantity: item.quantity,
+                        quantity: totalItemQty > 0 ? totalItemQty : item.quantity,
                         stock: 0 // Placeholder
                     }
                 })}
@@ -116,6 +158,7 @@ export function QuickPlanButton({ order, stockInfo }: QuickPlanButtonProps) {
                     trigger={null}
                     onPlanAdded={() => { }}
                     prefilledProductId={selectedProductId}
+                    prefilledQuantity={prefilledQuantity}
                     prefilledRemarks={selectedProductRemarks}
                     onSuccess={handlePlanSuccess}
                     isOpen={showPlanModal}

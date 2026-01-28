@@ -155,6 +155,23 @@ export async function checkActiveProductPlan(productId: string): Promise<boolean
 }
 
 /**
+ * Get all active pending plan product IDs
+ */
+export async function getActivePlanProductIds(): Promise<string[]> {
+    const supabase = await createClient()
+
+    const { data } = await supabase
+        .from('purchase_plans')
+        .select('product_id')
+        .eq('status', 'Pending')
+
+    if (!data) return []
+
+    // Return unique IDs
+    return Array.from(new Set(data.map(plan => plan.product_id)))
+}
+
+/**
  * Create Plan
  */
 export async function createPurchasePlan(data: {

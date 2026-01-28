@@ -13,6 +13,7 @@ export function AddPlanModal({
     onPlanAdded,
     trigger,
     prefilledProductId,
+    prefilledQuantity,
     prefilledRemarks,
     onSuccess,
     isOpen: externalIsOpen,
@@ -22,6 +23,7 @@ export function AddPlanModal({
     onPlanAdded: () => void
     trigger?: React.ReactNode
     prefilledProductId?: string
+    prefilledQuantity?: number
     prefilledRemarks?: string
     onSuccess?: () => void
     isOpen?: boolean
@@ -53,7 +55,7 @@ export function AddPlanModal({
     const [productId, setProductId] = useState('')
     const [productName, setProductName] = useState('') // Controlled display label for Select
     const [sellerSku, setSellerSku] = useState('')
-    const [quantity, setQuantity] = useState(1)
+    const [quantity, setQuantity] = useState(prefilledQuantity || 1)
     const [remarks, setRemarks] = useState('')
     const [status, setStatus] = useState('Pending')
 
@@ -113,8 +115,13 @@ export function AddPlanModal({
             if (prefilledRemarks && !remarks) {
                 setRemarks(prefilledRemarks)
             }
+
+            // Handle prefilled Quantity
+            if (prefilledQuantity && quantity === 1) {
+                setQuantity(prefilledQuantity)
+            }
         }
-    }, [prefilledProductId, prefilledRemarks, productOptions, open, productId, remarks])
+    }, [prefilledProductId, prefilledRemarks, prefilledQuantity, productOptions, open, productId, remarks])
 
     // Reset form when modal closes
     useEffect(() => {
@@ -163,7 +170,7 @@ export function AddPlanModal({
         setProductId('')
         setProductName('')
         setSellerSku('')
-        setQuantity(1)
+        setQuantity(prefilledQuantity || 1)
         setRemarks('')
         setStats(null)
         setStatus('Pending')

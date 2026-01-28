@@ -6,6 +6,7 @@ import { getDarazOrders, getDarazOrderById, deleteDarazOrder, updateDarazOrderSt
 import { syncOrderStatusesFromDarazData } from '@/features/sales/actions/daraz-sync-status'
 import { getUserRole, getUserDeletionStats, createDeletionRequest, softDeleteOrder } from '@/features/sales/actions/daraz-deletion-actions'
 import { getOnlineStores } from '@/features/settings/actions/settingsActions'
+import { getActivePlanProductIds } from '@/features/purchase/actions/plan-actions'
 import { getOrdersStockInfo } from '@/features/sales/actions/get-order-stock-info'
 import { Search, Plus, Upload, Download, Printer, List, X, ArrowLeft, Trash2, Clock, RefreshCw, Filter, FileX, ChevronUp, ChevronDown, Package } from 'lucide-react'
 import Link from 'next/link'
@@ -99,6 +100,15 @@ export default function DarazSalesEntryPage() {
     })
 
     const stockInfo = stockInfoData || {}
+
+
+    // Query for active purchase plans
+    const { data: activePlanProductIds = [] } = useQuery({
+        queryKey: ['active-purchase-plans'],
+        queryFn: () => getActivePlanProductIds(),
+        // Refetch often to keep UI sync
+        refetchInterval: 30000
+    })
 
 
     // Calculate customer frequency (Global in current list)
@@ -1101,7 +1111,12 @@ export default function DarazSalesEntryPage() {
                                                             <StockIndicator orderId={order.id} order={order} />
 
                                                             {/* Quick Plan Button */}
-                                                            <QuickPlanButton order={order} stockInfo={stockInfo[order.id]} />
+                                                            <QuickPlanButton
+                                                                order={order}
+                                                                stockInfo={stockInfo[order.id]}
+                                                                allOrders={orders}
+                                                                activePlanProductIds={activePlanProductIds}
+                                                            />
 
                                                             <button
                                                                 onClick={() => window.open(`/print/daraz-invoice/${order.id}`, '_blank')}

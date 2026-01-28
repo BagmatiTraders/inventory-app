@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { PurchasePlan, updatePurchasePlanStatus } from '@/features/purchase/actions/plan-actions'
 import { CountdownTimer } from './CountdownTimer'
 import { PlanDetailModal } from './PlanDetailModal'
-import { Check, Eye, Archive } from 'lucide-react'
+import { Check, Eye, Archive, Share2, X, Copy } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui-shim'
@@ -36,6 +36,10 @@ export function PlanList({ plans, completedProductIds, onPlanUpdated }: PlanList
 
     // Action Menu State - tracks which plan is showing the complete action menu
     const [actionMenuPlanId, setActionMenuPlanId] = useState<string | null>(null)
+
+    // Bulk Share State
+    const [selectedPlans, setSelectedPlans] = useState<string[]>([])
+    const [isBulkSharing, setIsBulkSharing] = useState(false)
 
     // Dynamic Grouping
     const isPurchased = (plan: PurchasePlan) => completedProductIds.includes(plan.product_id)
@@ -142,6 +146,38 @@ export function PlanList({ plans, completedProductIds, onPlanUpdated }: PlanList
         }
     }
 
+    const handleShareToWhatsApp = (plan: PurchasePlan) => {
+        // Open share modal with just this plan selected
+        setSelectedPlans([plan.id])
+        setIsBulkSharing(true)
+    }
+
+    const handleBulkShare = async () => {
+        if (selectedPlans.length === 0) {
+            toast.error('No plans selected')
+            return
+        }
+
+        // Open modal to share each plan individually
+        setIsBulkSharing(true)
+    }
+
+    const togglePlanSelection = (planId: string) => {
+        setSelectedPlans(prev =>
+            prev.includes(planId)
+                ? prev.filter(id => id !== planId)
+                : [...prev, planId]
+        )
+    }
+
+    const toggleSelectAll = () => {
+        if (selectedPlans.length === pendingPlans.length) {
+            setSelectedPlans([])
+        } else {
+            setSelectedPlans(pendingPlans.map(p => p.id))
+        }
+    }
+
     const onPurchaseSuccess = async () => {
         triggerMobileFeedback(true)
         setPurchaseModalOpen(false)
@@ -162,12 +198,22 @@ export function PlanList({ plans, completedProductIds, onPlanUpdated }: PlanList
                         <Check size={14} /> Complete
                     </button>
 
+                    {/* Cancel Button */}
                     <button
                         onClick={() => handleMarkCancel(plan)}
                         className="px-2 py-1 bg-red-50 hover:bg-red-100 text-red-600 text-xs rounded flex items-center gap-1 border border-red-200"
                         title="Cancel Plan"
                     >
                         Cancel
+                    </button>
+
+                    {/* Share Button */}
+                    <button
+                        onClick={() => handleShareToWhatsApp(plan)}
+                        className="px-2 py-1 bg-blue-50 hover:bg-blue-100 text-blue-600 text-xs rounded flex items-center gap-1 border border-blue-200"
+                        title="Share Plan"
+                    >
+                        <Share2 size={14} /> Share
                     </button>
                 </>
             )}
@@ -202,12 +248,26 @@ export function PlanList({ plans, completedProductIds, onPlanUpdated }: PlanList
         return (
             <Card className="mb-6 border-none shadow-none md:border md:shadow-sm bg-transparent md:bg-white md:dark:bg-zinc-900">
                 <CardHeader className="sticky top-0 z-10 py-3 px-4 md:px-6 bg-gray-100/95 dark:bg-zinc-800/95 backdrop-blur supports-[backdrop-filter]:bg-gray-100/60 border-b dark:border-zinc-700 md:static md:bg-gray-50 md:dark:bg-zinc-800 rounded-t-lg">
-                    <CardTitle className={`text-base font-bold ${colorClass.replace(
-                        /text-[a-z]+-[0-9]+/,
-                        (match) => `${match} dark:text-white`
-                    )}`}>
-                        {title} ({data.length})
-                    </CardTitle>
+                    <div className="flex justify-between items-center">
+                        <CardTitle className={`text-base font-bold ${colorClass.replace(
+                            /text-[a-z]+-[0-9]+/,
+                            (match) => `${match} dark:text-white`
+                        )}`}>
+                            {title} ({data.length})
+                        </CardTitle>
+
+                        {/* Bulk Share Button for Pending Plans */}
+                        {type === 'pending' && selectedPlans.length > 0 && (
+                            <button
+                                onClick={handleBulkShare}
+                                disabled={isBulkSharing}
+                                className="px-3 py-1.5 bg-green-500 hover:bg-green-600 disabled:bg-gray-300 text-white text-xs rounded-lg flex items-center gap-2 transition-all shadow-sm"
+                            >
+                                <Share2 size={14} />
+                                {isBulkSharing ? 'Sharing...' : `Share ${selectedPlans.length}`}
+                            </button>
+                        )}
+                    </div>
                 </CardHeader>
                 <CardContent className="p-0">
                     {/* Desktop Table View */}
@@ -215,6 +275,16 @@ export function PlanList({ plans, completedProductIds, onPlanUpdated }: PlanList
                         <table className="w-full text-sm text-left table-fixed">
                             <thead className="bg-gray-100 dark:bg-zinc-700 text-gray-600">
                                 <tr>
+                                    {type === 'pending' && (
+                                        <th className="px-4 py-2 w-[3%]">
+                                            <input
+                                                type="checkbox"
+                                                checked={selectedPlans.length === data.length && data.length > 0}
+                                                onChange={toggleSelectAll}
+                                                className="w-4 h-4 cursor-pointer"
+                                            />
+                                        </th>
+                                    )}
                                     <th className="px-4 py-2 w-[5%]">S.N</th>
                                     <th className="px-4 py-2 w-[8%]">Date</th>
                                     <th className="px-4 py-2 w-[25%]">Product Name</th>
@@ -229,6 +299,16 @@ export function PlanList({ plans, completedProductIds, onPlanUpdated }: PlanList
                             <tbody className="divide-y dark:divide-zinc-700">
                                 {data.map((plan, index) => (
                                     <tr key={plan.id} className="hover:bg-gray-50 dark:hover:bg-zinc-800/50">
+                                        {type === 'pending' && (
+                                            <td className="px-4 py-2">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={selectedPlans.includes(plan.id)}
+                                                    onChange={() => togglePlanSelection(plan.id)}
+                                                    className="w-4 h-4 cursor-pointer"
+                                                />
+                                            </td>
+                                        )}
                                         <td className="px-4 py-2">{index + 1}</td>
                                         <td className="px-4 py-2 whitespace-nowrap">{new Date(plan.plan_date).toLocaleDateString()}</td>
                                         <td
@@ -263,8 +343,11 @@ export function PlanList({ plans, completedProductIds, onPlanUpdated }: PlanList
                                     <div className="font-mono text-gray-500 dark:text-white">
                                         <CountdownTimer targetDate={plan.expires_at} />
                                     </div>
-                                    <div className="font-medium text-gray-700 dark:text-gray-300">
-                                        Rs. {plan.snapshot_low_price}
+                                    <div className="flex items-center gap-2">
+                                        <div className="font-medium text-gray-700 dark:text-gray-300">
+                                            Rs. {plan.snapshot_low_price}
+                                        </div>
+                                        {/* Checkbox removed for mobile view as per user request */}
                                     </div>
                                 </div>
 
@@ -288,7 +371,7 @@ export function PlanList({ plans, completedProductIds, onPlanUpdated }: PlanList
                                             </div>
                                         )}
                                     </div>
-                                    <div className="w-[70%] font-medium text-blue-600 dark:text-white text-xs leading-tight line-clamp-3">
+                                    <div className="w-full font-medium text-blue-600 dark:text-white text-xs leading-tight line-clamp-3">
                                         {plan.product?.product_name}
                                     </div>
                                 </div>
@@ -308,22 +391,25 @@ export function PlanList({ plans, completedProductIds, onPlanUpdated }: PlanList
                                 {/* Row 4: Buttons */}
                                 <div className="pt-1.5 border-t dark:border-zinc-800">
                                     {type === 'pending' && (
-                                        <div className="grid grid-cols-2 gap-2">
-                                            {/* Complete Button */}
-                                            <button
-                                                onClick={() => setActionMenuPlanId(plan.id)}
-                                                className="w-full py-1.5 bg-green-50 hover:bg-green-100 text-green-700 font-medium text-[10px] rounded flex items-center justify-center gap-1 transition-all border border-green-200"
-                                            >
-                                                <Check size={12} /> Complete
-                                            </button>
+                                        <div className="space-y-2">
+                                            {/* Action Buttons - Grid */}
+                                            <div className="grid grid-cols-2 gap-2">
+                                                {/* Complete Button */}
+                                                <button
+                                                    onClick={() => setActionMenuPlanId(plan.id)}
+                                                    className="w-full py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium text-[10px] rounded flex items-center justify-center gap-1 transition-all border border-gray-300"
+                                                >
+                                                    <Check size={12} /> Complete
+                                                </button>
 
-                                            {/* Cancel Button */}
-                                            <button
-                                                onClick={() => handleMarkCancel(plan)}
-                                                className="w-full py-1.5 bg-red-50 hover:bg-red-100 text-red-600 font-medium text-[10px] rounded flex items-center justify-center gap-1 transition-all border border-red-200"
-                                            >
-                                                Cancel
-                                            </button>
+                                                {/* Cancel Button */}
+                                                <button
+                                                    onClick={() => handleMarkCancel(plan)}
+                                                    className="w-full py-1.5 bg-red-50 hover:bg-red-100 text-red-600 font-medium text-[10px] rounded flex items-center justify-center gap-1 transition-all border border-red-200"
+                                                >
+                                                    Cancel
+                                                </button>
+                                            </div>
                                         </div>
                                     )}
 
@@ -488,6 +574,208 @@ export function PlanList({ plans, completedProductIds, onPlanUpdated }: PlanList
                     <div className="relative max-w-full max-h-full">
                         <button className="absolute -top-10 right-0 text-white p-2">Close</button>
                         <img src={fullImage} alt="Full View" className="max-w-full max-h-[80vh] object-contain rounded-md" />
+                    </div>
+                </div>
+            )}
+
+            {/* Bulk Share Modal */}
+            {isBulkSharing && (
+                <div className="fixed inset-0 z-[70] bg-black/50 flex items-center justify-center p-4" onClick={() => {
+                    setIsBulkSharing(false)
+                    setSelectedPlans([])
+                }}>
+                    <div
+                        className="bg-white dark:bg-zinc-900 rounded-lg shadow-xl w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        {/* Header */}
+                        <div className="p-4 border-b dark:border-zinc-700 flex justify-between items-center">
+                            <h3 className="text-lg font-bold text-gray-900 dark:text-white">
+                                Share {selectedPlans.length} Plans to WhatsApp
+                            </h3>
+                            <button
+                                onClick={() => {
+                                    setIsBulkSharing(false)
+                                    setSelectedPlans([])
+                                }}
+                                className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                            >
+                                ✕
+                            </button>
+                        </div>
+
+                        {/* Plans List */}
+                        <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                            {plans.filter(p => selectedPlans.includes(p.id)).map((plan, index) => {
+                                const message =
+                                    `📦 *Product:* ${plan.product?.product_name || 'N/A'}\n` +
+                                    `💰 *LP:* Rs. ${plan.snapshot_latest_price || 0} | 🏪 *LS:* ${plan.snapshot_latest_supplier || 'N/A'}\n` +
+                                    `📊 *Quantity:* ${plan.quantity}\n` +
+                                    `📝 *Remarks:* ${plan.remarks || 'None'}`
+
+                                const handleCopyAndShare = () => {
+                                    // Copy to clipboard
+                                    navigator.clipboard.writeText(message)
+
+                                    // Open WhatsApp
+                                    const encodedMessage = encodeURIComponent(message)
+                                    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
+                                    const whatsappUrl = isMobile
+                                        ? `whatsapp://send?text=${encodedMessage}`
+                                        : `https://wa.me/?text=${encodedMessage}`
+
+                                    window.open(whatsappUrl, '_blank')
+                                    toast.success(`Plan ${index + 1} opened in WhatsApp!`)
+                                }
+
+                                const handleCopy = () => {
+                                    navigator.clipboard.writeText(message)
+                                    toast.success(`Plan ${index + 1} copied!`)
+                                }
+
+                                return (
+                                    <div key={plan.id} className="border dark:border-zinc-700 rounded-lg p-3 bg-gray-50 dark:bg-zinc-800">
+                                        <div className="flex justify-between items-start mb-2 gap-3">
+                                            <div className="flex-1">
+                                                <div className="font-semibold text-sm text-gray-900 dark:text-white mb-1">
+                                                    {index + 1}. {plan.product?.product_name}
+                                                </div>
+                                                <div className="text-xs text-gray-600 dark:text-gray-400 space-y-0.5">
+                                                    <div>LP: Rs. {plan.snapshot_latest_price} | LS: {plan.snapshot_latest_supplier || 'N/A'}</div>
+                                                    <div>Qty: {plan.quantity}</div>
+                                                    <div>Remarks: {plan.remarks || 'None'}</div>
+                                                </div>
+                                            </div>
+
+                                            {/* Product Image Thumbnail */}
+                                            {plan.product?.image_url && (
+                                                <div
+                                                    className="flex-shrink-0 cursor-zoom-in group relative"
+                                                    onClick={() => setFullImage(plan.product?.image_url || null)}
+                                                >
+                                                    <img
+                                                        src={plan.product.image_url}
+                                                        alt="Product"
+                                                        className="w-16 h-16 object-cover rounded-md border border-gray-200 dark:border-zinc-700 group-hover:ring-2 group-hover:ring-blue-500 transition-all"
+                                                    />
+                                                    <div className="absolute grid place-items-center inset-0 bg-black/20 opacity-0 group-hover:opacity-100 rounded-md transition-opacity">
+                                                        <span className="text-white text-[10px] font-bold">Zoom</span>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <button
+                                                onClick={handleCopy}
+                                                className="py-2 bg-gray-200 hover:bg-gray-300 dark:bg-zinc-700 dark:hover:bg-zinc-600 text-gray-800 dark:text-white text-xs font-medium rounded-lg flex items-center justify-center gap-1 transition-all"
+                                            >
+                                                📋 Copy
+                                            </button>
+                                            <button
+                                                onClick={handleCopyAndShare}
+                                                className="py-2 bg-green-500 hover:bg-green-600 text-white text-xs font-medium rounded-lg flex items-center justify-center gap-1 transition-all"
+                                            >
+                                                <Share2 size={14} />
+                                                Share
+                                            </button>
+                                        </div>
+                                    </div>
+                                )
+                            })}
+                        </div>
+
+                        {/* Footer */}
+                        <div className="p-4 border-t dark:border-zinc-700 bg-gray-50 dark:bg-zinc-800 space-y-3">
+                            <div className="grid grid-cols-2 gap-3">
+                                <button
+                                    onClick={() => {
+                                        const plansToShare = plans.filter(p => selectedPlans.includes(p.id))
+
+                                        // Combine all plans into one message
+                                        let combinedMessage = `📦 *${plansToShare.length} Purchase Plans*\n\n`
+
+                                        plansToShare.forEach((plan, index) => {
+                                            combinedMessage += `*${index + 1}.* ${plan.product?.product_name || 'N/A'}\n`
+                                            combinedMessage += `💰 *LP:* Rs. ${plan.snapshot_latest_price || 0} | 🏪 *LS:* ${plan.snapshot_latest_supplier || 'N/A'}\n`
+                                            combinedMessage += `📊 *Qty:* ${plan.quantity}\n`
+                                            combinedMessage += `📝 *Remarks:* ${plan.remarks || 'None'}\n`
+
+                                            if (index < plansToShare.length - 1) {
+                                                combinedMessage += `\n${'─'.repeat(30)}\n\n`
+                                            }
+                                        })
+
+                                        navigator.clipboard.writeText(combinedMessage)
+                                        toast.success('All plans copied to clipboard!')
+                                        setIsBulkSharing(false)
+                                        setSelectedPlans([])
+                                    }}
+                                    className="w-full py-3 bg-gray-200 hover:bg-gray-300 dark:bg-zinc-700 dark:hover:bg-zinc-600 text-gray-800 dark:text-white font-semibold text-sm rounded-lg flex items-center justify-center gap-2 transition-all"
+                                >
+                                    <Copy size={18} />
+                                    Copy All Plans
+                                </button>
+                                <button
+                                    onClick={() => {
+                                        const plansToShare = plans.filter(p => selectedPlans.includes(p.id))
+
+                                        // Combine all plans into one message
+                                        let combinedMessage = `📦 *${plansToShare.length} Purchase Plans*\n\n`
+
+                                        plansToShare.forEach((plan, index) => {
+                                            combinedMessage += `*${index + 1}.* ${plan.product?.product_name || 'N/A'}\n`
+                                            combinedMessage += `💰 *LP:* Rs. ${plan.snapshot_latest_price || 0} | 🏪 *LS:* ${plan.snapshot_latest_supplier || 'N/A'}\n`
+                                            combinedMessage += `📊 *Qty:* ${plan.quantity}\n`
+                                            combinedMessage += `📝 *Remarks:* ${plan.remarks || 'None'}\n`
+
+                                            if (index < plansToShare.length - 1) {
+                                                combinedMessage += `\n${'─'.repeat(30)}\n\n`
+                                            }
+                                        })
+
+                                        const encodedMessage = encodeURIComponent(combinedMessage)
+                                        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
+                                        const whatsappUrl = isMobile
+                                            ? `whatsapp://send?text=${encodedMessage}`
+                                            : `https://wa.me/?text=${encodedMessage}`
+
+                                        window.open(whatsappUrl, '_blank')
+                                        toast.success('All plans opened in WhatsApp!')
+                                        setIsBulkSharing(false)
+                                        setSelectedPlans([])
+                                    }}
+                                    className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm rounded-lg flex items-center justify-center gap-2 transition-all"
+                                >
+                                    <Share2 size={18} />
+                                    Share All Plans in One Message
+                                </button>
+                            </div>
+                            <p className="text-xs text-gray-600 dark:text-gray-400 text-center">
+                                Click "Copy" to copy individual plans or "Share All" to send everything together
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            )}
+            {/* Full Image Modal */}
+            {fullImage && (
+                <div
+                    className="fixed inset-0 z-[80] bg-black/80 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-200"
+                    onClick={() => setFullImage(null)}
+                >
+                    <div className="relative max-w-4xl max-h-[90vh] w-full flex items-center justify-center">
+                        <img
+                            src={fullImage}
+                            alt="Full Size"
+                            className="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl animate-in zoom-in duration-200"
+                        />
+                        <button
+                            onClick={() => setFullImage(null)}
+                            className="absolute -top-12 right-0 p-2 text-white hover:text-gray-300 transition-colors"
+                        >
+                            <X size={24} />
+                            <span className="sr-only">Close</span>
+                        </button>
                     </div>
                 </div>
             )}
