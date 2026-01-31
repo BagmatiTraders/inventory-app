@@ -19,23 +19,34 @@ export async function GET(req: NextRequest) {
     try {
         const supabase = await createAdminClient()
 
-        // Fetch products (Active only)
-        // We return simplified structure
-        const { data: products, error } = await supabase
+        const searchParams = req.nextUrl.searchParams
+        const search = searchParams.get('search')
+
+        console.log(`[Inventory API] Search request received. Param: "${search}"`);
+
+        let query = supabase
             .from('products')
             .select('id, product_name, image_url, est_price, product_type, product_id')
             .eq('is_deleted', false)
             .eq('status', 'Active')
             .order('product_name', { ascending: true })
-            .limit(100) // Limit to 100 for now to avoid overload
+
+        if (search) {
+            // Only search product_name to avoid type errors with numeric product_id
+            query = query.ilike('product_name', `%${search}%`)
+        }
+
+        const { data: products, error } = await query.limit(3000)
 
         if (error) {
+            console.error('Inventory DB Error:', error);
             return NextResponse.json({ error: error.message }, { status: 500 })
         }
 
         return NextResponse.json(products)
 
     } catch (error: any) {
+        console.error('Inventory API Exception:', error);
         return NextResponse.json({ error: error.message }, { status: 500 })
     }
 }
