@@ -183,6 +183,7 @@ interface GetMarketplaceOrdersFilters {
     endDate?: string
     showTodayAndPending?: boolean // Special filter for Sales Entry page
     fiscalYearId?: string
+    userType?: string
 }
 
 /**
@@ -198,7 +199,8 @@ export async function getMarketplaceOrders(filters: GetMarketplaceOrdersFilters 
         startDate,
         endDate,
         showTodayAndPending = false,
-        fiscalYearId
+        fiscalYearId,
+        userType
     } = filters
 
     const from = (page - 1) * limit
@@ -260,9 +262,13 @@ export async function getMarketplaceOrders(filters: GetMarketplaceOrdersFilters 
         query = query.eq('order_status', status)
     }
 
-    // Search filter (customer name, phone, sales_id)
     if (search && search.trim()) {
         query = query.or(`customer_name.ilike.%${search.trim()}%,phone_number.ilike.%${search.trim()}%,sales_id.ilike.%${search.trim()}%`)
+    }
+
+    // User Type filter
+    if (userType) {
+        query = query.eq('user_type', userType)
     }
 
     // Ordering and pagination
