@@ -73,11 +73,12 @@ function DashboardContent() {
     const getNextStatuses = (currentStatus: string) => {
         // If All status selected, allow all typical transitions
         if (manualFilterStatus === 'All') {
-            return ['Pending', 'Shipped', 'Delivered', 'Returning to Seller', 'Fail Delivered', 'Customer Return', 'Return Delivered', 'Cancel']
+            return ['Pending', 'Confirmed', 'Shipped', 'Delivered', 'Returning to Seller', 'Fail Delivered', 'Customer Return', 'Return Delivered', 'Cancel']
         }
 
         switch (currentStatus) {
-            case 'Pending': return ['Shipped', 'Cancel']
+            case 'Pending': return ['Confirmed', 'Shipped', 'Cancel']
+            case 'Confirmed': return ['Shipped', 'Cancel']
             case 'Shipped': return ['Delivered', 'Returning to Seller']
             case 'Delivered': return ['Customer Return']
             case 'Returning to Seller': return ['Fail Delivered', 'Return Delivered']
@@ -88,7 +89,7 @@ function DashboardContent() {
     }
 
     const getAllStatuses = () => {
-        return ['Pending', 'Shipped', 'Delivered', 'Returning to Seller', 'Fail Delivered', 'Customer Return', 'Return Delivered', 'Cancel']
+        return ['Pending', 'Confirmed Order', 'Shipped', 'Delivered', 'Returning to Seller', 'Fail Delivered', 'Customer Return', 'Return Delivered', 'Cancel']
     }
 
     const handleManualStatusChange = async (ids: string[], status: string) => {
@@ -446,6 +447,7 @@ function DashboardContent() {
                                                 className="px-2 py-1.5 text-sm border dark:border-zinc-700 rounded focus:ring-1 focus:ring-blue-500 dark:bg-zinc-900"
                                             >
                                                 <option value="Pending">Pending</option>
+                                                <option value="Confirmed Order">Confirmed Order</option>
                                                 <option value="Shipped">Shipped</option>
                                                 <option value="Delivered">Delivered</option>
                                                 <option value="Returning to Seller">Returning to Seller</option>
@@ -536,9 +538,10 @@ function DashboardContent() {
                                                                     </div>
                                                                 ) : (
                                                                     <span className={`inline-flex px-1.5 py-0.5 text-xs font-medium rounded ${order.order_status === 'Pending' ? 'bg-yellow-100 text-yellow-700' :
-                                                                        order.order_status === 'Shipped' ? 'bg-blue-100 text-blue-700' :
-                                                                            order.order_status === 'Delivered' ? 'bg-green-100 text-green-700' :
-                                                                                'bg-gray-100 text-gray-700'
+                                                                        order.order_status === 'Confirmed' || order.order_status === 'Confirmed Order' ? 'bg-indigo-100 text-indigo-700' :
+                                                                            order.order_status === 'Shipped' ? 'bg-blue-100 text-blue-700' :
+                                                                                order.order_status === 'Delivered' ? 'bg-green-100 text-green-700' :
+                                                                                    'bg-gray-100 text-gray-700'
                                                                         }`}>
                                                                         {order.order_status}
                                                                     </span>
@@ -699,6 +702,7 @@ function DashboardContent() {
                                             disabled={ordersInList.length === 0}
                                         >
                                             <option value="">Select New Status...</option>
+                                            <option value="Confirmed Order">Confirmed Order</option>
                                             <option value="Shipped">Shipped</option>
                                             <option value="Delivered">Delivered</option>
                                             <option value="Returning to Seller">Returning to Seller</option>

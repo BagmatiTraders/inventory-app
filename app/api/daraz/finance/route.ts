@@ -45,8 +45,6 @@ export async function GET(request: NextRequest) {
     }
 
     try {
-        const timestamp = new Date().getTime()
-
         // Define date range: Daraz requires transaction queries to be within a range.
         // We'll look from Order Date to Today (capped at max allowed by API if any, doc says < 180 days)
         // Usually transaction happens after order.
@@ -65,43 +63,75 @@ export async function GET(request: NextRequest) {
         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
         if (diffDays > 150) {
             // Adjust start time to be within range if order is very old
-            // But realistically, transactions settle within a few weeks.
-            // If order is very old, we might miss it if we strictly clamp. 
-            // However, usually we care about recent access.
-            // Let's rely on standard logic: query [OrderDate, OrderDate + 180 days] or [OrderDate, Now]
-            // If Now is > OrderDate + 180, we might need a sliding window. 
-            // For simplicity, let's try strict [OrderDate, Now] and assume typical use case.
-        }
-
-        const params: Record<string, any> = {
-            app_key: appKey,
-            access_token: tokenData.access_token,
-            timestamp: timestamp,
-            sign_method: 'sha256',
-            trade_order_id: orderId, // Filter by Order ID
-            start_time: startTime.toISOString().split('T')[0],
-            end_time: endTime.toISOString().split('T')[0],
-            trans_type: -1 // All types
+            startTime = new Date()
+            startTime.setDate(startTime.getDate() - 140)
         }
 
         const apiPath = '/finance/transaction/details/get'
-        params.sign = signRequest(apiPath, params, appSecret)
 
-        console.log('Fetching Finance Details...', { params })
+        // CRITICAL FIX: Use pagination to fetch ALL transactions for this order
+        let allTransactions: any[] = []
+        let offset = 0
+        const limit = 500 // Max limit per docs
+        let hasMore = true
+        let loopCount = 0
 
-        const response = await axios.get(`${apiUrl}${apiPath}`, { params })
+        while (hasMore && loopCount < 20) { // Safety break at 10k transactions per order
+            const params: Record<string, any> = {
+                app_key: appKey,
+                access_token: tokenData.access_token,
+                timestamp: new Date().getTime(),
+                sign_method: 'sha256',
+                trade_order_id: orderId, // Filter by Order ID
+                start_time: startTime.toISOString().split('T')[0],
+                end_time: endTime.toISOString().split('T')[0],
+                trans_type: -1, // All types
+                limit: limit,
+                offset: offset
+            }
 
-        if ((response.data.code !== "0" && response.data.code !== 0) || !response.data.data) {
-            console.error('Daraz Finance API Error:', response.data)
-            return NextResponse.json({
-                error: 'Daraz Finance API returned error',
-                details: response.data
-            }, { status: 500 })
+            params.sign = signRequest(apiPath, params, appSecret)
+
+            console.log(`Fetching Finance Details... (offset: ${offset})`, { orderId })
+
+            const response = await axios.get(`${apiUrl}${apiPath}`, { params })
+
+            if ((response.data.code !== "0" && response.data.code !== 0) || !response.data.data) {
+                // If first page returns no data, return empty array
+                if (offset === 0) {
+                    console.error('Daraz Finance API Error:', response.data)
+                    return NextResponse.json({
+                        error: 'Daraz Finance API returned error',
+                        details: response.data
+                    }, { status: 500 })
+                }
+                // If subsequent pages fail, break and return what we have
+                break
+            }
+
+            const pageData = response.data.data || []
+
+            if (pageData.length > 0) {
+                allTransactions = [...allTransactions, ...pageData]
+
+                // If we got less than requested, we are done
+                if (pageData.length < limit) {
+                    hasMore = false
+                } else {
+                    offset += pageData.length // Move offset by actual amount received
+                }
+            } else {
+                hasMore = false
+            }
+
+            loopCount++
         }
+
+        console.log(`[Daraz Finance API] Fetched ${allTransactions.length} transactions for Order ${orderId}`)
 
         // Return the list of transactions
         return NextResponse.json({
-            transactions: response.data.data || []
+            transactions: allTransactions
         })
 
     } catch (error: any) {

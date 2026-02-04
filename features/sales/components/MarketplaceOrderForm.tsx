@@ -32,10 +32,6 @@ export function MarketplaceOrderForm({ onSuccess, onCancel, initialData }: Marke
     const [customerName, setCustomerName] = useState('')
     const [phoneNumber, setPhoneNumber] = useState('')
     const [address, setAddress] = useState('')
-    const [courierId, setCourierId] = useState<string>('') // Added courierId
-    const [deliveryBranchId, setDeliveryBranchId] = useState<string>('')
-    const [selectedBranch, setSelectedBranch] = useState<{ label: string, value: string } | null>(null) // Track selected option
-    const [branchCharge, setBranchCharge] = useState(0)
     const [deliveryCharge, setDeliveryCharge] = useState(0)
     const [orderStatus, setOrderStatus] = useState('Pending')
     const [remarks, setRemarks] = useState('')
@@ -61,38 +57,6 @@ export function MarketplaceOrderForm({ onSuccess, onCancel, initialData }: Marke
             setCustomerName(initialData.customer_name)
             setPhoneNumber(initialData.phone_number)
             setAddress(initialData.address || '')
-            setCourierId(initialData.courier_id || '')
-            setDeliveryBranchId(initialData.delivery_branch_id || '')
-
-            // Set initial selected branch if exists
-            // Check both delivery_branch_id and the joined branch object
-            if (initialData.delivery_branch_id) {
-                // Handle different possible structures of 'branch' (single object or array from join)
-                const branchData = (initialData as any).branch
-                let branchName = 'Unknown Branch'
-                let branchCharge = initialData.branch_charge
-
-                if (branchData) {
-                    if (Array.isArray(branchData) && branchData.length > 0) {
-                        branchName = branchData[0].branch_name
-                    } else if (typeof branchData === 'object') {
-                        branchName = branchData.branch_name
-                    }
-                }
-
-                // If branch name is still unknown but we have an ID, try to be helpful or just show ID? 
-                // Better to show what we have.
-
-                setSelectedBranch({
-                    label: branchName || 'Unknown Branch',
-                    value: initialData.delivery_branch_id,
-                    deliveryCharge: branchCharge
-                } as any)
-            } else {
-                setSelectedBranch(null)
-            }
-
-            setBranchCharge(initialData.branch_charge)
             setDeliveryCharge(initialData.delivery_charge)
             setOrderStatus(initialData.order_status)
             setRemarks(initialData.remarks || '')
@@ -147,28 +111,7 @@ export function MarketplaceOrderForm({ onSuccess, onCancel, initialData }: Marke
             isActive: c.is_active
         }))
 
-    // Load branch options for AsyncSelect
-    const loadBranchOptions = async (inputValue: string) => {
-        if (!courierId) return []
-        const locations = await getCourierLocations(courierId, inputValue)
-        return locations.map(loc => ({
-            value: loc.id,
-            label: loc.branch_name,
-            deliveryCharge: loc.delivery_charge
-        }))
-    }
 
-
-
-    // Auto-select first active courier if not editing and no courier selected
-    useEffect(() => {
-        if (!isEditing && !courierId && couriers.length > 0) {
-            const activeCourier = couriers.find(c => c.is_active)
-            if (activeCourier) {
-                setCourierId(activeCourier.id)
-            }
-        }
-    }, [isEditing, courierId, couriers])
 
     // Calculate total amount
     const calculateTotal = () => {
@@ -222,27 +165,9 @@ export function MarketplaceOrderForm({ onSuccess, onCancel, initialData }: Marke
         })
     }
 
-    // Handle branch selection
-    const handleBranchSelect = (option: any) => {
-        setDeliveryBranchId(option?.value || '')
-        setSelectedBranch(option) // Update selected option
-        if (option) {
-            setBranchCharge(option.deliveryCharge || 0)
-        } else {
-            setBranchCharge(0)
-        }
-    }
 
-    // Handle courier selection
-    const handleCourierSelect = (option: any) => {
-        const newCourierId = option?.value || ''
-        setCourierId(newCourierId)
 
-        // Reset branch and charge immediately when courier changes
-        setDeliveryBranchId('')
-        setSelectedBranch(null)
-        setBranchCharge(0)
-    }
+
 
     // Validate phone number (10 digits)
     const validatePhoneNumber = (phone: string) => {
@@ -279,9 +204,6 @@ export function MarketplaceOrderForm({ onSuccess, onCancel, initialData }: Marke
                 customer_name: customerName,
                 phone_number: phoneNumber,
                 address: address || undefined,
-                delivery_branch_id: deliveryBranchId || undefined,
-                courier_id: courierId || undefined, // Include courier_id
-                branch_charge: branchCharge,
                 delivery_charge: deliveryCharge,
                 order_status: orderStatus,
                 remarks: remarks || undefined,
@@ -365,24 +287,8 @@ export function MarketplaceOrderForm({ onSuccess, onCancel, initialData }: Marke
                 />
             </div>
 
-            {/* Row 3: Courier, Address */}
-            <div className="col-span-1 md:col-span-1">
-                <label className="block text-xs font-medium mb-1">
-                    Courier
-                </label>
-                <Select
-                    options={courierOptions}
-                    value={courierOptions.find(c => c.value === courierId)}
-                    onChange={handleCourierSelect}
-                    className="text-sm"
-                    classNamePrefix="select"
-                    placeholder="Select courier..."
-                    isDisabled={isEditing && !isAdmin} // Read-only in edit mode unless admin
-                    isClearable={!isEditing}
-                />
-            </div>
-
-            <div className="col-span-1 md:col-span-3">
+            {/* Row 3: Address */}
+            <div className="col-span-1 md:col-span-4">
                 <label className="block text-xs font-medium mb-1">
                     Address
                 </label>
@@ -392,39 +298,6 @@ export function MarketplaceOrderForm({ onSuccess, onCancel, initialData }: Marke
                     onChange={(e) => setAddress(e.target.value)}
                     className="w-full px-2.5 py-1.5 text-sm border dark:border-zinc-700 rounded-md focus:ring-2 focus:ring-blue-500 dark:bg-zinc-900"
                     placeholder="Customer address"
-                />
-            </div>
-
-            {/* Row 4: Delivery Branch, Branch Charge */}
-            <div className="col-span-1 md:col-span-2">
-                <label className="block text-xs font-medium mb-1">
-                    Delivery Branch
-                </label>
-                <AsyncSelect
-                    key={courierId} // Reset when courier changes
-                    cacheOptions
-                    defaultOptions
-                    loadOptions={loadBranchOptions}
-                    value={selectedBranch}
-                    onChange={handleBranchSelect}
-                    className="text-sm"
-                    classNamePrefix="select"
-                    placeholder={courierId ? "Search branch..." : "Select courier first"}
-                    isClearable
-                    isDisabled={!courierId || (isEditing && !isAdmin)} // Disabled if no courier OR (editing AND not admin)
-                    noOptionsMessage={() => courierId ? "No branches found" : "Select courier first"}
-                />
-            </div>
-
-            <div className="col-span-1 md:col-span-2">
-                <label className="block text-xs font-medium mb-1">
-                    Branch Charge
-                </label>
-                <input
-                    type="number"
-                    value={branchCharge}
-                    disabled
-                    className="w-full px-2.5 py-1.5 text-sm bg-gray-100 dark:bg-zinc-800 border dark:border-zinc-700 rounded-md text-gray-500 cursor-not-allowed"
                 />
             </div>
 
@@ -541,6 +414,7 @@ export function MarketplaceOrderForm({ onSuccess, onCancel, initialData }: Marke
                     className="w-full px-2.5 py-1.5 text-sm border dark:border-zinc-700 rounded-md focus:ring-2 focus:ring-blue-500 dark:bg-zinc-900"
                 >
                     <option value="Pending">Pending</option>
+                    <option value="Confirmed Order">Confirmed Order</option>
                     <option value="Shipped">Shipped</option>
                     <option value="Delivered">Delivered</option>
                     <option value="Returning to Seller">Returning to Seller</option>

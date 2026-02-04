@@ -12,6 +12,10 @@ import { MarketplaceOrderForm } from '@/features/sales/components/MarketplaceOrd
 import { MarketplaceOrderDetailModal } from '@/features/sales/components/MarketplaceOrderDetailModal'
 import { ImportMarketplaceOrdersModal } from '@/features/sales/components/ImportMarketplaceOrdersModal'
 import { MarketplaceNotificationBell } from '@/features/sales/components/MarketplaceNotificationBell'
+import { ShipOrderModal } from '@/features/sales/components/ShipOrderModal'
+import { trackOrder, syncAllCourierStatuses } from '@/features/sales/actions/courier-actions'
+import { RefreshCw, MapPin, Truck } from 'lucide-react'
+import { toast } from 'sonner'
 
 export default function MarketplaceSalesEntryPage() {
     const [search, setSearch] = useState('')
@@ -25,6 +29,11 @@ export default function MarketplaceSalesEntryPage() {
     const [viewingOrder, setViewingOrder] = useState<any>(null)
     const [editingOrder, setEditingOrder] = useState<any>(null)
     const [isEditModalOpen, setIsEditModalOpen] = useState(false)
+
+    // Shipment State
+    const [shippingOrder, setShippingOrder] = useState<any>(null)
+    const [isShipModalOpen, setIsShipModalOpen] = useState(false)
+    const [isSyncing, setIsSyncing] = useState(false)
 
     // Fetch active fiscal year on mount
     useEffect(() => {
@@ -112,6 +121,29 @@ export default function MarketplaceSalesEntryPage() {
         }
     }
 
+    const handleSyncStatus = async () => {
+        setIsSyncing(true)
+        const result = await syncAllCourierStatuses()
+        setIsSyncing(false)
+
+        if (result.error) {
+            toast.error(result.error)
+        } else {
+            toast.success(`Synced ${result.count || 0} orders successfully`)
+            refetch()
+        }
+    }
+
+    const handleTrack = async (orderId: string) => {
+        const result = await trackOrder(orderId)
+        if (result.error) {
+            toast.error(result.error)
+        } else {
+            toast.success('Status updated: ' + result.status)
+            refetch()
+        }
+    }
+
     return (
         <div className="flex flex-col h-full bg-gray-50 dark:bg-zinc-900">
             {/* Compact Header */}
@@ -137,6 +169,17 @@ export default function MarketplaceSalesEntryPage() {
                         <div className="hidden md:block">
                             <MarketplaceNotificationBell align="right" />
                         </div>
+
+                        <button
+                            onClick={handleSyncStatus}
+                            disabled={isSyncing}
+                            className="flex items-center gap-2 px-3 py-1 text-[15px] border dark:border-zinc-700 hover:bg-gray-50 dark:hover:bg-zinc-800 rounded transition-colors dark:text-gray-50 whitespace-nowrap hidden md:flex"
+                            title="Sync Courier Statuses"
+                        >
+                            <RefreshCw size={11} className={isSyncing ? "animate-spin" : ""} />
+                            Sync Status
+                        </button>
+
                         <button
                             onClick={() => setIsImportModalOpen(true)}
                             className="flex items-center gap-2 px-3 py-1 text-[15px] border dark:border-zinc-700 hover:bg-gray-50 dark:hover:bg-zinc-800 rounded transition-colors dark:text-gray-50 whitespace-nowrap hidden md:flex"
@@ -229,7 +272,12 @@ export default function MarketplaceSalesEntryPage() {
                                         <span className="font-bold text-sm text-blue-600">#{order.sales_id}</span>
                                         <span className="text-[11px] text-gray-500">{new Date(order.order_date).toLocaleDateString()}</span>
                                     </div>
-                                    <span className={`px-2 py-0.5 text-[10px] font-bold rounded ${order.order_status === 'Pending' ? 'bg-yellow-100 text-yellow-800' : 'bg-gray-100 text-gray-800'}`}>
+                                    <span className={`px-2 py-0.5 text-[10px] font-bold rounded ${order.order_type === 'Import' ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'
+                                        }`}>
+                                        {order.order_type}
+                                    </span>
+                                    <span className={`px-2 py-0.5 text-[10px] font-bold rounded ${order.order_status === 'Pending' ? 'bg-yellow-100 text-yellow-800' : 
+                                        order.order_status === 'Confirmed' || order.order_status === 'Confirmed Order' ? 'bg-indigo-100 text-indigo-800' : 'bg-gray-100 text-gray-800'}`}>
                                         {order.order_status}
                                     </span>
                                 </div>
@@ -240,8 +288,31 @@ export default function MarketplaceSalesEntryPage() {
                                 <div className="flex justify-between items-center border-t dark:border-zinc-800 pt-2 mt-2">
                                     <span className="font-bold text-sm">Rs {order.total_amount.toFixed(2)}</span>
                                     <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
-                                        <button onClick={() => { setEditingOrder(order); setIsEditModalOpen(true); }} className="text-blue-600 text-xs px-2 py-1 bg-blue-50 rounded">Edit</button>
-                                        <button onClick={() => handleDelete(order.id)} className="text-red-600 text-xs px-2 py-1 bg-red-50 rounded">Delete</button>
+                                        {order.order_type !== 'Import' && !order.courier_consignment_id ? (
+                                            <button
+                                                onClick={() => { setShippingOrder(order); setIsShipModalOpen(true); }}
+                                                className="text-white text-xs px-2 py-1 bg-purple-600 rounded flex items-center gap-1"
+                                            >
+                                                <Truck size={10} /> Ship
+                                            </button>
+                                        ) : order.courier_consignment_id ? (
+                                            <button
+                                                onClick={() => handleTrack(order.id)}
+                                                className="text-purple-600 text-xs px-2 py-1 bg-purple-50 rounded flex items-center gap-1"
+                                            >
+                                                <RefreshCw size={10} /> Track
+                                            </button>
+                                        ) : null}
+                                        <button 
+                                            onClick={() => { setEditingOrder(order); setIsEditModalOpen(true); }} 
+                                            className={`text-blue-600 text-xs px-2 py-1 rounded ${order.order_type === 'Import' ? 'bg-gray-100 opacity-50 cursor-not-allowed' : 'bg-blue-50'}`}
+                                            disabled={order.order_type === 'Import'}
+                                        >Edit</button>
+                                        <button 
+                                            onClick={() => handleDelete(order.id)} 
+                                            className={`text-red-600 text-xs px-2 py-1 rounded ${order.order_type === 'Import' ? 'bg-gray-100 opacity-50 cursor-not-allowed' : 'bg-red-50'}`}
+                                            disabled={order.order_type === 'Import'}
+                                        >Delete</button>
                                     </div>
                                 </div>
                             </div>
@@ -335,11 +406,12 @@ export default function MarketplaceSalesEntryPage() {
                                             <td className="px-2 py-1.5">
                                                 <div className="flex flex-col items-start gap-1">
                                                     <span className={`inline-flex px-1.5 py-0.5 text-xs font-medium rounded ${order.order_status === 'Pending' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300' :
-                                                        order.order_status === 'Shipped' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300' :
-                                                            order.order_status === 'Delivered' ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300' :
-                                                                order.order_status === 'Cancel' ? 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300' :
-                                                                    'bg-gray-100 text-gray-700 dark:bg-zinc-800 dark:text-gray-300'
-                                                        }`}>
+                                                        order.order_status === 'Confirmed' || order.order_status === 'Confirmed Order' ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300' :
+                                                            order.order_status === 'Shipped' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300' :
+                                                                order.order_status === 'Delivered' ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300' :
+                                                                    order.order_status === 'Cancel' ? 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300' :
+                                                                        'bg-gray-100 text-gray-700 dark:bg-zinc-800 dark:text-gray-300'
+                                                                    }`}>
                                                         {order.order_status}
                                                     </span>
 
@@ -350,6 +422,14 @@ export default function MarketplaceSalesEntryPage() {
                                                         </span>
                                                     )}
                                                 </div>
+                                                <td className="px-2 py-1.5">
+                                                    <span className={`inline-flex px-1.5 py-0.5 text-xs font-medium rounded ${order.order_type === 'Import'
+                                                        ? 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300'
+                                                        : 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300'
+                                                        }`}>
+                                                        {order.order_type}
+                                                    </span>
+                                                </td>
                                             </td>
                                             <td className="px-2 py-1.5 text-[13px] text-gray-600 dark:text-gray-300">
                                                 {order.courier?.courier_name || '-'}
@@ -361,16 +441,49 @@ export default function MarketplaceSalesEntryPage() {
                                                             setEditingOrder(order)
                                                             setIsEditModalOpen(true)
                                                         }}
-                                                        className="px-2 py-0.5 text-[13px] text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded"
+                                                        className={`px-2 py-0.5 text-[13px] text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded ${order.order_type === 'Import' ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                                        disabled={order.order_type === 'Import'}
                                                     >
                                                         Edit
                                                     </button>
                                                     <button
                                                         onClick={() => handleDelete(order.id)}
-                                                        className="px-2 py-0.5 text-[13px] text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded"
+                                                        className={`px-2 py-0.5 text-[13px] text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded ${order.order_type === 'Import' ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                                        disabled={order.order_type === 'Import'}
                                                     >
                                                         Delete
                                                     </button>
+                                                    {order.order_type !== 'Import' && !order.courier_consignment_id ? (
+                                                        <button
+                                                            onClick={() => { setShippingOrder(order); setIsShipModalOpen(true); }}
+                                                            className="px-2 py-0.5 text-[13px] text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-900/20 rounded font-medium flex items-center gap-1"
+                                                        >
+                                                            <Truck size={12} /> Ship
+                                                        </button>
+                                                    ) : (
+                                                        <div className="flex flex-col items-end gap-1">
+                                                            <div className="flex items-center gap-1">
+                                                                <span className="text-[10px] bg-gray-100 dark:bg-zinc-800 rounded px-1 text-gray-600 dark:text-gray-400 font-mono border dark:border-zinc-700">
+                                                                    {order.courier_consignment_id}
+                                                                </span>
+                                                                <button
+                                                                    onClick={() => handleTrack(order.id)}
+                                                                    className="text-gray-400 hover:text-purple-600 transition-colors"
+                                                                    title="Refresh Status"
+                                                                >
+                                                                    <RefreshCw size={10} />
+                                                                </button>
+                                                            </div>
+                                                            {order.courier_status && (
+                                                                <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${order.courier_status === 'Delivered' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
+                                                                    order.courier_status === 'Cancelled' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' :
+                                                                        'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+                                                                    }`}>
+                                                                    {order.courier_status}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    )}
                                                 </div>
                                             </td>
                                         </tr>
@@ -469,6 +582,18 @@ export default function MarketplaceSalesEntryPage() {
                 <MarketplaceOrderDetailModal
                     order={viewingOrder}
                     onClose={() => setViewingOrder(null)}
+                />
+            )}
+
+            {/* Ship Modal */}
+            {isShipModalOpen && shippingOrder && (
+                <ShipOrderModal
+                    order={shippingOrder}
+                    isOpen={isShipModalOpen}
+                    onClose={() => setIsShipModalOpen(false)}
+                    onSuccess={() => {
+                        refetch()
+                    }}
                 />
             )}
         </div>

@@ -4,6 +4,8 @@ import * as React from "react"
 import { Slot } from "@radix-ui/react-slot"
 import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "@/lib/utils"
+import * as DialogPrimitive from "@radix-ui/react-dialog"
+import { ChevronDown, X } from "lucide-react"
 
 // --- BUTTON ---
 const buttonVariants = cva(
@@ -135,6 +137,18 @@ const CardTitle = React.forwardRef<
 ))
 CardTitle.displayName = "CardTitle"
 
+const CardDescription = React.forwardRef<
+    HTMLParagraphElement,
+    React.HTMLAttributes<HTMLParagraphElement>
+>(({ className, ...props }, ref) => (
+    <p
+        ref={ref}
+        className={cn("text-sm text-muted-foreground", className)}
+        {...props}
+    />
+))
+CardDescription.displayName = "CardDescription"
+
 const CardContent = React.forwardRef<
     HTMLDivElement,
     React.HTMLAttributes<HTMLDivElement>
@@ -154,6 +168,114 @@ const Separator = React.forwardRef<
     />
 ))
 Separator.displayName = "Separator"
+
+// --- DIALOG ---
+const Dialog = DialogPrimitive.Root
+const DialogTrigger = DialogPrimitive.Trigger
+const DialogPortal = DialogPrimitive.Portal
+const DialogClose = DialogPrimitive.Close
+
+const DialogOverlay = React.forwardRef<
+    React.ElementRef<typeof DialogPrimitive.Overlay>,
+    React.ComponentPropsWithoutRef<typeof DialogPrimitive.Overlay>
+>(({ className, ...props }, ref) => (
+    <DialogPrimitive.Overlay
+        ref={ref}
+        className={cn(
+            "fixed inset-0 z-50 bg-black/80  data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+            className
+        )}
+        {...props}
+    />
+))
+DialogOverlay.displayName = DialogPrimitive.Overlay.displayName
+
+const DialogContent = React.forwardRef<
+    React.ElementRef<typeof DialogPrimitive.Content>,
+    React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
+>(({ className, children, ...props }, ref) => (
+    <DialogPortal>
+        <DialogOverlay />
+        <DialogPrimitive.Content
+            ref={ref}
+            className={cn(
+                "fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border bg-background p-6 shadow-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] sm:rounded-lg",
+                className
+            )}
+            {...props}
+        >
+            {children}
+            <DialogPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground">
+                <X className="h-4 w-4" />
+                <span className="sr-only">Close</span>
+            </DialogPrimitive.Close>
+        </DialogPrimitive.Content>
+    </DialogPortal>
+))
+DialogContent.displayName = DialogPrimitive.Content.displayName
+
+const DialogHeader = ({
+    className,
+    ...props
+}: React.HTMLAttributes<HTMLDivElement>) => (
+    <div
+        className={cn(
+            "flex flex-col space-y-1.5 text-center sm:text-left",
+            className
+        )}
+        {...props}
+    />
+)
+DialogHeader.displayName = "DialogHeader"
+
+const DialogFooter = ({
+    className,
+    ...props
+}: React.HTMLAttributes<HTMLDivElement>) => (
+    <div
+        className={cn(
+            "flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2",
+            className
+        )}
+        {...props}
+    />
+)
+DialogFooter.displayName = "DialogFooter"
+
+const DialogTitle = React.forwardRef<
+    React.ElementRef<typeof DialogPrimitive.Title>,
+    React.ComponentPropsWithoutRef<typeof DialogPrimitive.Title>
+>(({ className, ...props }, ref) => (
+    <DialogPrimitive.Title
+        ref={ref}
+        className={cn(
+            "text-lg font-semibold leading-none tracking-tight",
+            className
+        )}
+        {...props}
+    />
+))
+DialogTitle.displayName = DialogPrimitive.Title.displayName
+
+// --- SELECT (MOCK for now, as it requires complex Radix setup. Using native select in modal, but exporting symbols to satisfy imports if needed) ---
+// Actually, let's just export a simple Select shim that renders children. The Modal uses native <select> inside, but imports Select components. 
+// Wait, the Modal uses Radix-like Select components in the import list BUT uses native <select> in the compiled JSX visually? 
+// No, the modal code I wrote uses <select> ... oh wait, I imported Select components but then used <select> elements in the JSX body in Step 140? 
+// checking Step 140 content: 
+// It imports `Select, SelectContent, ...` 
+// BUT in lines 106 it uses `<select ... >`. 
+// However, the import is there, so it fails. 
+// Let's explicitly add the exports to be safe, or I can remove the unused imports from the Modal. 
+// Adding exports is safer to prevent future breaks.
+
+const Select = (props: any) => <>{props.children}</>
+const SelectGroup = (props: any) => <>{props.children}</>
+const SelectValue = (props: any) => <>{props.placeholder}</>
+const SelectTrigger = (props: any) => <div {...props}>{props.children}</div>
+const SelectContent = (props: any) => <div {...props}>{props.children}</div>
+const SelectLabel = (props: any) => <div {...props}>{props.children}</div>
+const SelectItem = (props: any) => <div {...props}>{props.children}</div>
+const SelectSeparator = (props: any) => <div {...props} />
 
 // --- BADGE ---
 const badgeVariants = cva(
@@ -297,6 +419,7 @@ export {
     Card,
     CardHeader,
     CardTitle,
+    CardDescription,
     CardContent,
     Separator,
     Badge,
@@ -307,5 +430,22 @@ export {
     TableHead,
     TableRow,
     TableCell,
-    TableCaption
+    TableCaption,
+    Dialog,
+    DialogPortal,
+    DialogOverlay,
+    DialogTrigger,
+    DialogClose,
+    DialogContent,
+    DialogHeader,
+    DialogFooter,
+    DialogTitle,
+    Select,
+    SelectGroup,
+    SelectValue,
+    SelectTrigger,
+    SelectContent,
+    SelectLabel,
+    SelectItem,
+    SelectSeparator,
 }

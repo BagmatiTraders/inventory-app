@@ -20,9 +20,9 @@ const settingsCards = [
     },
     {
         title: 'Logistics Management',
-        description: 'Manage delivery locations',
+        description: 'Manage delivery locations and APIs',
         icon: MapPin,
-        href: '/dashboard/settings/couriers',
+        href: '/dashboard/settings/logistics-api',
         color: 'bg-purple-500',
     },
     {

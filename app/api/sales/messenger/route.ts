@@ -37,14 +37,30 @@ export async function POST(req: NextRequest) {
 
     try {
         const body = await req.json()
+        console.log('Received payload from messaging app:', JSON.stringify(body, null, 2)) // Added logging
+
         const {
-            order_number, // We'll store this in remarks or external_id if available, or just rely on sales_id
+            order_number,
             customer_name,
             phone_number,
+            alternative_phone,
             address,
             items,
             total_amount,
-            delivery_charge
+            delivery_charge,
+            order_status, // Add order_status from messaging app
+            // Synced fields
+            platform,
+            page_name,
+            logistic_name,
+            courier_provider,
+            courier_consignment_id,
+            city,
+            delivery_branch,
+            branch_charge,
+            messaging_app_order_id,
+            confirmed_at,
+            confirmed_by
         } = body
 
         const supabase = await createAdminClient()
@@ -52,37 +68,81 @@ export async function POST(req: NextRequest) {
         // 2. Generate Sales ID
         const salesId = await generateSalesId(supabase)
 
-        // 3. Create Order
+        // 3. Determine branch and branch charge based on courier provider
+        let branchValue = null
+        let branchChargeValue = branch_charge || 0
+
+        if (courier_provider === 'pathao') {
+            // For Pathao, use city as branch
+            branchValue = city
+        } else if (courier_provider === 'local') {
+            // For local courier, use delivery_branch
+            branchValue = delivery_branch
+        }
+
+        // 4. Validate and format phone numbers
+        const formattedPhoneNumber = phone_number?.replace(/\D/g, '').slice(0, 10) || ''
+        const formattedAltPhone = alternative_phone?.replace(/\D/g, '').slice(0, 10) || null
+
+        // 5. Create Order
         const { data: order, error: orderError } = await supabase
             .from('marketplace_orders')
             .insert({
                 sales_id: salesId,
                 order_date: new Date().toISOString().split('T')[0], // Today
                 customer_name,
-                phone_number,
+                phone_number: formattedPhoneNumber,
+                alternative_phone: formattedAltPhone,
                 address,
+                delivery_branch: branchValue,
+                branch_charge: branchChargeValue,
                 delivery_charge: delivery_charge || 0,
                 total_amount: total_amount || 0,
-                order_status: 'Pending',
+                order_status: order_status || 'Pending', // Use status from messaging app, default to Pending
                 user_type: 'Messenger',
+                order_type: 'Import',
                 remarks: `Imported from Messenger App (Order #${order_number})`,
-                // We don't have a 'created_by' user UUID since it's an API call. 
-                // Either define a system user or leave nullable if allowed.
-                // Assuming it's nullable or we can skip it.
+                // Synced fields
+                platform,
+                page_name,
+                logistic_name,
+                courier_provider,
+                courier_consignment_id,
+                city,
+                messaging_app_order_id,
+                confirmed_at,
+                confirmed_by
             })
             .select()
             .single()
 
         if (orderError) {
             console.error('Order creation error:', orderError)
-            return NextResponse.json({ error: orderError.message }, { status: 500 })
+            console.error('Failed data:', {
+                salesId,
+                customer_name,
+                phone_number: formattedPhoneNumber,
+                alternative_phone: formattedAltPhone,
+                address,
+                delivery_branch: branchValue,
+                branch_charge: branchChargeValue,
+                delivery_charge,
+                total_amount,
+                courier_provider,
+                city,
+                original_delivery_branch: delivery_branch
+            })
+            return NextResponse.json({ 
+                error: orderError.message,
+                details: 'Check server logs for more information'
+            }, { status: 500 })
         }
 
         // 4. Create Items
         if (items && items.length > 0) {
             const itemsToInsert = items.map((item: any) => ({
                 order_id: order.id,
-                product_id: item.product_id, // If mapping exists
+                product_id: item.product_id,
                 product_name: item.product_name || item.name,
                 quantity: item.quantity,
                 amount: item.price || 0
@@ -94,15 +154,22 @@ export async function POST(req: NextRequest) {
 
             if (itemsError) {
                 console.error('Items creation error:', itemsError)
-                // We created the order but failed items. Ideally strictly transactional.
-                // For now, return error.
                 return NextResponse.json({ error: 'Order created but items failed: ' + itemsError.message }, { status: 500 })
             }
         }
 
         return NextResponse.json({
             success: true,
-            data: order,
+            data: {
+                ...order,
+                processed_fields: {
+                    phone_number: formattedPhoneNumber,
+                    alternative_phone: formattedAltPhone,
+                    delivery_branch: branchValue,
+                    branch_charge: branchChargeValue,
+                    courier_provider: courier_provider
+                }
+            },
             message: 'Order created successfully'
         })
 

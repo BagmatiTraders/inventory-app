@@ -13,13 +13,16 @@ export interface MarketplaceOrder {
     order_date: string
     customer_name: string
     phone_number: string
+    alternative_phone?: string  // Added for messaging app integration
     address?: string
+    delivery_branch?: string    // Added for messaging app integration
     delivery_branch_id?: string
     courier_id?: string // Added courier_id
     branch_charge: number
     delivery_charge: number
     total_amount: number
-    order_status: 'Pending' | 'Shipped' | 'Delivered' | 'Fail Delivered' | 'Cancel'
+    order_status: 'Pending' | 'Confirmed' | 'Shipped' | 'Delivered' | 'Fail Delivered' | 'Cancel' | 'Confirmed Order'
+    order_type: 'Import' | 'Create'
     user_type: string
     remarks?: string
     created_at: string
@@ -34,6 +37,16 @@ export interface MarketplaceOrder {
     failed_delivered_by?: string
     cancelled_at?: string
     cancelled_by?: string
+    // Synced fields
+    platform?: string
+    page_name?: string
+    logistic_name?: string
+    courier_provider?: string
+    courier_consignment_id?: string
+    city?: string
+    messaging_app_order_id?: string
+    confirmed_at?: string
+    confirmed_by?: string
     // Relations
     courier?: {           // Added courier relation
         id: string
@@ -140,7 +153,8 @@ export async function createMarketplaceOrder(data: CreateMarketplaceOrderData) {
             delivery_charge: data.delivery_charge || 0,
             total_amount: totalAmount,
             order_status: data.order_status || 'Pending',
-            user_type: 'ALL',
+            user_type: 'Created',
+            order_type: 'Create',
             remarks: data.remarks,
             created_by: user.id
         })
@@ -741,6 +755,9 @@ export async function updateMarketplaceOrderStatus(ids: string[], status: string
     } else if (status === 'Delivered') {
         updateData.delivered_at = now
         updateData.delivered_by = user.id
+    } else if (status === 'Confirmed Order') {
+        updateData.confirmed_at = now
+        updateData.confirmed_by = user.id
     } else if (status === 'Returning to Seller') {
         updateData.returned_to_seller_at = now
         updateData.returned_to_seller_by = user.id
@@ -764,6 +781,56 @@ export async function updateMarketplaceOrderStatus(ids: string[], status: string
         .in('id', ids)
 
     if (error) throw error
+
+    // Notify messaging app of status change for messenger orders
+    try {
+        // Get the updated orders to check if they're from messenger (check remarks field)
+        const { data: updatedOrders } = await supabase
+            .from('marketplace_orders')
+            .select('remarks, sales_id')
+            .in('id', ids)
+
+        if (updatedOrders && updatedOrders.length > 0) {
+            // Check if any orders are from messenger (remarks contains "Messenger Order #")
+            const messengerOrders = updatedOrders.filter(order =>
+                order.remarks?.includes('Messenger Order #')
+            )
+
+            if (messengerOrders.length > 0) {
+                const messengerAppUrl = process.env.NEXT_PUBLIC_MESSENGER_APP_URL || 'http://localhost:3001'
+                const apiKey = process.env.MESSENGER_APP_API_KEY
+
+                // Send webhook for each messenger order
+                for (const order of messengerOrders) {
+                    // Extract order number from remarks (e.g., "Messenger Order #WEB-1234)")
+                    const match = order.remarks?.match(/Messenger Order #([^)]+)\)/)
+                    if (match) {
+                        const orderNumber = match[1]
+
+                        try {
+                            await fetch(`${messengerAppUrl}/api/orders/status/sync?api_key=${apiKey}`, {
+                                method: 'PUT',
+                                headers: {
+                                    'Content-Type': 'application/json'
+                                },
+                                body: JSON.stringify({
+                                    order_number: orderNumber,
+                                    status: status
+                                })
+                            })
+                            console.log(`✅ Notified messaging app: ${orderNumber} -> ${status}`)
+                        } catch (webhookError) {
+                            console.error(`Failed to notify messaging app for ${orderNumber}:`, webhookError)
+                            // Don't throw - webhook failure shouldn't block the main update
+                        }
+                    }
+                }
+            }
+        }
+    } catch (notifyError) {
+        console.error('Error notifying messaging app:', notifyError)
+        // Don't throw - notification failure shouldn't block the main update
+    }
 
     revalidatePath('/dashboard/sales/marketplace')
     return { success: true }

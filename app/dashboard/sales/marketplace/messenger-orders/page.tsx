@@ -107,10 +107,11 @@ export default function MessengerOrdersPage() {
                                                 <div className="text-xs text-gray-500">{order.phone_number}</div>
                                             </td>
                                             <td className="px-4 py-3 text-sm">
-                                                <span title={order.items?.[0]?.product_name}>
-                                                    {order.items?.[0]?.product_name}
-                                                    {order.items?.length > 1 && <span className="text-gray-500 ml-1">+{order.items.length - 1} more</span>}
-                                                </span>
+                                                <div>
+                                                    <div className="font-medium">{order.items?.[0]?.product_name}</div>
+                                                    <div className="text-xs text-gray-500">ID: {order.items?.[0]?.product_id}</div>
+                                                    {order.items?.length > 1 && <div className="text-xs text-gray-500 mt-1">+{order.items.length - 1} more items</div>}
+                                                </div>
                                             </td>
                                             <td className="px-4 py-3 text-sm font-medium">Rs {order.total_amount.toFixed(2)}</td>
                                             <td className="px-4 py-3">

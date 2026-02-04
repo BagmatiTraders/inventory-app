@@ -18,6 +18,7 @@
     "@capacitor/core": "^8.0.0",
     "@hookform/resolvers": "^5.2.2",
     "@ionic/pwa-elements": "^3.3.0",
+    "@radix-ui/react-dialog": "^1.1.15",
     "@radix-ui/react-slot": "^1.2.4",
     "@supabase/ssr": "^0.5.0",
     "@supabase/supabase-js": "2.45.4",

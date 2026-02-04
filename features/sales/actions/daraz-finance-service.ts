@@ -38,7 +38,6 @@ export async function fetchDarazFinanceTransactions(orderId: string, storeId: st
         throw new Error('No active connection/token found for this store.')
     }
 
-    const timestamp = new Date().getTime()
     let startTime = new Date()
     if (orderDate) {
         startTime = new Date(orderDate)
@@ -56,28 +55,64 @@ export async function fetchDarazFinanceTransactions(orderId: string, storeId: st
         startTime.setDate(startTime.getDate() - 140)
     }
 
-    const params: Record<string, any> = {
-        app_key: appKey,
-        access_token: tokenData.access_token,
-        timestamp: timestamp,
-        sign_method: 'sha256',
-        trade_order_id: orderId,
-        start_time: startTime.toISOString().split('T')[0],
-        end_time: endTime.toISOString().split('T')[0],
-        trans_type: -1
-    }
-
     const apiPath = '/finance/transaction/details/get'
-    params.sign = signRequest(apiPath, params, appSecret)
+
+    // CRITICAL FIX: Use pagination to fetch ALL transactions for this order
+    let allTransactions: any[] = []
+    let offset = 0
+    const limit = 500 // Max limit per docs
+    let hasMore = true
+    let loopCount = 0
 
     try {
-        const response = await axios.get(`${apiUrl}${apiPath}`, { params })
+        while (hasMore && loopCount < 20) { // Safety break at 10k transactions per order
+            const params: Record<string, any> = {
+                app_key: appKey,
+                access_token: tokenData.access_token,
+                timestamp: new Date().getTime(),
+                sign_method: 'sha256',
+                trade_order_id: orderId,
+                start_time: startTime.toISOString().split('T')[0],
+                end_time: endTime.toISOString().split('T')[0],
+                trans_type: -1,
+                limit: limit,
+                offset: offset
+            }
 
-        if ((response.data.code !== "0" && response.data.code !== 0) || !response.data.data) {
-            return []
+            params.sign = signRequest(apiPath, params, appSecret)
+
+            const response = await axios.get(`${apiUrl}${apiPath}`, { params })
+
+            if ((response.data.code !== "0" && response.data.code !== 0) || !response.data.data) {
+                // If first page returns no data, return empty array
+                if (offset === 0) {
+                    return []
+                }
+                // If subsequent pages fail, break and return what we have
+                break
+            }
+
+            const pageData = response.data.data || []
+
+            if (pageData.length > 0) {
+                allTransactions = [...allTransactions, ...pageData]
+
+                // If we got less than requested, we are done
+                if (pageData.length < limit) {
+                    hasMore = false
+                } else {
+                    offset += pageData.length // Move offset by actual amount received
+                }
+            } else {
+                hasMore = false
+            }
+
+            loopCount++
         }
 
-        return response.data.data || []
+        console.log(`[Daraz Finance Order] Fetched ${allTransactions.length} transactions for Order ${orderId}`)
+        return allTransactions
+
     } catch (error: any) {
         console.error('Finance API Fetch Error:', error.response?.data || error.message)
         throw new Error('Failed to fetch finance from Daraz API')

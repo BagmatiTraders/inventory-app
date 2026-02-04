@@ -57,4 +57,32 @@ BEGIN
 END $$;
 
 -- 8. Add new transaction_type column (Paid/Received)
-ALTER TABLE supplier_transactions ADD COLUMN transaction_type VARCHAR(50) DEFAULT 'Paid';
+-- 8. Add new transaction_type column (Paid/Received)
+ALTER TABLE supplier_transactions ADD COLUMN IF NOT EXISTS transaction_type VARCHAR(50) DEFAULT 'Paid';
+
+-- 9. Create courier_api_settings table
+CREATE TABLE IF NOT EXISTS courier_api_settings (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+    provider TEXT NOT NULL UNIQUE, -- e.g., 'pathao'
+    client_id TEXT,
+    client_secret TEXT,
+    username TEXT,
+    password TEXT,
+    base_url TEXT DEFAULT 'https://api-hermes.pathao.com',
+    access_token TEXT,
+    refresh_token TEXT,
+    token_expires_at TIMESTAMP WITH TIME ZONE,
+    default_city_id INTEGER,
+    default_zone_id INTEGER,
+    default_area_id INTEGER,
+    is_active BOOLEAN DEFAULT false
+);
+
+CREATE INDEX IF NOT EXISTS idx_courier_api_settings_provider ON courier_api_settings(provider);
+
+-- 10. Add tracking columns to daraz_orders
+ALTER TABLE daraz_orders ADD COLUMN IF NOT EXISTS courier_provider TEXT;
+ALTER TABLE daraz_orders ADD COLUMN IF NOT EXISTS courier_consignment_id TEXT;
+ALTER TABLE daraz_orders ADD COLUMN IF NOT EXISTS courier_status TEXT;

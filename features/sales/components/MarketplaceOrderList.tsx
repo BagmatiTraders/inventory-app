@@ -259,6 +259,7 @@ export function MarketplaceOrderList({ isEmbedded = false }: MarketplaceOrderLis
                     >
                         <option value="all">All Status</option>
                         <option value="Pending">Pending</option>
+                        <option value="Confirmed">Confirmed Order</option>
                         <option value="Shipped">Shipped</option>
                         <option value="Delivered">Delivered</option>
                         <option value="Returning to Seller">Returning to Seller</option>
@@ -363,11 +364,12 @@ export function MarketplaceOrderList({ isEmbedded = false }: MarketplaceOrderLis
                                                     </span>
                                                 ) : (
                                                     <span className={`inline-flex px-1.5 py-0.5 text-xs font-medium rounded ${order.order_status === 'Pending' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300' :
-                                                        order.order_status === 'Shipped' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300' :
-                                                            order.order_status === 'Delivered' ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300' :
-                                                                order.order_status === 'Cancel' ? 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300' :
-                                                                    'bg-gray-100 text-gray-700 dark:bg-zinc-800 dark:text-gray-300'
-                                                        }`}>
+                                                        order.order_status === 'Confirmed' || order.order_status === 'Confirmed Order' ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300' :
+                                                            order.order_status === 'Shipped' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300' :
+                                                                order.order_status === 'Delivered' ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300' :
+                                                                    order.order_status === 'Cancel' ? 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300' :
+                                                                        'bg-gray-100 text-gray-700 dark:bg-zinc-800 dark:text-gray-300'
+                                                                    }`}>
                                                         {order.order_status}
                                                     </span>
                                                 )}
@@ -388,7 +390,8 @@ export function MarketplaceOrderList({ isEmbedded = false }: MarketplaceOrderLis
                                                             setEditingOrder(order)
                                                             setIsEditModalOpen(true)
                                                         }}
-                                                        className="px-2 py-0.5 text-[13px] text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded"
+                                                        className={`px-2 py-0.5 text-[13px] text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded ${order.order_type === 'Import' ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                                        disabled={order.order_type === 'Import'}
                                                     >
                                                         Edit
                                                     </button>
@@ -396,7 +399,8 @@ export function MarketplaceOrderList({ isEmbedded = false }: MarketplaceOrderLis
                                                         onClick={() => {
                                                             handleDelete(order.id).then(() => refetch())
                                                         }}
-                                                        className="px-2 py-0.5 text-[13px] text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded"
+                                                        className={`px-2 py-0.5 text-[13px] text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded ${order.order_type === 'Import' ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                                        disabled={order.order_type === 'Import'}
                                                     >
                                                         Delete
                                                     </button>
