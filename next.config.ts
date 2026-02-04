@@ -4,7 +4,34 @@ import withPWA from 'next-pwa';
 
 const nextConfig: NextConfig = {
   experimental: {
-    optimizePackageImports: ['lucide-react', 'date-fns', 'lodash', '@radix-ui/react-dialog', 'recharts'],
+    optimizePackageImports: [
+      'lucide-react', 
+      'date-fns', 
+      'lodash', 
+      '@radix-ui/react-dialog', 
+      'recharts',
+      'react-select',
+      'zod',
+      'axios',
+      '@supabase/supabase-js',
+      '@tanstack/react-query',
+      'react-hook-form',
+      'class-variance-authority',
+      'clsx',
+      'tailwind-merge',
+      'sonner',
+      'xlsx',
+      'papaparse',
+      'fast-levenshtein',
+      'nepali-date-converter',
+      'crypto-js',
+      'react-barcode',
+      '@zxing/library',
+      '@zxing/browser'
+    ],
+  },
+  compiler: {
+    removeConsole: process.env.NODE_ENV === 'production',
   },
   images: {
     remotePatterns: [

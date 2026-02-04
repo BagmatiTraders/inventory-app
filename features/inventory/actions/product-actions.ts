@@ -175,8 +175,21 @@ export async function searchProducts(search: string) {
  * Get ALL products (lightweight) for client-side filtering
  * Returns only id, name, and seller sku.
  * Uses batch fetching to bypass 1000-row limit.
+ * Implements caching to avoid repeated API calls.
  */
 export async function getAllProductOptions() {
+    // Check for cached data first
+    if (typeof window !== 'undefined') {
+        const cachedData = sessionStorage.getItem('allProductsCache');
+        if (cachedData) {
+            const { data, timestamp } = JSON.parse(cachedData);
+            // Cache for 5 minutes (300,000 ms)
+            if (Date.now() - timestamp < 300000) {
+                return data;
+            }
+        }
+    }
+
     const supabase = await createClient()
 
     let allProducts: any[] = []
@@ -206,6 +219,14 @@ export async function getAllProductOptions() {
 
         if (data.length < pageSize) break
         page++
+    }
+
+    // Cache the data in sessionStorage
+    if (typeof window !== 'undefined') {
+        sessionStorage.setItem('allProductsCache', JSON.stringify({
+            data: allProducts,
+            timestamp: Date.now()
+        }));
     }
 
     return allProducts

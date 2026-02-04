@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query'
 import { getProducts, exportProducts, deleteAllProducts, toggleProductStatus } from '@/features/inventory/actions/product-actions'
 import { ArrowLeft, Plus, Upload, Download, Search, X, Package, Trash2, Box, Image as ImageIcon } from 'lucide-react'
 import Link from 'next/link'
+import Image from 'next/image'
 import { Card } from '@/components/ui-shim'
 import { AddProductModal } from '@/features/inventory/components/AddProductModal'
 import { ViewProductModal } from '@/features/inventory/components/ViewProductModal'
@@ -256,18 +257,19 @@ export default function ProductListPage() {
                                                 <td className="px-2 md:px-4 py-3">
                                                     <div className="relative w-8 h-8 md:w-10 md:h-10 rounded-lg overflow-hidden bg-gray-100 dark:bg-zinc-800 border dark:border-zinc-700 shadow-sm">
                                                         {product.image_url ? (
-                                                            <img
+                                                            <Image
                                                                 src={product.image_url}
                                                                 alt={product.product_name}
                                                                 className="w-full h-full object-cover"
+                                                                width={40}
+                                                                height={40}
                                                                 onError={(e) => {
-                                                                    e.currentTarget.src = ''
-                                                                    e.currentTarget.style.display = 'none'
-                                                                    e.currentTarget.nextElementSibling?.classList.remove('hidden')
+                                                                    e.currentTarget.style.display = 'none';
+                                                                    e.currentTarget.nextElementSibling?.classList.remove('hidden');
                                                                 }}
                                                             />
                                                         ) : null}
-                                                        <div className={`absolute inset-0 flex items-center justify-center text-gray-300 ${product.image_url ? 'hidden' : ''}`}>
+                                                        <div className={`absolute inset-0 flex items-center justify-center text-gray-300 ${product.image_url ? 'hidden' : ''} fallback-icon`}>
                                                             <ImageIcon size={16} />
                                                         </div>
                                                     </div>

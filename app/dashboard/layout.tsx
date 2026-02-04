@@ -13,10 +13,12 @@ import dynamic from 'next/dynamic'
 import { createContext, useContext } from "react"
 import { useQueryClient } from '@tanstack/react-query'
 import { MobileModeProvider, useMobileMode } from "@/context/MobileModeContext"
+import MobileHeader from "@/components/dashboard/MobileHeader"
 
 const AddProductModal = dynamic(() => import('@/features/inventory/components/AddProductModal').then(mod => mod.AddProductModal), { ssr: false })
 const MobileDashboard = dynamic(() => import('@/components/dashboard/MobileDashboard').then(mod => mod.MobileDashboard), { ssr: false })
 const MobileFooter = dynamic(() => import('@/components/dashboard/MobileFooter').then(mod => mod.MobileFooter), { ssr: false })
+const NavItem = dynamic(() => import('./NavItem').then(mod => mod.NavItem), { ssr: false })
 
 interface DashboardContextType {
     isMobileMenuOpen: boolean
@@ -75,162 +77,15 @@ function DashboardLayout({
                 {/* Mobile Header - Hide for Stock Ledger and other specific pages */}
                 {pathname !== '/dashboard/suppliers/dashboard' &&
                     !pathname?.includes('/dashboard/inventory/stock-ledger') && (
-                        <div className={`md:hidden fixed top-0 left-0 right-0 h-16 bg-white dark:bg-zinc-800 border-b z-30 flex items-center justify-between px-4 transition-all ${isMobileMode ? 'shadow-sm' : ''}`}>
-                            <div className="flex items-center gap-3 relative z-20">
-                                {!isMobileMode && (
-                                    <button
-                                        onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-                                        className="p-2 -ml-2 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-zinc-700 rounded-md"
-                                    >
-                                        <Menu size={24} />
-                                    </button>
-                                )}
-                            </div>
-
-                            {/* Centered Titles */}
-                            <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-10">
-                                {headerTitle ? (
-                                    typeof headerTitle === 'string' ? (
-                                        <span className="font-bold text-lg whitespace-nowrap">{headerTitle}</span>
-                                    ) : (
-                                        headerTitle
-                                    )
-                                ) : (
-                                    <>
-
-                                        {pathname === '/dashboard/sales/daraz' && (
-                                            <span className="font-bold text-lg whitespace-nowrap">E-commerce Sales & Orders</span>
-                                        )}
-                                        {pathname === '/dashboard/sales/marketplace' && (
-                                            <span className="font-bold text-lg whitespace-nowrap">Marketplace Sales & Orders</span>
-                                        )}
-                                        {pathname === '/dashboard/sales/daraz/sales-entry' && (
-                                            <span className="font-bold text-lg whitespace-nowrap">Order Entry</span>
-                                        )}
-                                        {pathname === '/dashboard/sales/marketplace/sales-entry' && (
-                                            <span className="font-bold text-lg whitespace-nowrap">Marketplace Sales Entry</span>
-                                        )}
-                                        {pathname === '/dashboard/sales/daraz/update-status' && (
-                                            <span className="font-bold text-lg whitespace-nowrap">Update Order Status</span>
-                                        )}
-                                        {pathname === '/dashboard/sales/daraz/dashboard' && (
-                                            <span className="font-bold text-lg whitespace-nowrap">Order Summary</span>
-                                        )}
-                                        {pathname === '/dashboard/inventory/stock-adjustment' && (
-                                            <span className="font-bold text-lg whitespace-nowrap">Stock Adjustment</span>
-                                        )}
-                                        {pathname === '/dashboard/inventory/product-list' && (
-                                            <span className="font-bold text-lg whitespace-nowrap">Inventory List</span>
-                                        )}
-                                        {pathname === '/dashboard/inventory/damaged-stocks' && (
-                                            <span className="font-bold text-lg whitespace-nowrap">Damaged Goods</span>
-                                        )}
-                                        {pathname === '/dashboard/purchase' && (
-                                            <span className="font-bold text-lg whitespace-nowrap">Purchasing</span>
-                                        )}
-                                        {pathname === '/dashboard/purchase/purchase-entry' && (
-                                            <span className="font-bold text-lg whitespace-nowrap">Purchase Summary</span>
-                                        )}
-                                        {pathname === '/dashboard/purchase/all-purchase-list' && (
-                                            <span className="font-bold text-lg whitespace-nowrap">Purchase History</span>
-                                        )}
-                                        {pathname === '/dashboard/purchase/daily-purchase-list' && (
-                                            <span className="font-bold text-lg whitespace-nowrap">Daily Purchases</span>
-                                        )}
-                                        {pathname === '/dashboard/purchase/buy-sell-suppliers' && (
-                                            <span className="font-bold text-lg whitespace-nowrap">Vendor Trade Report</span>
-                                        )}
-                                        {pathname === '/dashboard/suppliers' && (
-                                            <span className="font-bold text-lg whitespace-nowrap">Supplier Management</span>
-                                        )}
-                                        {pathname === '/dashboard/suppliers/suppliers-transaction' && (
-                                            <span className="font-bold text-lg whitespace-nowrap">Supplier Transactions</span>
-                                        )}
-                                        {pathname === '/dashboard/suppliers/suppliers-account' && (
-                                            <span className="font-bold text-lg whitespace-nowrap">Supplier Ledger</span>
-                                        )}
-                                        {pathname === '/dashboard/sales/daraz/status-sync' && (
-                                            <span className="font-bold text-lg whitespace-nowrap">Order Status Sync</span>
-                                        )}
-                                        {pathname === '/dashboard/sales/daraz/order-sync' && (
-                                            <span className="font-bold text-lg whitespace-nowrap">Order Sync</span>
-                                        )}
-                                        {pathname === '/dashboard/profile' && (
-                                            <span className="font-bold text-lg whitespace-nowrap">My Profile</span>
-                                        )}
-                                        {pathname === '/dashboard/sales/daraz/profit-tracker' && (
-                                            <span className="font-bold text-lg whitespace-nowrap">Profit Tracker</span>
-                                        )}
-                                        {pathname === '/dashboard/mobile-uploads' && (
-                                            <span className="font-bold text-lg whitespace-nowrap">Field Data Entry</span>
-                                        )}
-                                        {pathname === '/dashboard/stock-analysis' && (
-                                            <span className="font-bold text-lg whitespace-nowrap">Stock Analysis</span>
-                                        )}
-                                        {pathname === '/dashboard/account' && (
-                                            <span className="font-bold text-lg whitespace-nowrap">Finance & Accounts</span>
-                                        )}
-
-                                        {/* Default Title */}
-                                        {pathname !== '/dashboard/sales/daraz' &&
-                                            pathname !== '/dashboard/sales/marketplace' &&
-                                            pathname !== '/dashboard/sales/daraz/sales-entry' &&
-                                            pathname !== '/dashboard/sales/marketplace/sales-entry' &&
-                                            pathname !== '/dashboard/sales/daraz/update-status' &&
-                                            pathname !== '/dashboard/sales/daraz/dashboard' &&
-                                            pathname !== '/dashboard/inventory/product-list' &&
-                                            pathname !== '/dashboard/inventory/stock-adjustment' &&
-                                            pathname !== '/dashboard/inventory/damaged-stocks' &&
-                                            pathname !== '/dashboard/purchase' &&
-                                            pathname !== '/dashboard/purchase/purchase-entry' &&
-                                            pathname !== '/dashboard/purchase/all-purchase-list' &&
-                                            pathname !== '/dashboard/purchase/daily-purchase-list' &&
-                                            pathname !== '/dashboard/purchase/buy-sell-suppliers' &&
-                                            pathname !== '/dashboard/suppliers' &&
-                                            pathname !== '/dashboard/suppliers/suppliers-transaction' &&
-                                            pathname !== '/dashboard/suppliers/suppliers-account' &&
-                                            pathname !== '/dashboard/sales/daraz/status-sync' &&
-                                            pathname !== '/dashboard/sales/daraz/order-sync' &&
-                                            pathname !== '/dashboard/profile' &&
-                                            pathname !== '/dashboard/sales/daraz/profit-tracker' &&
-                                            pathname !== '/dashboard/mobile-uploads' &&
-                                            pathname !== '/dashboard/stock-analysis' &&
-                                            pathname !== '/dashboard/account' && (
-                                                <span className="font-bold text-lg text-black dark:text-white whitespace-nowrap">BAGMATI TRADERS</span>
-                                            )}
-
-                                    </>
-                                )}
-                            </div>
-
-                            {/* Portal Target for Page Actions */}
-                            <div id="mobile-header-actions" className="flex items-center gap-2 relative z-30" />
-
-                            <div id="navbar-actions" className="flex items-center gap-2 relative z-20">
-                                {/* Add any mobile header actions here (like user avatar) */}
-
-
-                                {pathname === '/dashboard/inventory/product-list' && (
-                                    <>
-                                        <button
-                                            onClick={() => setIsAddProductModalOpen(true)}
-                                            className="p-1.5 bg-blue-600 text-white rounded-md shadow-sm"
-                                        >
-                                            <Plus size={18} />
-                                        </button>
-                                        <AddProductModal
-                                            isOpen={isAddProductModalOpen}
-                                            onClose={() => setIsAddProductModalOpen(false)}
-                                        />
-                                    </>
-                                )}
-                            </div>
-
-                            {/* Right Side Actions */}
-                            <div className="flex items-center gap-2 relative z-20">
-                                {headerAction}
-                            </div>
-                        </div>
+                        <MobileHeader
+                            pathname={pathname}
+                            isMobileMode={isMobileMode}
+                            setIsMobileMenuOpen={setIsMobileMenuOpen}
+                            headerTitle={headerTitle}
+                            headerAction={headerAction}
+                            isAddProductModalOpen={isAddProductModalOpen}
+                            setIsAddProductModalOpen={setIsAddProductModalOpen}
+                        />
                     )}
 
                 {/* Mobile Footer */}
@@ -373,7 +228,7 @@ function DashboardLayout({
                     flex-1 
                     ${(isMobileMode && pathname === '/dashboard') || pathname === '/dashboard/purchase/daily-purchase-list' ? 'overflow-hidden' : 'overflow-y-auto'}
                     ${pathname === '/dashboard/purchase/inventory-price-reports' || pathname === '/dashboard/purchase/daily-purchase-list' || pathname === '/dashboard/purchase/analytics' || pathname === '/dashboard/suppliers/suppliers-account' || pathname === '/dashboard/sales/daraz/status-sync' || pathname === '/dashboard/sales/daraz/order-sync' || pathname?.startsWith('/dashboard/inventory/stock-ledger') ? 'pt-0' : 'mt-16 md:mt-0'} 
-                    ${pathname === '/dashboard/purchase/inventory-price-reports' || pathname === '/dashboard/purchase/daily-purchase-list' || pathname === '/dashboard/purchase/analytics' || pathname === '/dashboard/suppliers/suppliers-account' || pathname === '/dashboard/sales/daraz/status-sync' || pathname === '/dashboard/sales/daraz/order-sync' || pathname?.startsWith('/dashboard/inventory/stock-ledger') ? 'h-full' : 'h-[calc(100vh-4rem)] md:h-full'}
+                    ${pathname === '/dashboard/purchase/inventory-price-reports' || pathname === '/dashboard/purchase/analytics' || pathname === '/dashboard/purchase/daily-purchase-list' || pathname === '/dashboard/suppliers/dashboard' || pathname === '/dashboard/suppliers' || pathname === '/dashboard/purchase/buy-sell-suppliers' || pathname === '/dashboard/suppliers/suppliers-account' || pathname === '/dashboard/sales/daraz/status-sync' || pathname === '/dashboard/sales/daraz/order-sync' || pathname === '/dashboard/sales/marketplace/sales-entry' || pathname === '/dashboard/sales/daraz/dashboard' || pathname === '/dashboard/sales/daraz/profit-tracker' ? 'h-full' : 'h-[calc(100vh-4rem)] md:h-full'}
                     pointer-events-auto
                 `}>
                     <div className={`${pathname === '/dashboard/purchase/inventory-price-reports' || pathname === '/dashboard/purchase/analytics' || pathname === '/dashboard/purchase/daily-purchase-list' || pathname === '/dashboard/suppliers/dashboard' || pathname === '/dashboard/suppliers' || pathname === '/dashboard/purchase/buy-sell-suppliers' || pathname === '/dashboard/suppliers/suppliers-account' || pathname === '/dashboard/sales/daraz/status-sync' || pathname === '/dashboard/sales/daraz/order-sync' || pathname === '/dashboard/sales/marketplace/sales-entry' || pathname === '/dashboard/sales/daraz/dashboard' || pathname === '/dashboard/sales/daraz/profit-tracker' ? 'p-0 h-full' : 'px-4 pb-4 pt-1'} md:p-8 ${isMobileMode ? 'pb-24' : ''}`}>
@@ -390,88 +245,4 @@ function DashboardLayout({
     )
 }
 
-function NavItem({
-    href,
-    icon,
-    children,
-    isCollapsed,
-    subItems,
-    onMobileItemClick
-}: {
-    href: string
-    icon: React.ReactNode
-    children: React.ReactNode
-    isCollapsed: boolean
-    subItems?: { label: string; href: string; icon?: React.ReactNode }[]
-    onMobileItemClick?: () => void
-}) {
-    const [isOpen, setIsOpen] = useState(false)
-    const pathname = usePathname()
-    const isActive = pathname === href || (subItems && subItems.some(item => pathname === item.href || pathname.startsWith(item.href + '/'))) || pathname.startsWith(href + '/')
 
-    // Auto-expand if active or one of sub-items is active
-    useEffect(() => {
-        if (isActive && !isCollapsed && subItems) {
-            setIsOpen(true)
-        }
-    }, [isActive, isCollapsed, subItems])
-
-    // If collapsed, clicking main link should probably just go there (or expand sidebar?)
-    // For now, if collapsed, we show simple tooltip behavior, no sub-menu dropdown (simplification)
-    // Or we could unlock it. Let's keep specific behavior simple: 
-    // If collapsed, sub-items are hidden. User must expand sidebar to see them.
-
-    if (subItems && !isCollapsed) {
-        return (
-            <div className="space-y-1">
-                <button
-                    onClick={() => setIsOpen(!isOpen)}
-                    className={`w-full flex items-center justify-between px-3 py-2 text-sm font-medium rounded-md transition-colors ${isActive
-                        ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400'
-                        : 'text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-zinc-700/50'
-                        }`}
-                >
-                    <div className="flex items-center gap-3">
-                        <span className="shrink-0">{icon}</span>
-                        <span>{children}</span>
-                    </div>
-                    {isOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                </button>
-
-                {isOpen && (
-                    <div className="pl-10 space-y-1">
-                        {subItems.map((item) => (
-                            <Link
-                                key={item.href}
-                                href={item.href}
-                                onClick={onMobileItemClick}
-                                className={`block px-3 py-2 text-sm rounded-md transition-colors flex items-center gap-2 ${pathname === item.href
-                                    ? 'bg-gray-100 text-gray-900 dark:bg-zinc-800 dark:text-white font-medium'
-                                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-gray-50 dark:hover:bg-zinc-800/50'
-                                    }`}
-                            >
-                                {item.icon}
-                                {item.label}
-                            </Link>
-                        ))}
-                    </div>
-                )}
-            </div>
-        )
-    }
-
-    return (
-        <Link
-            href={href}
-            onClick={onMobileItemClick}
-            className={`flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md transition-colors ${isActive
-                ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400'
-                : 'text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-zinc-700/50'
-                } ${isCollapsed ? 'justify-center' : ''}`}
-            title={isCollapsed ? String(children) : undefined}
-        >
-            <span className="shrink-0">{icon}</span>
-            {!isCollapsed && children}
-        </Link>
-    )
-}
