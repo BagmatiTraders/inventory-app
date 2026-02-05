@@ -162,8 +162,8 @@ SELECT
     o.invoice_number,
     o.order_status,
     o.delivered_at,
-    o.created_at,
     o.delivered_by_daraz,
+    o.created_at,
     o.daraz_fees,
     
     (SELECT seller_account FROM daraz_order_items 

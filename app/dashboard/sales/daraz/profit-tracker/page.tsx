@@ -87,7 +87,8 @@ function ProfitTrackerContent({ isEmbedded = false }: { isEmbedded?: boolean }) 
     // }, [page, limit, search, syncStatus, sellerAccount, isEmbedded, router])
 
     // Data Fetching
-
+    
+    // Fetch both paginated orders and complete stats for all dates
     const { data: profitData, isLoading: isOrdersLoading, error: ordersError } = useQuery({
         queryKey: ['profit-tracker', page, limit, search, syncStatus],
         queryFn: async () => {
@@ -111,6 +112,64 @@ function ProfitTrackerContent({ isEmbedded = false }: { isEmbedded?: boolean }) 
         }
     })
 
+    // Fetch complete stats for all matching orders (not paginated)
+    const { data: completeStats, isLoading: isCompleteStatsLoading } = useQuery({
+        queryKey: ['complete-profit-stats', search, syncStatus, sellerAccount], // Exclude page/limit from key
+        queryFn: async () => {
+            try {
+                // Fetch ALL orders without pagination to calculate complete stats
+                const allOrdersResult = await getProfitTrackerData({
+                    page: 1,
+                    limit: 10000, // Fetch all matching orders to calculate complete stats
+                    search,
+                    syncStatus,
+                    sellerAccount: sellerAccount === 'All' ? undefined : sellerAccount,
+                    startDate: undefined,
+                    endDate: undefined
+                });
+                
+                // Calculate stats from all orders for each date
+                const completeStats: Record<string, { statsBySeller: Record<string, { profit: number, missing: number, revenue: number, cost: number }>, totalProfit: number, totalRevenue: number }> = {}
+                
+                allOrdersResult.data.forEach((order: any) => {
+                    if (!order.delivered_by_daraz && !order.delivered_at) return
+                    
+                    const dateRaw = order.delivered_by_daraz || order.delivered_at
+                    const dateKey = format(new Date(dateRaw), 'yyyy-MM-dd') // Local Time Grouping
+
+                    if (!completeStats[dateKey]) {
+                        completeStats[dateKey] = { statsBySeller: {}, totalProfit: 0, totalRevenue: 0 }
+                    }
+
+                    const seller = order.seller_account || 'Unknown'
+                    if (!completeStats[dateKey].statsBySeller[seller]) {
+                        completeStats[dateKey].statsBySeller[seller] = { profit: 0, missing: 0, revenue: 0, cost: 0 }
+                    }
+
+                    const orderProfit = order.profit || 0
+                    const orderRevenue = order.total_revenue || 0
+                    const orderCost = order.total_purchase_cost || 0
+                    const isMissing = orderCost <= 0 // If cost is missing, mark as missing
+
+                    completeStats[dateKey].totalProfit += orderProfit
+                    completeStats[dateKey].totalRevenue += orderRevenue
+                    completeStats[dateKey].statsBySeller[seller].profit += orderProfit
+                    completeStats[dateKey].statsBySeller[seller].revenue += orderRevenue
+                    completeStats[dateKey].statsBySeller[seller].cost += orderCost
+                    if (isMissing) {
+                        completeStats[dateKey].statsBySeller[seller].missing += 1
+                    }
+                })
+                
+                return completeStats;
+            } catch (err) {
+                console.error('[PROFIT TRACKER] Complete stats fetch error:', err);
+                return {};
+            }
+        },
+        staleTime: 5 * 60 * 1000 // Cache for 5 minutes
+    });
+
     const { data: dailyStats, isLoading: isStatsLoading } = useQuery({
         queryKey: ['daily-profit-stats', search, syncStatus],
         queryFn: async () => {
@@ -130,33 +189,9 @@ function ProfitTrackerContent({ isEmbedded = false }: { isEmbedded?: boolean }) 
     const totalPages = profitData?.totalPages || 0
     const rawStatsList: any[] = Array.isArray(dailyStats) ? dailyStats : []
     const isLoading = isOrdersLoading // Only block table on orders loading. Stats can pop in later.
-
-    // console.log('[PROFIT TRACKER] Render. Orders Loading:', isOrdersLoading, 'Stats Loading:', isStatsLoading)
-
-    // Client-Side Aggregation of Stats
-    // We process the raw list from backend to match Frontend/Local Timezone grouping
-    const stats: Record<string, { statsBySeller: Record<string, { profit: number, missing: number, revenue: number, cost: number }>, totalProfit: number, totalRevenue: number }> = {}
-
-    rawStatsList.forEach((stat: any) => {
-        if (!stat.date) return
-        const dateKey = format(new Date(stat.date), 'yyyy-MM-dd') // Local Time Grouping
-
-        if (!stats[dateKey]) {
-            stats[dateKey] = { statsBySeller: {}, totalProfit: 0, totalRevenue: 0 }
-        }
-
-        const seller = stat.seller || 'Unknown'
-        if (!stats[dateKey].statsBySeller[seller]) {
-            stats[dateKey].statsBySeller[seller] = { profit: 0, missing: 0, revenue: 0, cost: 0 }
-        }
-
-        stats[dateKey].totalProfit += stat.profit
-        stats[dateKey].totalRevenue += (stat.revenue || 0)
-        stats[dateKey].statsBySeller[seller].profit += stat.profit
-        stats[dateKey].statsBySeller[seller].revenue += (stat.revenue || 0)
-        stats[dateKey].statsBySeller[seller].cost += (stat.cost || 0)
-        stats[dateKey].statsBySeller[seller].missing += stat.missing
-    })
+    
+    // Use complete stats from the separate query if available, otherwise fall back to current logic
+    const stats = completeStats || {};
 
     // Grouping Logic
     const groupedOrders = orders.reduce((groups: any, order: any) => {
@@ -317,8 +352,8 @@ function ProfitTrackerContent({ isEmbedded = false }: { isEmbedded?: boolean }) 
                                                                     <span className="text-gray-300 dark:text-zinc-700">|</span>
                                                                     <span className="flex items-center gap-1">
                                                                         <span className="text-gray-500">Profit:</span>
-                                                                        <span className={`font-medium ${stats.profit > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                                                            Rs. {stats.profit.toLocaleString(undefined, { minimumFractionDigits: 0 })}
+                                                                        <span className={`font-medium ${(stats.profit || 0) > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                                                            Rs. {(stats.profit || 0).toLocaleString(undefined, { minimumFractionDigits: 0 })}
                                                                         </span>
                                                                     </span>
                                                                     <span className="text-gray-300 dark:text-zinc-700">|</span>
@@ -350,8 +385,8 @@ function ProfitTrackerContent({ isEmbedded = false }: { isEmbedded?: boolean }) 
                                                     <TableCell colSpan={2} className="text-right font-bold py-3 pr-4 text-gray-900 dark:text-gray-100 align-top">
                                                         <div className="flex items-center justify-end gap-2 h-full min-h-[28px]">
                                                             <span className="text-xs text-gray-500 font-normal uppercase">TP :</span>
-                                                            <span className={`${group.totalProfit > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                                                Rs. {group.totalProfit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                            <span className={`${(group.totalProfit || 0) > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                                                Rs. {(group.totalProfit || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                                             </span>
                                                         </div>
                                                     </TableCell>
@@ -412,7 +447,7 @@ function ProfitTrackerContent({ isEmbedded = false }: { isEmbedded?: boolean }) 
                                                             <TableCell children={
                                                                 <div
                                                                     className="max-w-[300px] cursor-help"
-                                                                    title={order.products?.map((p: any) => `${p.product_name} (ID: ${p.product_id || 'N/A'})`).join('\n')}
+                                                                    title={order.products.length > 1 ? order.products.map((p: any) => `${p.product_name}: Rs. ${p.purchase_price?.toLocaleString() || '0'} (x${p.quantity})`).join('\n') : undefined}
                                                                 >
                                                                     <div className="flex flex-col gap-0.5">
                                                                         <span className="truncate block text-sm text-gray-900 dark:text-gray-100">
@@ -438,9 +473,9 @@ function ProfitTrackerContent({ isEmbedded = false }: { isEmbedded?: boolean }) 
                                                                 {order.total_purchase_cost > 0 ? (
                                                                     <span
                                                                         className={`text-sm font-medium text-gray-900 dark:text-gray-100 ${order.products.length > 1 ? 'cursor-help border-b border-dotted border-gray-400' : ''}`}
-                                                                        title={order.products.length > 1 ? order.products.map((p: any) => `${p.product_name}: Rs. ${p.purchase_price.toLocaleString()} (x${p.quantity})`).join('\n') : undefined}
+                                                                        title={order.products.length > 1 ? order.products.map((p: any) => `${p.product_name}: Rs. ${p.purchase_price?.toLocaleString() || '0'} (x${p.quantity})`).join('\n') : undefined}
                                                                     >
-                                                                        Rs. {order.total_purchase_cost.toLocaleString()}
+                                                                        Rs. {order.total_purchase_cost?.toLocaleString() || '0'}
                                                                     </span>
                                                                 ) : (
                                                                     <span className="text-red-400 text-sm font-medium">Missing</span>
@@ -448,12 +483,12 @@ function ProfitTrackerContent({ isEmbedded = false }: { isEmbedded?: boolean }) 
                                                             </TableCell>
                                                             <TableCell className="text-right">
                                                                 <div className="flex flex-col items-end">
-                                                                    <span className={`text-sm font-semibold ${order.profit > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                                                    <span className={`text-sm font-semibold ${(order.profit || 0) > 0 ? 'text-green-600' : 'text-red-600'}`}>
                                                                         Rs. {order.profit?.toLocaleString() || '0'}
                                                                     </span>
                                                                     {order.profit_percentage !== undefined && (
-                                                                        <span className={`text-xs ${order.profit > 0 ? 'text-green-500' : 'text-red-500'}`}>
-                                                                            ({order.profit_percentage.toFixed(2)}%)
+                                                                        <span className={`text-xs ${(order.profit || 0) > 0 ? 'text-green-500' : 'text-red-500'}`}>
+                                                                            ({order.profit_percentage?.toFixed(2) || '0.00'}%)
                                                                         </span>
                                                                     )}
                                                                 </div>

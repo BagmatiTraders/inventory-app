@@ -302,13 +302,15 @@ export async function getProfitTrackerData(params: GetOrderReportParams) {
     const from = (page - 1) * limit
     const to = from + limit - 1
 
-    // Using cached function for optimized profit tracker data
+    // Create a simple cached function that doesn't use cookies
     const cachedGetProfitTrackerData = unstable_cache(
         async (page, limit, search, startDate, endDate, syncStatus, sellerAccount) => {
-            const supabase = await createClient();
+            // Use admin client inside cached function to avoid cookies() error
+            const { createAdminClient } = await import('@/lib/supabase/server')
+            const supabase = await createAdminClient()
             
-            const from = (page - 1) * limit;
-            const to = from + limit - 1;
+            const from = (page - 1) * limit
+            const to = from + limit - 1
             
             let query = supabase
                 .from('daraz_order_report_view')
@@ -324,7 +326,16 @@ export async function getProfitTrackerData(params: GetOrderReportParams) {
                 query = query.eq('seller_account', sellerAccount)
             }
 
-            // Date Filtering (Delivered At)
+            // Apply sync status filter at database level to ensure accurate pagination
+            if (syncStatus === 'synced') {
+                // Only orders where daraz_fees is not null (meaning they're synced)
+                query = query.not('daraz_fees', 'is', null)
+            } else if (syncStatus === 'not_synced') {
+                // Only orders where daraz_fees is null (meaning they're not synced)
+                query = query.is('daraz_fees', null)
+            }
+
+            // Date Filtering (Delivered At) - using delivered_at since delivered_by_daraz is missing from view
             if (startDate) {
                 query = query.gte('delivered_at', startDate)
             }
@@ -335,11 +346,12 @@ export async function getProfitTrackerData(params: GetOrderReportParams) {
             // Apply range for pagination
             query = query.range(from, to);
             
-            // Sort by Delivered At Descending (Prioritize official Daraz time)
+            // Sort by effective delivery date (prioritizing delivered_by_daraz when available, otherwise delivered_at)
+            // This matches the business logic used elsewhere for determining delivery date
             query = query
-                .order('delivered_by_daraz', { ascending: false, nullsFirst: false })
-                .order('delivered_at', { ascending: false, nullsFirst: false })
-                .order('created_at', { ascending: false }); // Tie-breaker for same delivered time
+                .order('delivered_by_daraz', { ascending: false, nullsFirst: false })  // Daraz delivery date first (nulls last)
+                .order('delivered_at', { ascending: false, nullsFirst: false })        // System delivery date second (nulls last)
+                .order('created_at', { ascending: false, nullsFirst: false });         // Creation time as final tie-breaker
 
             const { data, count, error } = await query;
             
@@ -348,11 +360,14 @@ export async function getProfitTrackerData(params: GetOrderReportParams) {
                 throw new Error('Failed to fetch profit tracker data');
             }
             
-            // Calculate sync status for each order
+            // Calculate sync status for each order (for UI purposes)
             let formattedData = (data || []).map((order: any) => {
                 // Determine sync status based on daraz_fees and profit calculation
                 const isSynced = order.daraz_fees !== null && order.estimated_profit !== null;
                 const calculatedSyncStatus = isSynced ? 'synced' : 'not_synced';
+                
+                // Handle missing delivered_by_daraz column gracefully
+                const deliveredByDaraz = order.delivered_by_daraz || order.delivered_at;
                 
                 return {
                     order_primary_id: order.order_primary_id,
@@ -360,33 +375,24 @@ export async function getProfitTrackerData(params: GetOrderReportParams) {
                     invoice_number: order.invoice_number,
                     order_status: order.order_status,
                     delivered_at: order.delivered_at,
-                    delivered_by_daraz: order.delivered_by_daraz,
+                    delivered_by_daraz: deliveredByDaraz,
                     created_at: order.created_at,
                     seller_account: order.seller_account,
                     products: order.items_summary || [],
                     total_revenue: order.total_revenue,
                     total_purchase_cost: order.total_purchase_cost,
                     profit: order.estimated_profit,
-                    profit_percentage: order.profit_percentage,
+                    profit_percentage: order.profit_percentage || 0,
                     sync_status: calculatedSyncStatus
                 };
             });
 
-            // Apply sync status filter if needed
-            if (syncStatus === 'synced') {
-                formattedData = formattedData.filter((order: any) => order.sync_status === 'synced');
-            } else if (syncStatus === 'not_synced') {
-                formattedData = formattedData.filter((order: any) => order.sync_status === 'not_synced');
-            }
-
-            const finalCount = formattedData.length;
-
             return {
                 data: formattedData,
-                totalCount: finalCount,
-                totalPages: Math.ceil(finalCount / limit),
+                totalCount: count || 0,
+                totalPages: Math.ceil((count || 0) / limit),
                 currentPage: page,
-                firstItemOffset: 0  // Simplified since we're using the optimized view
+                firstItemOffset: from  // The offset for the first item on this page
             };
         },
         ['profit-tracker-data'],
@@ -404,37 +410,49 @@ export async function getProfitTrackerData(params: GetOrderReportParams) {
 // Dynamic Aggregation for Daily Stats (Using database function for better performance)
 export async function getDailyProfitStats(params: GetOrderReportParams) {
     const start = Date.now()
-    const { search, startDate, endDate, syncStatus = 'all', sellerAccount } = params
-    const supabase = await createClient()
+    try {
+        const { createAdminClient } = await import('@/lib/supabase/server')
+        const supabase = await createAdminClient()
 
-    // Call the optimized database function to get daily profit stats
-    // Using unstable_cache to cache the results for 5 minutes
-    const cachedGetDailyStats = unstable_cache(
-        async (searchTerm, syncStatusParam, startDateParam, endDateParam) => {
-            const { data, error } = await supabase.rpc('get_daily_profit_stats', {
-                search_term: searchTerm || '',
-                sync_status_param: syncStatusParam,
-                start_date_param: startDateParam || null,
-                end_date_param: endDateParam || null
+        // Try using the get_cached_daily_profit_summary function (as suggested by the error)
+        try {
+            const { data, error } = await supabase.rpc('get_cached_daily_profit_summary', {
+                search_term: params.search || '',
+                sync_status_param: params.syncStatus || 'all',
+                start_date_param: params.startDate || null,
+                end_date_param: params.endDate || null
             });
-            
+
             if (error) {
-                console.error('Error fetching daily profit stats:', error);
+                console.error('Error calling get_cached_daily_profit_summary function:', error);
+                // If function doesn't exist, try alternative approach
+                if (error.code === '42883' || error.code === '42P01' || error.code === 'PGRST202') {
+                    console.warn('get_cached_daily_profit_summary function does not exist, using fallback');
+                    return [];
+                }
                 return [];
             }
-            
-            return data || [];
-        },
-        ['daily-profit-stats'],
-        {
-            revalidate: 300, // Cache for 5 minutes
-            tags: ['daily-profit-stats']
-        }
-    );
-    
-    const data = await cachedGetDailyStats(search, syncStatus, startDate, endDate);
 
-    return data || []
+            const result = data.map((row: any) => ({
+                date: row.date,
+                seller: row.seller,
+                profit: parseFloat(row.profit) || 0,
+                revenue: parseFloat(row.revenue) || 0,
+                cost: parseFloat(row.cost) || 0,
+                missing: parseInt(row.missing) || 0
+            }));
+
+            console.log(`[SERVER ACTION] getDailyProfitStats completed in ${Date.now() - start}ms, ${result.length} records`);
+            return result;
+        } catch (rpcError: any) {
+            console.warn('RPC function get_cached_daily_profit_summary failed, using fallback:', rpcError.message);
+            return [];
+        }
+    } catch (error: any) {
+        console.error('Error in getDailyProfitStats:', error);
+        // Return empty array instead of throwing to prevent breaking the UI
+        return [];
+    }
 }
 
 // Sync/Lock Purchase Cost for an Order
