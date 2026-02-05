@@ -13,7 +13,7 @@ import {
 } from '@/components/ui-shim'
 import { Search, Eye, AlertTriangle } from 'lucide-react'
 import Link from 'next/link'
-import { getProfitTrackerData, getDailyProfitStats, getSellerAccounts } from '@/features/sales/actions/report-actions'
+import { getProfitTrackerData, getDailyProfitStats, getSellerAccounts, getCompleteDateStats } from '@/features/sales/actions/report-actions'
 import { format } from 'date-fns'
 import { BulkSyncButton } from './bulk-sync-button'
 import { MobileHeaderAction } from '@/components/MobileHeaderAction'
@@ -87,8 +87,7 @@ function ProfitTrackerContent({ isEmbedded = false }: { isEmbedded?: boolean }) 
     // }, [page, limit, search, syncStatus, sellerAccount, isEmbedded, router])
 
     // Data Fetching
-    
-    // Fetch both paginated orders and complete stats for all dates
+
     const { data: profitData, isLoading: isOrdersLoading, error: ordersError } = useQuery({
         queryKey: ['profit-tracker', page, limit, search, syncStatus],
         queryFn: async () => {
@@ -112,59 +111,23 @@ function ProfitTrackerContent({ isEmbedded = false }: { isEmbedded?: boolean }) 
         }
     })
 
-    // Fetch complete stats for all matching orders (not paginated)
-    const { data: completeStats, isLoading: isCompleteStatsLoading } = useQuery({
-        queryKey: ['complete-profit-stats', search, syncStatus, sellerAccount], // Exclude page/limit from key
+    // Fetch complete date stats to ensure group headers show stats for all orders in each date group
+    const { data: completeDateStats, isLoading: isCompleteStatsLoading } = useQuery({
+        queryKey: ['complete-date-stats', search, syncStatus, sellerAccount], // Exclude page/limit from key
         queryFn: async () => {
             try {
-                // Fetch ALL orders without pagination to calculate complete stats
-                const allOrdersResult = await getProfitTrackerData({
+                return await getCompleteDateStats({
                     page: 1,
-                    limit: 10000, // Fetch all matching orders to calculate complete stats
+                    limit: 100, // Not used for this function, but passing to satisfy interface
                     search,
                     syncStatus,
                     sellerAccount: sellerAccount === 'All' ? undefined : sellerAccount,
                     startDate: undefined,
                     endDate: undefined
                 });
-                
-                // Calculate stats from all orders for each date
-                const completeStats: Record<string, { statsBySeller: Record<string, { profit: number, missing: number, revenue: number, cost: number }>, totalProfit: number, totalRevenue: number }> = {}
-                
-                allOrdersResult.data.forEach((order: any) => {
-                    if (!order.delivered_by_daraz && !order.delivered_at) return
-                    
-                    const dateRaw = order.delivered_by_daraz || order.delivered_at
-                    const dateKey = format(new Date(dateRaw), 'yyyy-MM-dd') // Local Time Grouping
-
-                    if (!completeStats[dateKey]) {
-                        completeStats[dateKey] = { statsBySeller: {}, totalProfit: 0, totalRevenue: 0 }
-                    }
-
-                    const seller = order.seller_account || 'Unknown'
-                    if (!completeStats[dateKey].statsBySeller[seller]) {
-                        completeStats[dateKey].statsBySeller[seller] = { profit: 0, missing: 0, revenue: 0, cost: 0 }
-                    }
-
-                    const orderProfit = order.profit || 0
-                    const orderRevenue = order.total_revenue || 0
-                    const orderCost = order.total_purchase_cost || 0
-                    const isMissing = orderCost <= 0 // If cost is missing, mark as missing
-
-                    completeStats[dateKey].totalProfit += orderProfit
-                    completeStats[dateKey].totalRevenue += orderRevenue
-                    completeStats[dateKey].statsBySeller[seller].profit += orderProfit
-                    completeStats[dateKey].statsBySeller[seller].revenue += orderRevenue
-                    completeStats[dateKey].statsBySeller[seller].cost += orderCost
-                    if (isMissing) {
-                        completeStats[dateKey].statsBySeller[seller].missing += 1
-                    }
-                })
-                
-                return completeStats;
             } catch (err) {
-                console.error('[PROFIT TRACKER] Complete stats fetch error:', err);
-                return {};
+                console.error('[PROFIT TRACKER] Complete date stats fetch error:', err);
+                return {}; // Return empty object if there's an error
             }
         },
         staleTime: 5 * 60 * 1000 // Cache for 5 minutes
@@ -189,9 +152,72 @@ function ProfitTrackerContent({ isEmbedded = false }: { isEmbedded?: boolean }) 
     const totalPages = profitData?.totalPages || 0
     const rawStatsList: any[] = Array.isArray(dailyStats) ? dailyStats : []
     const isLoading = isOrdersLoading // Only block table on orders loading. Stats can pop in later.
-    
-    // Use complete stats from the separate query if available, otherwise fall back to current logic
-    const stats = completeStats || {};
+
+    // Use complete date stats for group headers to show stats for all orders in each date group
+    // Fall back to current logic if complete stats are not available
+    const stats = completeDateStats || {};
+
+    // If complete date stats are not available, calculate from current page data
+    if (Object.keys(stats).length === 0) {
+        // Client-Side Aggregation of Stats
+        // We process the raw list from backend to match Frontend/Local Timezone grouping
+
+        // If rawStatsList is empty, calculate stats from order data
+        if (rawStatsList.length === 0 && orders.length > 0) {
+            // Calculate stats from order data
+            orders.forEach((order: any) => {
+                if (!order.delivered_by_daraz && !order.delivered_at) return
+
+                const dateRaw = order.delivered_by_daraz || order.delivered_at
+                const dateKey = format(new Date(dateRaw), 'yyyy-MM-dd') // Local Time Grouping
+
+                if (!stats[dateKey]) {
+                    stats[dateKey] = { statsBySeller: {}, totalProfit: 0, totalRevenue: 0 }
+                }
+
+                const seller = order.seller_account || 'Unknown'
+                if (!stats[dateKey].statsBySeller[seller]) {
+                    stats[dateKey].statsBySeller[seller] = { profit: 0, missing: 0, revenue: 0, cost: 0 }
+                }
+
+                const orderProfit = order.profit || 0
+                const orderRevenue = order.total_revenue || 0
+                const orderCost = order.total_purchase_cost || 0
+                const isMissing = orderCost <= 0 // If cost is missing, mark as missing
+
+                stats[dateKey].totalProfit += orderProfit
+                stats[dateKey].totalRevenue += orderRevenue
+                stats[dateKey].statsBySeller[seller].profit += orderProfit
+                stats[dateKey].statsBySeller[seller].revenue += orderRevenue
+                stats[dateKey].statsBySeller[seller].cost += orderCost
+                if (isMissing) {
+                    stats[dateKey].statsBySeller[seller].missing += 1
+                }
+            })
+        } else {
+            // Use the raw stats from the API call
+            rawStatsList.forEach((stat: any) => {
+                if (!stat.date) return
+                const dateKey = format(new Date(stat.date), 'yyyy-MM-dd') // Local Time Grouping
+
+                if (!stats[dateKey]) {
+                    stats[dateKey] = { statsBySeller: {}, totalProfit: 0, totalRevenue: 0 }
+                }
+
+                const seller = stat.seller || 'Unknown'
+                if (!stats[dateKey].statsBySeller[seller]) {
+                    stats[dateKey].statsBySeller[seller] = { profit: 0, missing: 0, revenue: 0, cost: 0 }
+                }
+
+                stats[dateKey].totalProfit += stat.profit
+                stats[dateKey].totalRevenue += (stat.revenue || 0)
+                stats[dateKey].statsBySeller[seller].profit += stat.profit
+                stats[dateKey].statsBySeller[seller].revenue += (stat.revenue || 0)
+                stats[dateKey].statsBySeller[seller].cost += (stat.cost || 0)
+                stats[dateKey].statsBySeller[seller].missing += stat.missing
+            })
+        }
+    }
 
     // Grouping Logic
     const groupedOrders = orders.reduce((groups: any, order: any) => {
@@ -483,13 +509,19 @@ function ProfitTrackerContent({ isEmbedded = false }: { isEmbedded?: boolean }) 
                                                             </TableCell>
                                                             <TableCell className="text-right">
                                                                 <div className="flex flex-col items-end">
-                                                                    <span className={`text-sm font-semibold ${(order.profit || 0) > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                                                        Rs. {order.profit?.toLocaleString() || '0'}
-                                                                    </span>
-                                                                    {order.profit_percentage !== undefined && (
-                                                                        <span className={`text-xs ${(order.profit || 0) > 0 ? 'text-green-500' : 'text-red-500'}`}>
-                                                                            ({order.profit_percentage?.toFixed(2) || '0.00'}%)
-                                                                        </span>
+                                                                    {order.sync_status === 'synced' ? (
+                                                                        <>
+                                                                            <span className={`text-sm font-semibold ${(order.profit || 0) > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                                                                Rs. {order.profit?.toLocaleString() || '0'}
+                                                                            </span>
+                                                                            {order.profit_percentage !== undefined && (
+                                                                                <span className={`text-xs ${(order.profit || 0) > 0 ? 'text-green-500' : 'text-red-500'}`}>
+                                                                                    ({order.profit_percentage?.toFixed(2) || '0.00'}%)
+                                                                                </span>
+                                                                            )}
+                                                                        </>
+                                                                    ) : (
+                                                                        <span className="text-red-400 text-sm font-medium">Not Synced</span>
                                                                     )}
                                                                 </div>
                                                             </TableCell>

@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { fetchDarazFinanceTransactions } from './daraz-finance-service'
 import { unstable_cache } from 'next/cache'
+import { format } from 'date-fns'
 
 export interface OrderReportItem {
     order_primary_id: string
@@ -308,10 +309,10 @@ export async function getProfitTrackerData(params: GetOrderReportParams) {
             // Use admin client inside cached function to avoid cookies() error
             const { createAdminClient } = await import('@/lib/supabase/server')
             const supabase = await createAdminClient()
-            
+
             const from = (page - 1) * limit
             const to = from + limit - 1
-            
+
             let query = supabase
                 .from('daraz_order_report_view')
                 .select('*', { count: 'exact' })
@@ -327,12 +328,12 @@ export async function getProfitTrackerData(params: GetOrderReportParams) {
             }
 
             // Apply sync status filter at database level to ensure accurate pagination
+            // For synced: orders where both daraz_fees exists (>0) AND purchase cost is valid (>0)
             if (syncStatus === 'synced') {
-                // Only orders where daraz_fees is not null (meaning they're synced)
-                query = query.not('daraz_fees', 'is', null)
+                query = query.gt('daraz_fees', 0).gt('total_purchase_cost', 0);
             } else if (syncStatus === 'not_synced') {
-                // Only orders where daraz_fees is null (meaning they're not synced)
-                query = query.is('daraz_fees', null)
+                // For not_synced: orders where either daraz_fees is null/0 OR purchase cost is invalid (<=0)
+                query = query.or('daraz_fees.is.null,daraz_fees.lte.0,total_purchase_cost.lte.0');
             }
 
             // Date Filtering (Delivered At) - using delivered_at since delivered_by_daraz is missing from view
@@ -345,7 +346,7 @@ export async function getProfitTrackerData(params: GetOrderReportParams) {
 
             // Apply range for pagination
             query = query.range(from, to);
-            
+
             // Sort by effective delivery date (prioritizing delivered_by_daraz when available, otherwise delivered_at)
             // This matches the business logic used elsewhere for determining delivery date
             query = query
@@ -354,21 +355,27 @@ export async function getProfitTrackerData(params: GetOrderReportParams) {
                 .order('created_at', { ascending: false, nullsFirst: false });         // Creation time as final tie-breaker
 
             const { data, count, error } = await query;
-            
+
             if (error) {
                 console.error('[SERVER ACTION] Query Error:', error);
                 throw new Error('Failed to fetch profit tracker data');
             }
-            
+
             // Calculate sync status for each order (for UI purposes)
             let formattedData = (data || []).map((order: any) => {
-                // Determine sync status based on daraz_fees and profit calculation
-                const isSynced = order.daraz_fees !== null && order.estimated_profit !== null;
+                // Determine sync status based on whether profit column reflects Daraz fees deduction
+                // An order is synced when both purchase cost exists (>0) AND Daraz fees have been retrieved (>0)
+                const hasValidPurchaseCost = order.total_purchase_cost !== null && order.total_purchase_cost > 0;
+                const hasDarazFees = order.daraz_fees !== null && order.daraz_fees !== undefined && order.daraz_fees > 0;
+
+                // An order is synced when Daraz fees have been retrieved (meaning profit calculation reflects actual fees)
+                // AND purchase cost is available for proper profit calculation
+                const isSynced = hasValidPurchaseCost && hasDarazFees;
                 const calculatedSyncStatus = isSynced ? 'synced' : 'not_synced';
-                
+
                 // Handle missing delivered_by_daraz column gracefully
                 const deliveredByDaraz = order.delivered_by_daraz || order.delivered_at;
-                
+
                 return {
                     order_primary_id: order.order_primary_id,
                     order_number: order.order_number,
@@ -401,9 +408,9 @@ export async function getProfitTrackerData(params: GetOrderReportParams) {
             tags: ['profit-tracker']
         }
     );
-    
+
     const result = await cachedGetProfitTrackerData(page, limit, search, startDate, endDate, syncStatus, sellerAccount);
-    
+
     return result;
 }
 
@@ -608,23 +615,24 @@ export async function syncOrderPurchaseCost(orderNumber: string) {
             })
         })
 
-        // Fetch prices (last_price, est_price) for all child products
+        // Fetch prices (last_price, est_price) for all linked products (not just combos)
         const allChildIds = Array.from(new Set(
             Array.from(comboComponentsMap.values())
                 .flat()
                 .map(comp => comp.child_product_id)
         ))
 
-        let childPriceMap = new Map<string, any>()
+        const allLinkedAndChildIds = Array.from(new Set([...allProductIds, ...allChildIds]))
+        let priceMap = new Map<string, any>()
 
-        if (allChildIds.length > 0) {
-            const { data: childPrices } = await supabase
+        if (allLinkedAndChildIds.length > 0) {
+            const { data: prices } = await supabase
                 .from('inventory_price_reports_view')
                 .select('product_id, last_price, est_price')
-                .in('product_id', allChildIds)
+                .in('product_id', allLinkedAndChildIds)
 
-            childPrices?.forEach(cp => {
-                childPriceMap.set(cp.product_id, cp)
+            prices?.forEach(p => {
+                priceMap.set(p.product_id, p)
             })
         }
 
@@ -641,22 +649,19 @@ export async function syncOrderPurchaseCost(orderNumber: string) {
                     const components = comboComponentsMap.get(item.product_id) || []
                     let comboCost = 0
                     components.forEach(comp => {
-                        const cp = childPriceMap.get(comp.child_product_id)
+                        const cp = priceMap.get(comp.child_product_id)
+                        // Priority: Last Price -> Est Price -> 0
                         const price = cp?.last_price || cp?.est_price || 0
                         comboCost += (price * comp.quantity)
                     })
                     purchaseCost = comboCost
                 } else {
                     // Single Product
-                    // Try to find in price view (we didn't fetch full map for direct link to same order... wait, we need priceMap)
-                    // We need to fetch price for this specific item if not in childMap (which is only for combo components)
-                    // Actually, we can just query it or use 'products' table est_price as fallback
+                    // Priority: Inventory View last_price -> Inventory View est_price -> Products Table est_price -> 0
+                    const livePrice = priceMap.get(item.product_id)
                     const pd = productDetailsMap.get(item.product_id)
-                    // Better: We should have fetched prices for `allProductIds` too.
-                    // Let's assume we can rely on `est_price` from `products` table if `inventory_price_reports_view` unavail for valid Last Price.
-                    // But `last_price` is important.
-                    // Logic simplification: Just set what we have.
-                    purchaseCost = pd?.est_price || 0
+
+                    purchaseCost = livePrice?.last_price || livePrice?.est_price || pd?.est_price || 0
                 }
             } else {
                 // B. Unlinked - Try to Link
@@ -739,5 +744,102 @@ export async function syncSpecificOrders(orderNumbers: string[]) {
     return {
         message: `Synced ${successCount}/${orderNumbers.length} selected orders.`,
         debug: details.join(' | ')
+    }
+}
+
+// Function to get complete stats by date for all matching orders (ignoring pagination)
+export async function getCompleteDateStats(params: GetOrderReportParams) {
+    try {
+        const { createAdminClient } = await import('@/lib/supabase/server')
+        const supabase = await createAdminClient()
+
+        // Create a query similar to getProfitTrackerData but without pagination and range limits
+        let query = supabase
+            .from('daraz_order_report_view')
+            .select('*')
+
+        // Search by order number or invoice number
+        if (params.search && params.search.trim()) {
+            query = query.or(`order_number.ilike.%${params.search.trim()}%,invoice_number.ilike.%${params.search.trim()}%`)
+        }
+
+        // Filter by Seller Account
+        if (params.sellerAccount && params.sellerAccount !== 'All') {
+            query = query.eq('seller_account', params.sellerAccount)
+        }
+
+        // Apply sync status filter at database level
+        if (params.syncStatus === 'synced') {
+            // Updated: only orders where both fees and cost are valid
+            query = query.gt('daraz_fees', 0).gt('total_purchase_cost', 0)
+        } else if (params.syncStatus === 'not_synced') {
+            // Updated: orders where fees are null/0 or cost is invalid
+            query = query.or('daraz_fees.is.null,daraz_fees.lte.0,total_purchase_cost.lte.0')
+        }
+
+        // Date Filtering
+        if (params.startDate) {
+            query = query.gte('delivered_at', params.startDate)
+        }
+        if (params.endDate) {
+            query = query.lte('delivered_at', params.endDate)
+        }
+
+        // Sort by delivery date to ensure consistent processing
+        query = query
+            .order('delivered_by_daraz', { ascending: false, nullsFirst: false })
+            .order('delivered_at', { ascending: false, nullsFirst: false })
+            .order('created_at', { ascending: false, nullsFirst: false });
+
+        const { data, error } = await query;
+
+        if (error) {
+            console.error('[SERVER ACTION] Complete Date Stats Query Error:', error);
+            throw new Error('Failed to fetch complete date stats');
+        }
+
+        // Process the data to group by date and calculate stats
+        const dateStats: Record<string, { statsBySeller: Record<string, { profit: number, missing: number, revenue: number, cost: number }>, totalProfit: number, totalRevenue: number }> = {};
+
+        (data || []).forEach((order: any) => {
+            if (!order.delivered_by_daraz && !order.delivered_at) return
+
+            const dateRaw = order.delivered_by_daraz || order.delivered_at
+            const dateKey = format(new Date(dateRaw), 'yyyy-MM-dd') // Local Time Grouping
+
+            if (!dateStats[dateKey]) {
+                dateStats[dateKey] = { statsBySeller: {}, totalProfit: 0, totalRevenue: 0 }
+            }
+
+            const seller = order.seller_account || 'Unknown'
+            if (!dateStats[dateKey].statsBySeller[seller]) {
+                dateStats[dateKey].statsBySeller[seller] = { profit: 0, missing: 0, revenue: 0, cost: 0 }
+            }
+
+            const orderProfit = order.estimated_profit || 0
+            const orderRevenue = order.total_revenue || 0
+            const orderCost = order.total_purchase_cost || 0
+            const hasDarazFees = order.daraz_fees !== null && order.daraz_fees !== undefined;
+            const hasValidPurchaseCost = order.total_purchase_cost !== null && order.total_purchase_cost > 0;
+
+            // Determine if this order should be considered synced for stats purposes
+            // An order is synced when both purchase cost is valid AND daraz fees are available
+            const isSyncedForStats = hasValidPurchaseCost && hasDarazFees;
+            const isMissing = !hasValidPurchaseCost; // If cost is missing, mark as missing
+
+            dateStats[dateKey].totalProfit += orderProfit
+            dateStats[dateKey].totalRevenue += orderRevenue
+            dateStats[dateKey].statsBySeller[seller].profit += orderProfit
+            dateStats[dateKey].statsBySeller[seller].revenue += orderRevenue
+            dateStats[dateKey].statsBySeller[seller].cost += orderCost
+            if (isMissing) {
+                dateStats[dateKey].statsBySeller[seller].missing += 1
+            }
+        });
+
+        return dateStats;
+    } catch (error: any) {
+        console.error('Error in getCompleteDateStats:', error);
+        throw error;
     }
 }
