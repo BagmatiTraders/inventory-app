@@ -84,7 +84,7 @@ const MobileHeader: React.FC<MobileHeaderProps> = ({
       <div className="flex items-center gap-3 relative z-20">
         {!isMobileMode && (
           <button
-            onClick={() => setIsMobileMenuOpen(!setIsMobileMenuOpen)}
+            onClick={() => setIsMobileMenuOpen(true)}
             className="p-2 -ml-2 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-zinc-700 rounded-md"
           >
             <Menu size={24} />

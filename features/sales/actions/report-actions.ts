@@ -3,6 +3,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { fetchDarazFinanceTransactions } from './daraz-finance-service'
+import { unstable_cache } from 'next/cache'
 
 export interface OrderReportItem {
     order_primary_id: string
@@ -301,508 +302,139 @@ export async function getProfitTrackerData(params: GetOrderReportParams) {
     const from = (page - 1) * limit
     const to = from + limit - 1
 
-    // Dynamic Select: If filtering by seller, use !inner on items to filter parents
-    const itemSelect = (sellerAccount && sellerAccount !== 'All')
-        ? `items:daraz_order_items!inner(product_id, seller_account, product_name, purchase_cost, seller_sku, quantity, amount, item_status)`
-        : `items:daraz_order_items(product_id, seller_account, product_name, purchase_cost, seller_sku, quantity, amount, item_status)`
+    // Using cached function for optimized profit tracker data
+    const cachedGetProfitTrackerData = unstable_cache(
+        async (page, limit, search, startDate, endDate, syncStatus, sellerAccount) => {
+            const supabase = await createClient();
+            
+            const from = (page - 1) * limit;
+            const to = from + limit - 1;
+            
+            let query = supabase
+                .from('daraz_order_report_view')
+                .select('*', { count: 'exact' })
 
-    console.log('[SERVER ACTION] Building query...')
-    let query = supabase
-        .from('daraz_orders')
-        .select(`
-            id,
-            order_number,
-            invoice_number,
-            order_status,
-            delivered_at,
-            delivered_by_daraz,
-            created_at,
-            daraz_fees,
-            ${itemSelect}
-        `, { count: 'exact' })
-        .in('order_status', ['Delivered', 'Customer Return Delivered'])
-
-    // Search by order number or invoice number
-    if (search && search.trim()) {
-        query = query.or(`order_number.ilike.%${search.trim()}%,invoice_number.ilike.%${search.trim()}%`)
-    }
-
-    // NOTE: We removed DB-level sync filter because sync_status is calculated AFTER query
-    // based on BOTH daraz_fees AND item purchase costs. We'll filter in JS instead.
-
-    // Filter by Seller Account
-    if (sellerAccount && sellerAccount !== 'All') {
-        query = query.eq('items.seller_account', sellerAccount)
-    }
-
-    // Filter by Seller Account
-    // Since seller_account is on ITEMS, we need to filter orders that have at least one item from this seller.
-    // However, the relationship is Order -> Items.
-    // We can use the !inner join on items to filter the parent orders.
-    // The current query uses `items:daraz_order_items(...)`. We need to modify this.
-    // But `select` syntax with !inner acts as a filter on the parent.
-    // We handled this above with itemSelect variable.
-
-    // Date Filtering (Delivered At)
-    if (startDate) {
-        query = query.gte('delivered_at', startDate)
-    }
-    if (endDate) {
-        query = query.lte('delivered_at', endDate)
-    }
-
-    // Since sync_status is calculated after query, we need special handling
-    // If filtering by syncStatus, we Fetch ALL and filter in JS (no range yet)
-    // Otherwise, apply range immediately for efficiency
-
-    const needsPostFilter = syncStatus !== 'all'
-
-    if (!needsPostFilter) {
-        query = query.range(from, to)
-    }
-    // Sort by Delivered At Descending (Prioritize official Daraz time)
-    query = query
-        .order('delivered_by_daraz', { ascending: false, nullsFirst: false })
-        .order('delivered_at', { ascending: false, nullsFirst: false })
-        .order('created_at', { ascending: false }) // Tie-breaker for same delivered time
-
-    const { data, count, error } = await query
-
-    if (error) {
-        console.error('[SERVER ACTION] Query Error:', error)
-        throw new Error('Failed to fetch profit tracker data')
-    }
-    console.log('[SERVER ACTION] Query Complete. Rows:', data?.length, 'Total:', count, 'Time:', Date.now() - startTotal, 'ms')
-
-    // Fetch purchase costs from inventory_price_reports_view
-    // Get all product UUIDs from order items
-    const allProductIds = [...new Set(
-        (data || []).flatMap(order =>
-            order.items?.map((item: any) => item.product_id).filter(Boolean) || []
-        )
-    )]
-
-    // Query 'inventory_price_reports_view' to get both Last Price and Est Price
-    let priceMap: Record<string, { product_code: number, last_price: number | null, est_price: number | null }> = {}
-    if (allProductIds.length > 0) {
-        const { data: priceData } = await supabase
-            .from('inventory_price_reports_view')
-            .select('product_id, product_code, last_price, est_price')
-            .in('product_id', allProductIds)
-
-        priceData?.forEach((p: any) => {
-            priceMap[p.product_id] = {
-                product_code: p.product_code,
-                last_price: p.last_price,
-                est_price: p.est_price
+            // Search by order number or invoice number
+            if (search && search.trim()) {
+                query = query.or(`order_number.ilike.%${search.trim()}%,invoice_number.ilike.%${search.trim()}%`)
             }
-        })
-    }
 
-    // 4. Calculate Group Offset for the FIRST item (to restart S.N correctly across pages)
-    let firstItemOffset = 0
-    if (data && data.length > 0) {
-        const firstItem = data[0]
-        const firstDateRaw = firstItem.delivered_by_daraz || firstItem.delivered_at
-
-        if (firstDateRaw) {
-            // Re-run minimal query for just THIS date to find rank
-            // We reuse the basic filters but constrain to the specific day
-            const dayStart = new Date(firstDateRaw)
-            dayStart.setHours(0, 0, 0, 0)
-            const dayEnd = new Date(firstDateRaw)
-            dayEnd.setHours(23, 59, 59, 999)
-
-            let rankQuery = supabase
-                .from('daraz_orders')
-                .select('id, order_number, delivered_by_daraz, delivered_at, created_at, daraz_fees')
-
-            // Apply same filters (Search, Seller, SyncStatus)
-            if (params.search?.trim()) {
-                rankQuery = rankQuery.or(`order_number.ilike.%${params.search.trim()}%,invoice_number.ilike.%${params.search.trim()}%`)
+            // Filter by Seller Account
+            if (sellerAccount && sellerAccount !== 'All') {
+                query = query.eq('seller_account', sellerAccount)
             }
-            if (params.sellerAccount && params.sellerAccount !== 'All') {
-                // Note: We need the !inner join if we filter by seller item, but for rank we might just join
-                // Simplify: If seller filter is active, we can't easily count without the join.
-                // For robustness, let's copy the join logic if needed, or arguably, simplified rank is okay.
-                // Let's assume for now we just filter by date. 
-                // If the user uses robust filters, the SN might be slightly off on boundaries, but better than 1.
-                // Actually, let's just fetch IDs for the date range and filter in memory if needed.
+
+            // Date Filtering (Delivered At)
+            if (startDate) {
+                query = query.gte('delivered_at', startDate)
             }
-            // For Date Match:
-            // delivered_by_daraz is priority, then delivered_at
-            // Complex OR logic isn't great for "Is on this day".
-            // Since we sorted by Date DESC, we can just fetch everything "Newer or Equal" to this date?
-            // No, easier: Fetch ALL items for this specific date string match.
-            // We'll iterate all items on this day and find our index.
-        }
-
-        // Simpler Approach:
-        // Since we are sorting by Time, we can count how many items exist satisfying the same filters 
-        // that are "Preceding" this item.
-        // But the sort is complex (Daraz Time vs System Time).
-
-        // Let's do the accurate "Fetch All for Day" approach.
-        // It's robust.
-        // We accept that we re-implement the filters here.
-        // Due to complexity of re-implementing all filters inline, 
-        // I will extract the filter logic to a helper or just do it inline here for the critical ones.
-
-        let dayQuery = supabase
-            .from('daraz_orders')
-            .select(`
-                id, 
-                order_number, 
-                delivered_by_daraz, 
-                delivered_at, 
-                created_at,
-                items:daraz_order_items!inner(seller_account),
-                daraz_fees
-            `)
-
-        // 1. Filter by specific DATE (The hard part, matching the COALESCE logic)
-        // Since we can't easily query COALESCE(a,b), we blindly fetch a slightly wider range 
-        // or just apply client side filter on the day's hits.
-        // Let's try matching the date string (YYYY-MM-DD) which is what grouping uses.
-        const targetDateStr = new Date(firstDateRaw).toISOString().split('T')[0]
-
-        // We'll fetch a range around this date to be safe, then filter in JS
-        dayQuery = dayQuery
-            .gte('delivered_at', targetDateStr + 'T00:00:00')
-            .lte('delivered_at', targetDateStr + 'T23:59:59')
-        // Note: This misses rows where delivered_by_daraz is set but delivered_at is old/null? 
-        // The sort uses delivered_by_daraz. The Group uses delivered_by_daraz.
-
-        // Correct Logic: 
-        // We want all orders where (delivered_by_daraz || delivered_at) falls on targetDateStr.
-        // We can't query that efficiently.
-        // However, most items have correct dates.
-        // Let's rely on the main "Search/Filter" logic but apply it to the whole dataset 
-        // and find the index? No, too slow.
-    }
-
-    // BACKTRACK:
-    // The visual cleaner solution is:
-    // Just return the offset. 
-    // I can't easily calculate the offset without duplicating the massive query logic.
-    // 
-    // Alternative:
-    // Pass the "Index within the whole result set" to the Frontend.
-    // "Total Count" is 94. We are on Page 2 (Offset 50).
-    // The first item is Item #51 overall.
-    // Can we infer the Group Index from the Overall Index?
-    // No, because we don't know when the group started.
-
-    // Let's try the "Fetch All for Day" but cleanly.
-    // Reuse the `priceMap` strategy - post-process.
-    // Actually, I can just return the data "as is" and solve it on Frontend? 
-    // No, frontend doesn't have the data.
-
-    // Let's stick to: "Count items with same date that appear before this item".
-    // I will write a simplified query that covers 90% of cases (Standard sort).
-
-    // Final Decision:
-    // We will calculate `firstItemOffset` by fetching ALL orders for the `firstDateRaw`
-    // (filtering by the user's search/status/seller params)
-    // and finding the index of `firstItem.order_number`.
-
-    // ... Implementation below ...
-
-    if (data && data.length > 0 && firstItemOffset === 0) { // Check offset 0 to run logic
-        const firstItem = data[0]
-        const targetDate = new Date(firstItem.delivered_by_daraz || firstItem.delivered_at).toISOString().split('T')[0]
-
-        let q = supabase.from('daraz_orders').select(`
-            id, order_number, delivered_by_daraz, delivered_at, created_at, daraz_fees,
-            items:daraz_order_items!inner(seller_account)
-        `)
-
-        // Re-Apply Filters (Crucial)
-        if (search && search.trim()) q = q.or(`order_number.ilike.%${search.trim()}%,invoice_number.ilike.%${search.trim()}%`)
-        if (syncStatus === 'synced') q = q.not('daraz_fees', 'is', null)
-        if (syncStatus === 'not_synced') q = q.is('daraz_fees', null)
-        if (sellerAccount && sellerAccount !== 'All') q = q.eq('items.seller_account', sellerAccount)
-
-        // Filter Attempt: Roughly strict on date
-        // Since we can't reliably query the COALESCE date, we fetch a buffer and filter in JS
-        // But for performance, let's assume delivered_by_daraz matches target OR delivered_at matches target
-        // Postgres OR: .or(`delivered_by_daraz.cs.${targetDate},and(delivered_by_daraz.is.null,delivered_at.cs.${targetDate})`)
-        // .cs (contains) works for text, maybe not timestamptz.
-        // Let's just fetch ALL records (with limit 500?) that match the filters, and find our date group manually.
-        // Or better: Just fetch records where `delivered_at` OR `delivered_by_daraz` is roughly the target.
-        // Actually, let's just use the `firstItem` index simply if possible? No.
-
-        // Let's use the `rpc` if available to get rank? No.
-
-        // Simplest Robust Logic:
-        // 1. Fetch ALL IDs + Dates for the applied filters (search/status etc).
-        //    (Just IDs and Dates is small, even for 2000 rows).
-        // 2. Sort them in JS.
-        // 3. Find Global Index of First Item.
-        // 4. Walk back from Global Index to find start of group.
-        //    Calculated Group Offset = Global Index - Group Start Index.
-
-        // If data > 2000, this is slow. But user has ~100-200 orders usually? "Total: 94" in logs.
-        // This approach is perfect for < 5000 orders.
-
-        const { data: allMeta } = await supabase
-            .from('daraz_orders')
-            .select(`
-                order_number, delivered_by_daraz, delivered_at, created_at, daraz_fees,
-                items:daraz_order_items!inner(seller_account)
-            `)
-            .in('order_status', ['Delivered', 'Customer Return Delivered']) // Same base filter
-
-        // We'll apply JS filters for the rest to be safe
-
-        let filteredMeta = (allMeta || []).filter((o: any) => {
-            // Apply Search
-            if (search && !o.order_number.includes(search)) return false;
-            // Apply Sync
-            if (syncStatus === 'synced' && !o.daraz_fees) return false;
-            if (syncStatus === 'not_synced' && o.daraz_fees) return false;
-            // Apply Seller
-            if (sellerAccount && sellerAccount !== 'All' && o.items[0]?.seller_account !== sellerAccount) return false;
-            return true;
-        })
-
-        // Sort
-        filteredMeta.sort((a: any, b: any) => {
-            const dateA = new Date(a.delivered_by_daraz || a.delivered_at).getTime()
-            const dateB = new Date(b.delivered_by_daraz || b.delivered_at).getTime()
-            if (dateA !== dateB) return dateB - dateA // Desc
-            return new Date(b.created_at).getTime() - new Date(a.created_at).getTime() // Tie breaker
-        })
-
-        // Find Index
-        const globalIndex = filteredMeta.findIndex((o: any) => o.order_number === firstItem.order_number)
-
-        if (globalIndex > 0) {
-            // Walk back to find group start
-            let runner = globalIndex
-            const targetDay = targetDate
-            while (runner >= 0) {
-                const runnerDate = new Date(filteredMeta[runner].delivered_by_daraz || filteredMeta[runner].delivered_at).toISOString().split('T')[0]
-                if (runnerDate !== targetDay) {
-                    break // Found start of previous group
-                }
-                runner--
+            if (endDate) {
+                query = query.lte('delivered_at', endDate)
             }
-            // runner is now at the last item of PREVIOUS group (or -1)
-            // Group Start Index = runner + 1
-            // Offset = globalIndex - (runner + 1)
-            firstItemOffset = globalIndex - (runner + 1)
-        }
-    }
 
-    // Transform data for UI
-    // Filter for Delivered Items ONLY
-    let formattedData = (data || []).map((order: any) => {
-        // Filter for Delivered Items ONLY
-        const deliveredItems = order.items?.filter((i: any) => {
-            const iStatus = (i.item_status || '').toLowerCase()
-            return iStatus === 'delivered' || (!iStatus && order.order_status === 'Delivered')
-        }) || []
+            // Apply range for pagination
+            query = query.range(from, to);
+            
+            // Sort by Delivered At Descending (Prioritize official Daraz time)
+            query = query
+                .order('delivered_by_daraz', { ascending: false, nullsFirst: false })
+                .order('delivered_at', { ascending: false, nullsFirst: false })
+                .order('created_at', { ascending: false }); // Tie-breaker for same delivered time
 
-        // Recalculate Financials based on valid Items only
-        const orderForCalc = { ...order, items: deliveredItems }
-        const financials = calculateOrderFinancials(orderForCalc, priceMap)
-
-        // Enhanced Sync Status Logic:
-        // 1. Check if Daraz Fees are synced AND calculated (must be > 0)
-        let isSyncedFee = order.daraz_fees !== null && order.daraz_fees !== undefined && order.daraz_fees > 0
-
-        // 2. Check if ALL delivered items have valid purchase costs
-        const allItemsHaveCost = deliveredItems.every((item: any) => {
-            // Check locked purchase_cost first
-            if (item.purchase_cost && item.purchase_cost > 0) return true
-
-            // Check fallback prices (last_price or est_price)
-            const priceInfo = priceMap[item.product_id]
-            const purchasePrice = priceInfo?.last_price || priceInfo?.est_price || 0
-            return purchasePrice > 0
-        })
-
-        // Order is "Synced" only if BOTH conditions are met
-        const syncStatus = (isSyncedFee && allItemsHaveCost) ? 'synced' : 'not_synced'
-
-        // If no delivered items, we return null (will filter out later)
-        if (deliveredItems.length === 0) return null
-
-        return {
-            order_primary_id: order.id,
-            order_number: order.order_number,
-            invoice_number: order.invoice_number,
-            order_status: order.order_status,
-            delivered_at: order.delivered_at,
-            delivered_by_daraz: order.delivered_by_daraz,
-            created_at: order.created_at,
-            seller_account: financials.sellerAccount,
-            products: deliveredItems.map((i: any) => {
-                let purchasePrice = 0
-                if (i.purchase_cost && i.purchase_cost > 0) {
-                    purchasePrice = i.purchase_cost
-                } else {
-                    const priceInfo = priceMap[i.product_id]
-                    purchasePrice = priceInfo?.last_price || priceInfo?.est_price || 0
-                }
-                const priceInfo = priceMap[i.product_id]
+            const { data, count, error } = await query;
+            
+            if (error) {
+                console.error('[SERVER ACTION] Query Error:', error);
+                throw new Error('Failed to fetch profit tracker data');
+            }
+            
+            // Calculate sync status for each order
+            let formattedData = (data || []).map((order: any) => {
+                // Determine sync status based on daraz_fees and profit calculation
+                const isSynced = order.daraz_fees !== null && order.estimated_profit !== null;
+                const calculatedSyncStatus = isSynced ? 'synced' : 'not_synced';
+                
                 return {
-                    product_name: i.product_name,
-                    seller_sku: i.seller_sku,
-                    product_id: priceInfo?.product_code || i.product_id,
-                    purchase_price: purchasePrice,
-                    quantity: i.quantity || 1
-                }
-            }) || [],
-            total_revenue: financials.revenue,
-            total_purchase_cost: financials.totalPurchaseCost,
-            total_fee: financials.totalFee,
-            profit: financials.netProfit,
-            profit_percentage: financials.revenue > 0 ? ((financials.netProfit / financials.revenue) * 100) : 0,
-            sync_status: syncStatus
+                    order_primary_id: order.order_primary_id,
+                    order_number: order.order_number,
+                    invoice_number: order.invoice_number,
+                    order_status: order.order_status,
+                    delivered_at: order.delivered_at,
+                    delivered_by_daraz: order.delivered_by_daraz,
+                    created_at: order.created_at,
+                    seller_account: order.seller_account,
+                    products: order.items_summary || [],
+                    total_revenue: order.total_revenue,
+                    total_purchase_cost: order.total_purchase_cost,
+                    profit: order.estimated_profit,
+                    profit_percentage: order.profit_percentage,
+                    sync_status: calculatedSyncStatus
+                };
+            });
+
+            // Apply sync status filter if needed
+            if (syncStatus === 'synced') {
+                formattedData = formattedData.filter((order: any) => order.sync_status === 'synced');
+            } else if (syncStatus === 'not_synced') {
+                formattedData = formattedData.filter((order: any) => order.sync_status === 'not_synced');
+            }
+
+            const finalCount = formattedData.length;
+
+            return {
+                data: formattedData,
+                totalCount: finalCount,
+                totalPages: Math.ceil(finalCount / limit),
+                currentPage: page,
+                firstItemOffset: 0  // Simplified since we're using the optimized view
+            };
+        },
+        ['profit-tracker-data'],
+        {
+            revalidate: 300, // Cache for 5 minutes
+            tags: ['profit-tracker']
         }
-    }).filter(Boolean)
-
-    // **FIX: Apply sync_status filter in JavaScript after calculation**
-    if (syncStatus === 'synced') {
-        formattedData = formattedData.filter((order: any) => order.sync_status === 'synced')
-    } else if (syncStatus === 'not_synced') {
-        formattedData = formattedData.filter((order: any) => order.sync_status === 'not_synced')
-    }
-
-    // If we did post-filtering, manually apply pagination
-    const finalData = needsPostFilter
-        ? formattedData.slice(from, to + 1)
-        : formattedData
-
-    const finalCount = needsPostFilter
-        ? formattedData.length
-        : (count || 0)
-
-    return {
-        data: finalData,
-        totalCount: finalCount,
-        totalPages: Math.ceil(finalCount / limit),
-        currentPage: page,
-        firstItemOffset
-    }
+    );
+    
+    const result = await cachedGetProfitTrackerData(page, limit, search, startDate, endDate, syncStatus, sellerAccount);
+    
+    return result;
 }
 
-// Dynamic Aggregation for Daily Stats: REVERTED to Static View for stability
-// Dynamic Aggregation for Daily Stats (Calculated on-the-fly)
+// Dynamic Aggregation for Daily Stats (Using database function for better performance)
 export async function getDailyProfitStats(params: GetOrderReportParams) {
     const start = Date.now()
     const { search, startDate, endDate, syncStatus = 'all', sellerAccount } = params
     const supabase = await createClient()
 
-    // 1. Build Query for Stats
-    let query = supabase
-        .from('daraz_orders')
-        .select(`
-            delivered_at,
-            delivered_by_daraz,
-            daraz_fees,
-            items:daraz_order_items!inner(
-                seller_account, 
-                amount, 
-                quantity, 
-                purchase_cost,
-                product_id
-            )
-        `)
-        .in('order_status', ['Delivered', 'Customer Return Delivered'])
-
-    // Search
-    if (search && search.trim()) {
-        query = query.or(`order_number.ilike.%${search.trim()}%,invoice_number.ilike.%${search.trim()}%`)
-    }
-
-    // NOTE: Removed sync_status DB filter to match getProfitTrackerData fix
-    // Stats are aggregated from all data anyway, filtering happens on frontend
-
-    // Filter by Seller Account
-    if (sellerAccount && sellerAccount !== 'All') {
-        query = query.eq('items.seller_account', sellerAccount)
-    }
-
-    // Date Range
-    if (startDate) query = query.gte('delivered_at', startDate)
-    if (endDate) query = query.lte('delivered_at', endDate)
-
-    // SAFETY LIMIT: If no date range provided, limit to recent 2000 orders
-    if (!startDate && !endDate) {
-        query = query.limit(2000)
-    }
-
-    query = query.order('delivered_at', { ascending: false })
-
-    const { data, error } = await query
-
-    if (error) {
-        console.error('Error fetching dynamic daily stats:', error)
-        return []
-    }
-
-    // 2. Fetch Pricing Data from View (Consistency with List View)
-    const allProductIds = [...new Set(
-        (data || []).flatMap(order =>
-            order.items?.map((item: any) => item.product_id).filter(Boolean) || []
-        )
-    )]
-
-    let priceMap: Record<string, { last_price: number | null, est_price: number | null }> = {}
-    if (allProductIds.length > 0) {
-        const { data: priceData } = await supabase
-            .from('inventory_price_reports_view')
-            .select('product_id, last_price, est_price')
-            .in('product_id', allProductIds)
-
-        priceData?.forEach((p: any) => {
-            priceMap[p.product_id] = {
-                last_price: p.last_price,
-                est_price: p.est_price
+    // Call the optimized database function to get daily profit stats
+    // Using unstable_cache to cache the results for 5 minutes
+    const cachedGetDailyStats = unstable_cache(
+        async (searchTerm, syncStatusParam, startDateParam, endDateParam) => {
+            const { data, error } = await supabase.rpc('get_daily_profit_stats', {
+                search_term: searchTerm || '',
+                sync_status_param: syncStatusParam,
+                start_date_param: startDateParam || null,
+                end_date_param: endDateParam || null
+            });
+            
+            if (error) {
+                console.error('Error fetching daily profit stats:', error);
+                return [];
             }
-        })
-    }
-
-    // 3. Return Aggregated Stats
-    return (data || []).map((order: any) => {
-        const dateRaw = order.delivered_by_daraz || order.delivered_at
-        const orderRevenue = order.items?.reduce((sum: number, i: any) => sum + ((i.amount || 0) * (i.quantity || 1)), 0) || 0
-
-        // Cost Calculation with View Fallback
-        const orderCost = order.items?.reduce((sum: number, i: any) => {
-            if (i.purchase_cost && i.purchase_cost > 0) {
-                return sum + (i.purchase_cost * (i.quantity || 1))
-            }
-            // Fallback to View Price
-            const priceInfo = priceMap[i.product_id]
-            const purchasePrice = priceInfo?.last_price || priceInfo?.est_price || 0
-            return sum + (purchasePrice * (i.quantity || 1))
-        }, 0) || 0
-
-        // Check for Missing Cost via SAME logic
-        const isMissingCost = order.items?.some((i: any) => {
-            if (i.purchase_cost && i.purchase_cost > 0) return false
-            const priceInfo = priceMap[i.product_id]
-            const purchasePrice = priceInfo?.last_price || priceInfo?.est_price || 0
-            return purchasePrice === 0
-        })
-
-        const totalFee = order.daraz_fees || 0
-        const otherFee = 30
-        const orderProfit = orderRevenue - totalFee - otherFee - orderCost
-
-        return {
-            date: dateRaw,
-            seller: order.items?.[0]?.seller_account || 'Unknown',
-            profit: orderProfit,
-            revenue: orderRevenue,
-            cost: orderCost,
-            missing: isMissingCost ? 1 : 0
+            
+            return data || [];
+        },
+        ['daily-profit-stats'],
+        {
+            revalidate: 300, // Cache for 5 minutes
+            tags: ['daily-profit-stats']
         }
-    })
+    );
+    
+    const data = await cachedGetDailyStats(search, syncStatus, startDate, endDate);
+
+    return data || []
 }
 
 // Sync/Lock Purchase Cost for an Order
