@@ -227,6 +227,7 @@ export async function syncSingleDarazOrderAction(orderId: string, storeId: strin
                     if (!matchedProduct && itemName) matchedProduct = nameMap.get(itemName)
 
                     orderItemsPayload.push({
+                        id: undefined as string | undefined,
                         order_id: savedOrder.id,
                         seller_sku: sku,
                         product_id: matchedProduct?.id || null,
@@ -243,12 +244,17 @@ export async function syncSingleDarazOrderAction(orderId: string, storeId: strin
                 if (orderItemsPayload.length > 0) {
                     const aggregatedItems = new Map<string, any>()
                     orderItemsPayload.forEach(p => {
-                        const key = `${p.seller_sku}_${p.amount}_${p.status}`
+                        const key = `${p.seller_sku}_${p.amount}`
                         if (aggregatedItems.has(key)) {
-                            aggregatedItems.get(key).quantity += 1
+                            const existing = aggregatedItems.get(key)
+                            existing.quantity += 1
+                            // Keep the higher priority status if they differ
+                            existing.status = getProminentStatus([existing.status, p.status])
+                            existing.item_status = existing.status
                         } else {
                             // Generate deterministic ID for this item group within this order
-                            p.id = generateDeterministicId(`order-${savedOrder.id}-sku-${p.seller_sku}-amt-${p.amount}-stat-${p.status}`)
+                            // We EXCLUDE status from the ID seed so the ID stays the same even if status changes
+                            p.id = generateDeterministicId(`order-${savedOrder.id}-sku-${p.seller_sku}-amt-${p.amount}`)
                             aggregatedItems.set(key, p)
                         }
                     })
