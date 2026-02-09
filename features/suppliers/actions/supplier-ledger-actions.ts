@@ -13,23 +13,19 @@ export interface SupplierLedgerEntry {
 
 // Helper to check debit conditions (Logic defined in requirement)
 const isDebitPurchase = (p: any) => {
-    // 1. Buy + (Cash/Online/Others)
-    if (p.purchase_type === 'Buy' && ['Cash', 'Online Payment', 'Others'].includes(p.payment_type)) return true
-    // 2. Sell + (Cash/Online/Others)
-    if (p.purchase_type === 'Sell' && ['Cash', 'Online Payment', 'Others'].includes(p.payment_type)) return true
-    // 3. Sell + Due
-    if (p.purchase_type === 'Sell' && p.payment_type === 'Due') return true
-    return false
+    const isCashOrOnline = p.payment_type !== 'Due';
+    if (p.purchase_type === 'Buy' && isCashOrOnline) return true;
+    if (p.purchase_type === 'Sell' && isCashOrOnline) return true;
+    if (p.purchase_type === 'Sell' && p.payment_type === 'Due') return true;
+    return false;
 }
 
 const isCreditPurchase = (p: any) => {
-    // 1. Buy + (Cash/Online/Others)
-    if (p.purchase_type === 'Buy' && ['Cash', 'Online Payment', 'Others'].includes(p.payment_type)) return true
-    // 2. Sell + (Cash/Online/Others)
-    if (p.purchase_type === 'Sell' && ['Cash', 'Online Payment', 'Others'].includes(p.payment_type)) return true
-    // 3. Buy + Due
-    if (p.purchase_type === 'Buy' && p.payment_type === 'Due') return true
-    return false
+    const isCashOrOnline = p.payment_type !== 'Due';
+    if (p.purchase_type === 'Buy' && isCashOrOnline) return true;
+    if (p.purchase_type === 'Sell' && isCashOrOnline) return true;
+    if (p.purchase_type === 'Buy' && p.payment_type === 'Due') return true;
+    return false;
 }
 
 export async function getSupplierLedger({
@@ -243,21 +239,21 @@ export async function getSupplierStats({
     let openingBalance = 0
 
     prevPurchases?.forEach(p => {
-        const amount = Number(p.total_amount) || 0
-        const isCashOrOnline = ['Cash', 'Online Payment', 'Others'].includes(p.payment_type)
+        const amount = Number(p.total_amount) || 0;
+        const isCashOrOnline = p.payment_type !== 'Due';
 
-        // Credit Contributions (Buy + Cash/Online, Sell + Cash/Online, Buy + Due)
+        // Credit Contributions
         if ((p.purchase_type === 'Buy' && isCashOrOnline) ||
             (p.purchase_type === 'Sell' && isCashOrOnline) ||
             (p.purchase_type === 'Buy' && p.payment_type === 'Due')) {
-            openingBalance += amount
+            openingBalance += amount;
         }
 
-        // Debit Contributions (Buy + Cash/Online, Sell + Cash/Online, Sell + Due)
+        // Debit Contributions
         if ((p.purchase_type === 'Buy' && isCashOrOnline) ||
             (p.purchase_type === 'Sell' && isCashOrOnline) ||
             (p.purchase_type === 'Sell' && p.payment_type === 'Due')) {
-            openingBalance -= amount
+            openingBalance -= amount;
         }
     })
 
@@ -276,13 +272,13 @@ export async function getSupplierStats({
     let received = 0
 
     purchases?.forEach(p => {
-        const amount = Number(p.total_amount) || 0
-        const isCashOrOnline = ['Cash', 'Online Payment', 'Others'].includes(p.payment_type)
+        const amount = Number(p.total_amount) || 0;
+        const isCashOrOnline = p.payment_type !== 'Due';
 
-        if (p.purchase_type === 'Buy' && isCashOrOnline) cashBuy += amount
-        if (p.purchase_type === 'Sell' && isCashOrOnline) cashSell += amount
-        if (p.purchase_type === 'Sell' && p.payment_type === 'Due') dueSell += amount
-        if (p.purchase_type === 'Buy' && p.payment_type === 'Due') dueBuy += amount
+        if (p.purchase_type === 'Buy' && isCashOrOnline) cashBuy += amount;
+        if (p.purchase_type === 'Sell' && isCashOrOnline) cashSell += amount;
+        if (p.purchase_type === 'Sell' && p.payment_type === 'Due') dueSell += amount;
+        if (p.purchase_type === 'Buy' && p.payment_type === 'Due') dueBuy += amount;
     })
 
     transactions?.forEach(t => {
@@ -386,7 +382,7 @@ export async function getSupplierDetailedTransactions({
 
         // Filter Payment
         if (isCash) {
-            query = query.in('payment_type', ['Cash', 'Online Payment', 'Others'])
+            query = query.neq('payment_type', 'Due')
         } else {
             query = query.eq('payment_type', 'Due')
         }

@@ -71,25 +71,25 @@ function ProfitTrackerContent({ isEmbedded = false }: { isEmbedded?: boolean }) 
     }, []) // Empty dependency to run only once on mount
 
     // Update URL when state changes (only if NOT embedded)
-    // useEffect(() => {
-    //     if (!isEmbedded) {
-    //         const params = new URLSearchParams()
-    //         if (page > 1) params.set('page', String(page))
-    //         if (limit !== 50) params.set('limit', String(limit))
-    //         if (search) params.set('search', search)
-    //         if (syncStatus !== 'all') params.set('syncStatus', syncStatus)
-    //         if (sellerAccount !== 'All') params.set('sellerAccount', sellerAccount)
-    //
-    //         const str = params.toString()
-    //         const url = str ? `?${str}` : window.location.pathname
-    //         router.replace(url, { scroll: false })
-    //     }
-    // }, [page, limit, search, syncStatus, sellerAccount, isEmbedded, router])
+    useEffect(() => {
+        if (!isEmbedded) {
+            const params = new URLSearchParams()
+            if (page > 1) params.set('page', String(page))
+            if (limit !== 50) params.set('limit', String(limit))
+            if (search) params.set('search', search)
+            if (syncStatus !== 'all') params.set('syncStatus', syncStatus)
+            if (sellerAccount !== 'All') params.set('sellerAccount', sellerAccount)
+
+            const str = params.toString()
+            const url = str ? `?${str}` : window.location.pathname
+            router.replace(url, { scroll: false })
+        }
+    }, [page, limit, search, syncStatus, sellerAccount, isEmbedded, router])
 
     // Data Fetching
 
     const { data: profitData, isLoading: isOrdersLoading, error: ordersError } = useQuery({
-        queryKey: ['profit-tracker', page, limit, search, syncStatus],
+        queryKey: ['profit-tracker', page, limit, search, syncStatus, sellerAccount],
         queryFn: async () => {
             // console.log('[PROFIT TRACKER] Fetching orders...')
             try {
@@ -134,12 +134,13 @@ function ProfitTrackerContent({ isEmbedded = false }: { isEmbedded?: boolean }) 
     });
 
     const { data: dailyStats, isLoading: isStatsLoading } = useQuery({
-        queryKey: ['daily-profit-stats', search, syncStatus],
+        queryKey: ['daily-profit-stats', search, syncStatus, sellerAccount],
         queryFn: async () => {
             // console.log('[PROFIT TRACKER] Fetching stats...')
             return getDailyProfitStats({
                 search,
                 syncStatus,
+                sellerAccount: sellerAccount === 'All' ? undefined : sellerAccount,
                 startDate: undefined,
                 endDate: undefined
             })

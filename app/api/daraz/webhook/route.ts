@@ -62,9 +62,10 @@ export async function POST(request: NextRequest) {
         const { message_type, data, seller_id } = payload
 
         // Type 4: Trade Order (New/Updated Order)
+        // Type 10: Reverse Order (Returns/Refunds) - needed for "Customer Return Delivered"
         // Type 14: Order Fulfillment Status Update
-        if ((message_type === 4 || message_type === 14) && data) {
-            const tradeOrderId = data.trade_order_id || data.order_id
+        if ((message_type === 4 || message_type === 10 || message_type === 14) && data) {
+            const tradeOrderId = data.trade_order_id || data.order_id || data.reverse_order_id
 
             if (!tradeOrderId) {
                 console.warn('[Webhook] Message received but missing trade_order_id:', data)

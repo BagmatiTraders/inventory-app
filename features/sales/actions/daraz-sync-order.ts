@@ -2,6 +2,7 @@ import { createClient, createAdminClient } from '@/lib/supabase/server'
 import crypto from 'crypto'
 import axios from 'axios'
 import { revalidatePath } from 'next/cache'
+import { syncOrderPurchaseCost } from './report-actions'
 
 // Helper: Sign Daraz API Requests
 export function signRequest(apiName: string, params: Record<string, any>, appSecret: string) {
@@ -274,6 +275,18 @@ export async function syncSingleDarazOrderAction(orderId: string, storeId: strin
             } else {
                 // If there are no items to sync (e.g. order cancelled), clear existing ones
                 await supabase.from('daraz_order_items').delete().eq('order_id', savedOrder.id)
+            }
+        }
+
+        // 6. AUTO-SYNC PROFIT: If delivered, trigger financial sync (fees + costs)
+        if (newStatus === 'Delivered') {
+            try {
+                // We use order.order_number from the API data
+                await syncOrderPurchaseCost(String(order.order_number))
+                console.log(`[DarazSync] Auto-profit-sync triggered for delivered order: ${order.order_number}`)
+            } catch (syncErr: any) {
+                console.error(`[DarazSync] Auto-profit-sync failed for ${order.order_number}:`, syncErr.message)
+                // We don't throw here to ensure the order status update itself isn't rolled back/failed
             }
         }
 
