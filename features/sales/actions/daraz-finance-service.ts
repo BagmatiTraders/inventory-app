@@ -2,7 +2,7 @@
 
 import crypto from 'crypto'
 import axios from 'axios'
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createAdminClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 
 // Helper to sign extraction requests
@@ -17,7 +17,7 @@ function signRequest(apiName: string, params: Record<string, any>, appSecret: st
 
 // 1. Existing function for Order-Specific sync (Profit Tracker usage)
 export async function fetchDarazFinanceTransactions(orderId: string, storeId: string, orderDate?: string) {
-    const supabase = await createClient()
+    const supabase = await createAdminClient()
 
     const appKey = process.env.NEXT_PUBLIC_DARAZ_APP_KEY
     const appSecret = process.env.DARAZ_APP_SECRET
@@ -121,7 +121,7 @@ export async function fetchDarazFinanceTransactions(orderId: string, storeId: st
 
 // 2. NEW: Bulk Sync for Account Statement (Date Range based)
 export async function syncDarazFinances(storeId: string, startDateStr: string, endDateStr: string) {
-    const supabase = await createClient()
+    const supabase = await createAdminClient()
 
     const appKey = process.env.NEXT_PUBLIC_DARAZ_APP_KEY
     const appSecret = process.env.DARAZ_APP_SECRET

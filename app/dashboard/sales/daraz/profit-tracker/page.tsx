@@ -17,8 +17,8 @@ import { getProfitTrackerData, getDailyProfitStats, getSellerAccounts, getComple
 import { format } from 'date-fns'
 import { BulkSyncButton } from './bulk-sync-button'
 import { MobileHeaderAction } from '@/components/MobileHeaderAction'
-import { useQuery } from '@tanstack/react-query'
-import { useSearchParams, useRouter } from 'next/navigation'
+import { useQuery, keepPreviousData } from '@tanstack/react-query'
+import { useSearchParams, useRouter, usePathname } from 'next/navigation'
 
 // Helper component for Limit Selector using props
 function LimitSelector({ currentLimit, onLimitChange }: { currentLimit: number, onLimitChange: (limit: number) => void }) {
@@ -42,49 +42,66 @@ function LimitSelector({ currentLimit, onLimitChange }: { currentLimit: number, 
 
 function ProfitTrackerContent({ isEmbedded = false }: { isEmbedded?: boolean }) {
     const searchParams = useSearchParams()
+    const pathname = usePathname()
     const router = useRouter()
 
-    // State
-    const [page, setPage] = useState(1)
-    const [limit, setLimit] = useState(50)
-    const [search, setSearch] = useState('')
-    const [syncStatus, setSyncStatus] = useState<'all' | 'synced' | 'not_synced'>('all')
-    const [sellerAccount, setSellerAccount] = useState('All')
+    // Initialize state directly from URL if possible, otherwise use defaults
+    const [page, setPage] = useState(() => {
+        if (typeof window === 'undefined') return 1
+        return Number(searchParams.get('page')) || 1
+    })
+    const [limit, setLimit] = useState(() => {
+        if (typeof window === 'undefined') return 50
+        return Number(searchParams.get('limit')) || 50
+    })
+    const [search, setSearch] = useState(() => {
+        if (typeof window === 'undefined') return ''
+        return searchParams.get('search') || ''
+    })
+    const [syncStatus, setSyncStatus] = useState<'all' | 'synced' | 'not_synced'>(() => {
+        if (typeof window === 'undefined') return 'all'
+        return (searchParams.get('syncStatus') as any) || 'all'
+    })
+    const [sellerAccount, setSellerAccount] = useState(() => {
+        if (typeof window === 'undefined') return 'All'
+        return searchParams.get('sellerAccount') || 'All'
+    })
     const [availableSellers, setAvailableSellers] = useState<string[]>([])
 
-    // Initialize from URL on mount only
+    // Sync only seller accounts on mount
     useEffect(() => {
-        const p = Number(searchParams.get('page')) || 1
-        const l = Number(searchParams.get('limit')) || 50
-        const s = searchParams.get('search') || ''
-        const ss = (searchParams.get('syncStatus') as any) || 'all'
-        const sa = searchParams.get('sellerAccount') || 'All'
-
-        setPage(p)
-        setLimit(l)
-        setSearch(s)
-        setSyncStatus(ss)
-        setSellerAccount(sa)
-
-        // Fetch seller accounts
         getSellerAccounts().then(setAvailableSellers)
-    }, []) // Empty dependency to run only once on mount
+    }, [])
 
     // Update URL when state changes (only if NOT embedded)
     useEffect(() => {
         if (!isEmbedded) {
-            const params = new URLSearchParams()
-            if (page > 1) params.set('page', String(page))
-            if (limit !== 50) params.set('limit', String(limit))
-            if (search) params.set('search', search)
-            if (syncStatus !== 'all') params.set('syncStatus', syncStatus)
-            if (sellerAccount !== 'All') params.set('sellerAccount', sellerAccount)
+            const params = new URLSearchParams(searchParams.toString())
 
-            const str = params.toString()
-            const url = str ? `?${str}` : window.location.pathname
-            router.replace(url, { scroll: false })
+            // Only update if values actually changed to prevent loops
+            let changed = false
+            const updateParam = (key: string, val: string, defaultVal: string) => {
+                const current = params.get(key) || defaultVal
+                if (current !== val) {
+                    if (val === defaultVal) params.delete(key)
+                    else params.set(key, val)
+                    changed = true
+                }
+            }
+
+            updateParam('page', String(page), '1')
+            updateParam('limit', String(limit), '50')
+            updateParam('search', search, '')
+            updateParam('syncStatus', syncStatus, 'all')
+            updateParam('sellerAccount', sellerAccount, 'All')
+
+            if (changed) {
+                const str = params.toString()
+                const url = str ? `${pathname}?${str}` : pathname
+                router.replace(url, { scroll: false })
+            }
         }
-    }, [page, limit, search, syncStatus, sellerAccount, isEmbedded, router])
+    }, [page, limit, search, syncStatus, sellerAccount, isEmbedded, router, pathname, searchParams])
 
     // Data Fetching
 
@@ -108,7 +125,8 @@ function ProfitTrackerContent({ isEmbedded = false }: { isEmbedded?: boolean }) 
                 console.error('[PROFIT TRACKER] Fetch Error:', err)
                 throw err
             }
-        }
+        },
+        placeholderData: keepPreviousData
     })
 
     // Fetch complete date stats to ensure group headers show stats for all orders in each date group
@@ -130,7 +148,8 @@ function ProfitTrackerContent({ isEmbedded = false }: { isEmbedded?: boolean }) 
                 return {}; // Return empty object if there's an error
             }
         },
-        staleTime: 5 * 60 * 1000 // Cache for 5 minutes
+        staleTime: 5 * 60 * 1000, // Cache for 5 minutes
+        placeholderData: keepPreviousData
     });
 
     const { data: dailyStats, isLoading: isStatsLoading } = useQuery({
@@ -145,7 +164,8 @@ function ProfitTrackerContent({ isEmbedded = false }: { isEmbedded?: boolean }) 
                 endDate: undefined
             })
         },
-        staleTime: 5 * 60 * 1000 // Cache stats for 5 mins
+        staleTime: 5 * 60 * 1000, // Cache stats for 5 mins
+        placeholderData: keepPreviousData
     })
 
     const orders = profitData?.data || []
@@ -156,7 +176,7 @@ function ProfitTrackerContent({ isEmbedded = false }: { isEmbedded?: boolean }) 
 
     // Use complete date stats for group headers to show stats for all orders in each date group
     // Fall back to current logic if complete stats are not available
-    const stats = completeDateStats || {};
+    const stats: any = completeDateStats ? JSON.parse(JSON.stringify(completeDateStats)) : {};
 
     // If complete date stats are not available, calculate from current page data
     if (Object.keys(stats).length === 0) {
@@ -255,7 +275,18 @@ function ProfitTrackerContent({ isEmbedded = false }: { isEmbedded?: boolean }) 
     const visibleOrderNumbers = orders.map((o: any) => o.order_number)
 
     return (
-        <div className="flex flex-col h-full bg-gray-50 dark:bg-zinc-950">
+        <div className="flex flex-col min-h-full bg-gray-50 dark:bg-zinc-900 border dark:border-zinc-800 rounded-lg">
+            {/* Error Message */}
+            {ordersError && (
+                <div className="p-4 m-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg flex items-center gap-3 text-red-700 dark:text-red-400">
+                    <AlertTriangle className="h-5 w-5" />
+                    <div className="flex-1">
+                        <p className="font-semibold text-sm">Action Failed</p>
+                        <p className="text-xs">{(ordersError as any)?.message || 'Something went wrong while fetching profit data.'}</p>
+                    </div>
+                </div>
+            )}
+
             {/* Header - Conditional */}
             {!isEmbedded && (
                 <div className="hidden md:flex bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 px-6 py-4 flex-col gap-4">

@@ -1,6 +1,6 @@
 
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createAdminClient } from '@/lib/supabase/server'
 import crypto from 'crypto'
 import axios from 'axios'
 import { syncOrderPurchaseCost } from '@/features/sales/actions/report-actions'
@@ -63,7 +63,7 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ error: 'Daraz API configuration missing' }, { status: 500 })
     }
 
-    const supabase = await createClient()
+    const supabase = await createAdminClient()
 
     // 1. Get Token
     const { data: tokenData, error: dbError } = await supabase

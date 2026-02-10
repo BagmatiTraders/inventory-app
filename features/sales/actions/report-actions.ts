@@ -1,6 +1,6 @@
 'use server'
 
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createAdminClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { fetchDarazFinanceTransactions } from './daraz-finance-service'
 import { unstable_cache } from 'next/cache'
@@ -286,139 +286,90 @@ export async function getSellerAccounts() {
 }
 
 export async function getProfitTrackerData(params: GetOrderReportParams) {
-    // console.log('[SERVER ACTION] getProfitTrackerData START', new Date().toISOString(), params)
     const { page = 1, limit = 50, search, startDate, endDate, syncStatus = 'all', sellerAccount } = params
 
-    // DEBUG: Force empty return removed
-    // return {
-    //     data: [],
-    //     totalCount: 0,
-    //     totalPages: 0,
-    //     currentPage: page
-    // }
-
-    const startTotal = Date.now()
-    const supabase = await createClient()
+    const supabase = await createAdminClient()
 
     const from = (page - 1) * limit
     const to = from + limit - 1
 
-    // Create a simple cached function that doesn't use cookies
-    const cachedGetProfitTrackerData = unstable_cache(
-        async (page, limit, search, startDate, endDate, syncStatus, sellerAccount) => {
-            // Use admin client inside cached function to avoid cookies() error
-            const { createAdminClient } = await import('@/lib/supabase/server')
-            const supabase = await createAdminClient()
+    let query = supabase
+        .from('daraz_order_report_view')
+        .select('*', { count: 'exact' })
 
-            const from = (page - 1) * limit
-            const to = from + limit - 1
+    if (search && search.trim()) {
+        query = query.or(`order_number.ilike.%${search.trim()}%,invoice_number.ilike.%${search.trim()}%`)
+    }
 
-            let query = supabase
-                .from('daraz_order_report_view')
-                .select('*', { count: 'exact' })
+    if (sellerAccount && sellerAccount !== 'All') {
+        query = query.eq('seller_account', sellerAccount)
+    }
 
-            // Search by order number or invoice number
-            if (search && search.trim()) {
-                query = query.or(`order_number.ilike.%${search.trim()}%,invoice_number.ilike.%${search.trim()}%`)
-            }
+    if (syncStatus === 'synced') {
+        query = query.gt('daraz_fees', 0).gt('total_purchase_cost', 0);
+    } else if (syncStatus === 'not_synced') {
+        query = query.or('daraz_fees.is.null,daraz_fees.lte.0,total_purchase_cost.lte.0');
+    }
 
-            // Filter by Seller Account
-            if (sellerAccount && sellerAccount !== 'All') {
-                query = query.eq('seller_account', sellerAccount)
-            }
+    if (startDate) {
+        query = query.gte('delivered_at', startDate)
+    }
+    if (endDate) {
+        query = query.lte('delivered_at', endDate)
+    }
 
-            // Apply sync status filter at database level to ensure accurate pagination
-            // For synced: orders where both daraz_fees exists (>0) AND purchase cost is valid (>0)
-            if (syncStatus === 'synced') {
-                query = query.gt('daraz_fees', 0).gt('total_purchase_cost', 0);
-            } else if (syncStatus === 'not_synced') {
-                // For not_synced: orders where either daraz_fees is null/0 OR purchase cost is invalid (<=0)
-                query = query.or('daraz_fees.is.null,daraz_fees.lte.0,total_purchase_cost.lte.0');
-            }
+    query = query.range(from, to);
 
-            // Date Filtering (Delivered At) - using delivered_at since delivered_by_daraz is missing from view
-            if (startDate) {
-                query = query.gte('delivered_at', startDate)
-            }
-            if (endDate) {
-                query = query.lte('delivered_at', endDate)
-            }
+    query = query
+        .order('delivered_by_daraz', { ascending: false, nullsFirst: false })
+        .order('delivered_at', { ascending: false, nullsFirst: false })
+        .order('created_at', { ascending: false, nullsFirst: false });
 
-            // Apply range for pagination
-            query = query.range(from, to);
+    const { data, count, error } = await query;
 
-            // Sort by effective delivery date (prioritizing delivered_by_daraz when available, otherwise delivered_at)
-            // This matches the business logic used elsewhere for determining delivery date
-            query = query
-                .order('delivered_by_daraz', { ascending: false, nullsFirst: false })  // Daraz delivery date first (nulls last)
-                .order('delivered_at', { ascending: false, nullsFirst: false })        // System delivery date second (nulls last)
-                .order('created_at', { ascending: false, nullsFirst: false });         // Creation time as final tie-breaker
+    if (error) {
+        console.error('[SERVER ACTION] Query Error:', error);
+        throw new Error(`Failed to fetch profit tracker data: ${error.message}`);
+    }
 
-            const { data, count, error } = await query;
+    let formattedData = (data || []).map((order: any) => {
+        const hasValidPurchaseCost = order.total_purchase_cost !== null && order.total_purchase_cost > 0;
+        const hasDarazFees = order.daraz_fees !== null && order.daraz_fees !== undefined && order.daraz_fees > 0;
+        const isSynced = hasValidPurchaseCost && hasDarazFees;
+        const calculatedSyncStatus = isSynced ? 'synced' : 'not_synced';
+        const deliveredByDaraz = order.delivered_by_daraz || order.delivered_at;
 
-            if (error) {
-                console.error('[SERVER ACTION] Query Error:', error);
-                throw new Error('Failed to fetch profit tracker data');
-            }
+        return {
+            order_primary_id: order.order_primary_id,
+            order_number: order.order_number,
+            invoice_number: order.invoice_number,
+            order_status: order.order_status,
+            delivered_at: order.delivered_at,
+            delivered_by_daraz: deliveredByDaraz,
+            created_at: order.created_at,
+            seller_account: order.seller_account,
+            products: order.items_summary || [],
+            total_revenue: order.total_revenue,
+            total_purchase_cost: order.total_purchase_cost,
+            profit: order.estimated_profit,
+            profit_percentage: order.profit_percentage || 0,
+            sync_status: calculatedSyncStatus
+        };
+    });
 
-            // Calculate sync status for each order (for UI purposes)
-            let formattedData = (data || []).map((order: any) => {
-                // Determine sync status based on whether profit column reflects Daraz fees deduction
-                // An order is synced when both purchase cost exists (>0) AND Daraz fees have been retrieved (>0)
-                const hasValidPurchaseCost = order.total_purchase_cost !== null && order.total_purchase_cost > 0;
-                const hasDarazFees = order.daraz_fees !== null && order.daraz_fees !== undefined && order.daraz_fees > 0;
-
-                // An order is synced when Daraz fees have been retrieved (meaning profit calculation reflects actual fees)
-                // AND purchase cost is available for proper profit calculation
-                const isSynced = hasValidPurchaseCost && hasDarazFees;
-                const calculatedSyncStatus = isSynced ? 'synced' : 'not_synced';
-
-                // Handle missing delivered_by_daraz column gracefully
-                const deliveredByDaraz = order.delivered_by_daraz || order.delivered_at;
-
-                return {
-                    order_primary_id: order.order_primary_id,
-                    order_number: order.order_number,
-                    invoice_number: order.invoice_number,
-                    order_status: order.order_status,
-                    delivered_at: order.delivered_at,
-                    delivered_by_daraz: deliveredByDaraz,
-                    created_at: order.created_at,
-                    seller_account: order.seller_account,
-                    products: order.items_summary || [],
-                    total_revenue: order.total_revenue,
-                    total_purchase_cost: order.total_purchase_cost,
-                    profit: order.estimated_profit,
-                    profit_percentage: order.profit_percentage || 0,
-                    sync_status: calculatedSyncStatus
-                };
-            });
-
-            return {
-                data: formattedData,
-                totalCount: count || 0,
-                totalPages: Math.ceil((count || 0) / limit),
-                currentPage: page,
-                firstItemOffset: from  // The offset for the first item on this page
-            };
-        },
-        ['profit-tracker-data'],
-        {
-            revalidate: 300, // Cache for 5 minutes
-            tags: ['profit-tracker']
-        }
-    );
-
-    const result = await cachedGetProfitTrackerData(page, limit, search, startDate, endDate, syncStatus, sellerAccount);
-
-    return result;
+    return {
+        data: formattedData,
+        totalCount: count || 0,
+        totalPages: Math.ceil((count || 0) / limit),
+        currentPage: page,
+        firstItemOffset: from
+    };
 }
 
 // Dynamic Aggregation for Daily Stats (Using database function for better performance)
 export async function getDailyProfitStats(params: GetOrderReportParams) {
     const start = Date.now()
     try {
-        const { createAdminClient } = await import('@/lib/supabase/server')
         const supabase = await createAdminClient()
 
         // Try using the get_cached_daily_profit_summary function (as suggested by the error)
@@ -464,7 +415,7 @@ export async function getDailyProfitStats(params: GetOrderReportParams) {
 
 // Sync/Lock Purchase Cost for an Order
 export async function syncOrderPurchaseCost(orderNumber: string) {
-    const supabase = await createClient()
+    const supabase = await createAdminClient()
 
     // 1. Fetch Order Items & Meta for Finance Sync
     const { data: order, error } = await supabase
