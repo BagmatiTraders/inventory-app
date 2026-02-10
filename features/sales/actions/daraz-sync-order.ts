@@ -278,16 +278,23 @@ export async function syncSingleDarazOrderAction(orderId: string, storeId: strin
             }
         }
 
-        // 6. AUTO-SYNC PROFIT: If delivered, trigger financial sync (fees + costs)
+        // 6. AUTO-SYNC PROFIT: If delivered, trigger financial sync (fees + costs) after 3 min delay
         if (newStatus === 'Delivered') {
-            try {
-                // We use order.order_number from the API data
-                await syncOrderPurchaseCost(String(order.order_number))
-                console.log(`[DarazSync] Auto-profit-sync triggered for delivered order: ${order.order_number}`)
-            } catch (syncErr: any) {
-                console.error(`[DarazSync] Auto-profit-sync failed for ${order.order_number}:`, syncErr.message)
-                // We don't throw here to ensure the order status update itself isn't rolled back/failed
-            }
+            const ordNum = String(order.order_number)
+            console.log(`[DarazSync] Order ${ordNum} Delivered. Scheduling profit sync in 3 minutes...`)
+
+            // We use a non-awaited setTimeout to allow the request to COMPLETE and RETURN to the user/webhook
+            // while the sync runs in the background.
+            setTimeout(async () => {
+                try {
+                    // Re-importing inside the closure if needed, but since it's an exported function from this file or imported, it should work.
+                    // Actually syncOrderPurchaseCost is imported at the top of the file.
+                    await syncOrderPurchaseCost(ordNum)
+                    console.log(`[DarazSync] Delayed Auto-profit-sync TRIGGERED for: ${ordNum}`)
+                } catch (syncErr: any) {
+                    console.error(`[DarazSync] Delayed Auto-profit-sync FAILED for ${ordNum}:`, syncErr.message)
+                }
+            }, 180000) // 3 minutes = 180,000ms
         }
 
         revalidatePath('/dashboard/sales/daraz')

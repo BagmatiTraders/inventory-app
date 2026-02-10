@@ -473,39 +473,40 @@ export async function syncOrderPurchaseCost(orderNumber: string) {
 
             const hasFinance = transactions && transactions.length > 0
 
-            // 1. Free Shipping Max Fee (search for SPECIFIC fee name, not generic 'shipping')
-            const val_free_ship = hasFinance
-                ? getFinanceTotal(['free shipping', 'free_shipping'])
-                : (revenue * 0.0339)
-
-            // 2. Co-funded Voucher Max (search for SPECIFIC fee name)
-            const val_voucher = hasFinance
-                ? getFinanceTotal(['co-funded', 'cofunded', 'co_funded'])
-                : (revenue * 0.02)
-
-            // 3. Other fees from Finance API (always from API)
-            const val_commission = getFinanceTotal(['commission'])
-            const val_payment = getFinanceTotal(['payment fee'])
-            const val_handling = getFinanceTotal(['handling fee'])
-            const val_coin = getFinanceTotal(['coin'])
-            const val_tax = getFinanceTotal(['tax', 'vat', 'wht'])
-
-            // Total Fee = Shipping + Voucher + Commission + Payment + Handling + Coins + Tax
-            const totalFee = val_free_ship + val_voucher + val_commission + val_payment + val_handling + val_coin + val_tax
-
-            console.log(`[SYNC DEBUG] Order ${orderNumber} (ID: ${targetId}): Found ${transactions?.length || 0} txns. Total Fee: ${totalFee}`)
-
-            // Save to database
-            const { error: updateError } = await supabase
-                .from('daraz_orders')
-                .update({ daraz_fees: totalFee })
-                .eq('order_number', orderNumber)
-
-            if (updateError) {
-                console.error(`[SYNC ERROR] Failed to update ${orderNumber}:`, updateError)
-                feeSyncResult = 'Update Failed'
+            if (!hasFinance) {
+                console.log(`[SYNC DEBUG] Order ${orderNumber}: No transactions found yet. skipping fee update.`)
+                feeSyncResult = 'Pending (No Finance Data)'
             } else {
-                feeSyncResult = `Updated (Fee: ${totalFee.toFixed(2)})`
+                // 1. Free Shipping Max Fee (search for SPECIFIC fee name, not generic 'shipping')
+                const val_free_ship = getFinanceTotal(['free shipping', 'free_shipping'])
+
+                // 2. Co-funded Voucher Max (search for SPECIFIC fee name)
+                const val_voucher = getFinanceTotal(['co-funded', 'cofunded', 'co_funded'])
+
+                // 3. Other fees from Finance API (always from API)
+                const val_commission = getFinanceTotal(['commission'])
+                const val_payment = getFinanceTotal(['payment fee'])
+                const val_handling = getFinanceTotal(['handling fee'])
+                const val_coin = getFinanceTotal(['coin'])
+                const val_tax = getFinanceTotal(['tax', 'vat', 'wht'])
+
+                // Total Fee = Shipping + Voucher + Commission + Payment + Handling + Coins + Tax
+                const totalFee = val_free_ship + val_voucher + val_commission + val_payment + val_handling + val_coin + val_tax
+
+                console.log(`[SYNC DEBUG] Order ${orderNumber} (ID: ${targetId}): Found ${transactions?.length || 0} txns. Total Fee: ${totalFee}`)
+
+                // Save to database
+                const { error: updateError } = await supabase
+                    .from('daraz_orders')
+                    .update({ daraz_fees: totalFee })
+                    .eq('order_number', orderNumber)
+
+                if (updateError) {
+                    console.error(`[SYNC ERROR] Failed to update ${orderNumber}:`, updateError)
+                    feeSyncResult = 'Update Failed'
+                } else {
+                    feeSyncResult = `Updated (Fee: ${totalFee.toFixed(2)})`
+                }
             }
 
         } catch (feeErr: any) {
