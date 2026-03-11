@@ -11,18 +11,20 @@ import {
     Alert,
     ActivityIndicator,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { X, Calendar, ChevronDown, Check, ArrowLeft } from 'lucide-react-native';
 import { Colors } from '../theme/colors';
 import { Spacing, Radius } from '../theme/spacing';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useDataStore } from '../store/useDataStore';
 import { SupplierTransaction } from '../db/supplierRepo';
+import { v4 as uuidv4 } from 'uuid';
 
 export default function AddSupplierTransactionScreen() {
     const navigation = useNavigation<any>();
     const route = useRoute<any>();
     const { addSupplierTransaction } = useDataStore();
+    const insets = useSafeAreaInsets();
 
     const { supplierId, supplierName } = route.params || {};
 
@@ -82,7 +84,7 @@ export default function AddSupplierTransactionScreen() {
         setLoading(true);
         try {
             const transaction: SupplierTransaction = {
-                id: Math.random().toString(36).substring(2, 15),
+                id: uuidv4(), // Using proper UUID v4
                 transaction_date: date,
                 supplier_id: supplierId,
                 transaction_mode: transactionMode,
@@ -95,12 +97,13 @@ export default function AddSupplierTransactionScreen() {
             };
 
             await addSupplierTransaction(transaction);
-            Alert.alert('Success', 'Add Successful', [
+            Alert.alert('Success', 'Transaction saved successfully!', [
                 { text: 'OK', onPress: () => navigation.goBack() }
             ]);
-        } catch (error) {
+        } catch (error: any) {
             console.error('Save failed:', error);
-            Alert.alert('Error', 'Failed to save transaction.');
+            const errorMessage = error?.message || 'Failed to save transaction. Please check your connection and try again.';
+            Alert.alert('Error', errorMessage);
         } finally {
             setLoading(false);
         }
@@ -270,7 +273,7 @@ export default function AddSupplierTransactionScreen() {
                 </ScrollView>
 
                 {/* Footer with Shadow */}
-                <View style={styles.footer}>
+                <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, Spacing.md) }]}>
                     <TouchableOpacity
                         style={styles.saveButton}
                         onPress={handleSave}

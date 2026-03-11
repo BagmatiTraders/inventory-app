@@ -4,21 +4,27 @@ import {
     getActivityLogs,
     getUserOrders
 } from '@/features/profile/actions/profile-actions'
+import { getExpenses } from '@/features/expenses/actions/expense-actions'
+import { getReminders } from '@/features/reminders/actions/reminder-actions'
 
 import { ProfileHeader } from '@/features/profile/components/ProfileHeader'
 import { ProfileDetails } from '@/features/profile/components/ProfileDetails'
 import { TaskList } from '@/features/profile/components/TaskList'
 import { ActivityLog } from '@/features/profile/components/ActivityLog'
 import { UserOrderList } from '@/features/profile/components/UserOrderList'
+import { ExpenseSection } from '@/features/expenses/components/ExpenseSection'
+import { ReminderSection } from '@/features/reminders/components/ReminderSection'
 import { User } from 'lucide-react'
 
 export default async function ProfilePage() {
     // Fetch all data in parallel
-    const [profile, tasks, logs, orders] = await Promise.all([
+    const [profile, tasks, logs, orders, expensesData, remindersData] = await Promise.all([
         getProfile(),
         getUserTasks(),
         getActivityLogs(),
-        getUserOrders()
+        getUserOrders(),
+        getExpenses({ page: 1, limit: 10 }),
+        getReminders({ page: 1, limit: 10 })
     ])
 
     if (!profile) {
@@ -52,9 +58,28 @@ export default async function ProfilePage() {
                     </div>
                 </div>
 
-                {/* Bottom Section: Orders */}
-                <div className="grid grid-cols-1 gap-6">
+                {/* Recent Orders */}
+                <div className="grid grid-cols-1 gap-6 mb-6">
                     <UserOrderList orders={orders} />
+                </div>
+
+                {/* Expenses & Reminders Section */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    {/* Left: Reminders */}
+                    <div>
+                        <ReminderSection
+                            initialReminders={remindersData.reminders}
+                            initialTotalPages={remindersData.totalPages}
+                        />
+                    </div>
+
+                    {/* Right: Expenses */}
+                    <div>
+                        <ExpenseSection
+                            initialExpenses={expensesData.expenses}
+                            initialTotalPages={expensesData.totalPages}
+                        />
+                    </div>
                 </div>
             </div>
         </div>

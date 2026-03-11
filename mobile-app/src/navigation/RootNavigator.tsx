@@ -14,11 +14,16 @@ import DateTransactionScreen from '../screens/DateTransactionScreen';
 import InventoryPriceReportsScreen from '../screens/InventoryPriceReportsScreen';
 import SupplierDetailScreen from '../screens/SupplierDetailScreen';
 import AddSupplierTransactionScreen from '../screens/AddSupplierTransactionScreen';
+import SupplierLedgerScreen from '../screens/SupplierLedgerScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import StockAdjustmentTabs from './StockAdjustmentTabs';
 import CaptureScreen from '../screens/CaptureScreen';
 import InventoryListScreen from '../screens/InventoryListScreen';
 import ProfitTrackerTabs from './ProfitTrackerTabs';
+import ExpenseScreen from '../screens/ExpenseScreen';
+import ReminderScreen from '../screens/ReminderScreen';
+import AccountBillingScreen from '../screens/AccountBillingScreen';
+import PurchaseBillDetailsScreen from '../screens/PurchaseBillDetailsScreen';
 
 export type RootStackParamList = {
     Main: undefined;
@@ -26,11 +31,16 @@ export type RootStackParamList = {
     InventoryPriceReports: undefined;
     SupplierDetail: { supplierId: string; supplierName: string };
     AddSupplierTransaction: { supplierId: string; supplierName: string };
+    SupplierLedger: { supplierId: string; supplierName: string };
     Profile: undefined;
     StockAdjustment: undefined;
     Capture: undefined;
     InventoryList: undefined;
     ProfitTracker: undefined;
+    Expense: undefined;
+    Reminder: undefined;
+    AccountBilling: undefined;
+    PurchaseBillDetails: undefined;
 };
 
 // Auth Screens
@@ -81,11 +91,16 @@ export default function RootNavigator() {
                     <Stack.Screen name="InventoryPriceReports" component={InventoryPriceReportsScreen} />
                     <Stack.Screen name="SupplierDetail" component={SupplierDetailScreen} />
                     <Stack.Screen name="AddSupplierTransaction" component={AddSupplierTransactionScreen} />
+                    <Stack.Screen name="SupplierLedger" component={SupplierLedgerScreen} />
                     <Stack.Screen name="Profile" component={ProfileScreen} />
                     <Stack.Screen name="StockAdjustment" component={StockAdjustmentTabs} />
                     <Stack.Screen name="Capture" component={CaptureScreen} />
                     <Stack.Screen name="InventoryList" component={InventoryListScreen} />
                     <Stack.Screen name="ProfitTracker" component={ProfitTrackerTabs} />
+                    <Stack.Screen name="Expense" component={ExpenseScreen} />
+                    <Stack.Screen name="Reminder" component={ReminderScreen} />
+                    <Stack.Screen name="AccountBilling" component={AccountBillingScreen} />
+                    <Stack.Screen name="PurchaseBillDetails" component={PurchaseBillDetailsScreen} />
                 </>
             )}
         </Stack.Navigator>

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Alert, View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { Alert, View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ChevronRight, Calendar, List, PieChart, Plus, ListPlus, Users } from 'lucide-react-native';
 import { Colors } from '../theme/colors';
@@ -33,10 +33,16 @@ export default function PurchasingScreen() {
         }
     };
 
-    const { purchasePlans, todayPurchases } = useDataStore();
+    const { purchasePlans, todayPurchases, isLoading, syncPurchasingData } = useDataStore();
+
+    // Calculate Summary Stats
+    const totalPlanQty = purchasePlans.reduce((sum, p) => sum + (Number(p.quantity) || 0), 0);
+    const totalTodayPurchaseQty = todayPurchases.reduce((sum, p) => sum + (Number(p.quantity) || 0), 0);
+    const totalPurchaseAmount = todayPurchases.reduce((sum, p) => sum + (Number(p.total_amount) || 0), 0);
 
     // Helper to check if a plan is already purchased (Consistent with List screen)
     const checkIsPurchased = (item: any) => {
+        if (item.status === 'Pending') return false;
         return todayPurchases.some(p => {
             const pId = String(p.product_id || '').trim();
             const itemId = String(item.product_id || '').trim();
@@ -62,7 +68,13 @@ export default function PurchasingScreen() {
 
     return (
         <SafeAreaView style={styles.safeArea} edges={[]}>
-            <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+            <ScrollView
+                style={styles.container}
+                showsVerticalScrollIndicator={false}
+                refreshControl={
+                    <RefreshControl refreshing={isLoading} onRefresh={syncPurchasingData} />
+                }
+            >
 
                 {/* 1. All Purchase List */}
                 <TouchableOpacity
@@ -115,6 +127,19 @@ export default function PurchasingScreen() {
                             <Text style={styles.statusLabel}>{card.label}</Text>
                         </View>
                     ))}
+                </View>
+
+                {/* Purchasing Summary */}
+                <Text style={styles.sectionTitle}>Purchase Summary</Text>
+                <View style={styles.summaryBox}>
+                    <View style={styles.summaryItem}>
+                        <Text style={styles.summaryValue}>{totalTodayPurchaseQty}</Text>
+                        <Text style={styles.summaryLabel}>Total Qty</Text>
+                    </View>
+                    <View style={[styles.summaryItem, { borderLeftWidth: 1, borderLeftColor: 'rgba(59, 130, 246, 0.2)' }]}>
+                        <Text style={styles.summaryValue}>रु {totalPurchaseAmount.toLocaleString()}</Text>
+                        <Text style={styles.summaryLabel}>Total Amount</Text>
+                    </View>
                 </View>
 
                 {/* 5. Shortcuts Grid */}
@@ -228,6 +253,34 @@ const styles = StyleSheet.create({
         fontSize: 13,
         color: Colors.textSecondary,
         marginTop: 2,
+    },
+    summaryBox: {
+        flexDirection: 'row',
+        backgroundColor: Colors.primarySoft,
+        borderRadius: Radius.lg,
+        padding: Spacing.md,
+        marginBottom: Spacing.lg,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+        elevation: 3,
+    },
+    summaryItem: {
+        flex: 1,
+        alignItems: 'center',
+        paddingVertical: 5,
+    },
+    summaryValue: {
+        fontSize: 18,
+        fontWeight: 'bold',
+        color: Colors.primary,
+        marginBottom: 2,
+    },
+    summaryLabel: {
+        fontSize: 12,
+        color: Colors.textSecondary,
+        fontWeight: '600',
     },
     shortcutsGrid: {
         flexDirection: 'row',

@@ -403,10 +403,147 @@ export async function getSupplierDetailedTransactions({
         count = resCount || 0
     }
 
+
     return {
         transactions: data,
         totalCount: count,
         totalPages: Math.ceil(count / limit),
         currentPage: page
     }
+}
+
+// Get full chronological ledger for a single supplier
+export async function getSupplierFullLedger({
+    supplierId,
+    fiscalYearId
+}: {
+    supplierId: string
+    fiscalYearId?: string
+}): Promise<{ ledger: any[], supplierName: string }> {
+    const supabase = await createClient()
+
+    // 1. Get supplier name
+    const { data: supplier } = await supabase
+        .from('suppliers')
+        .select('supplier_name')
+        .eq('id', supplierId)
+        .single()
+
+    const supplierName = supplier?.supplier_name || 'Unknown'
+
+    // 2. Get Fiscal Year Dates (if provided)
+    let endDate: string | null = null
+
+    if (fiscalYearId) {
+        const { data: fy } = await supabase
+            .from('fiscal_years')
+            .select('start_date, end_date')
+            .eq('id', fiscalYearId)
+            .single()
+
+        if (fy) {
+            endDate = fy.end_date
+        }
+    }
+
+    // 3. Fetch all purchases for this supplier
+    let purchaseQuery = supabase
+        .from('purchases')
+        .select('id, purchase_date, purchase_type, payment_type, total_amount, product_id, products(product_name)')
+        .eq('supplier_id', supplierId)
+        .order('purchase_date', { ascending: false })
+
+    if (endDate) {
+        purchaseQuery = purchaseQuery.lte('purchase_date', endDate)
+    }
+
+    const { data: purchases } = await purchaseQuery
+
+    // 4. Fetch all transactions for this supplier
+    let transQuery = supabase
+        .from('supplier_transactions')
+        .select('id, transaction_date, transaction_type, transaction_mode, payment_method, amount, remarks')
+        .eq('supplier_id', supplierId)
+        .order('transaction_date', { ascending: false })
+
+    if (endDate) {
+        transQuery = transQuery.lte('transaction_date', endDate)
+    }
+
+    const { data: transactions } = await transQuery
+
+    // 5. Combine and format ledger entries
+    const ledgerEntries: any[] = []
+
+    // Process purchases
+    purchases?.forEach(p => {
+        const isCashOrOnline = p.payment_type !== 'Due'
+        let debit = 0
+        let credit = 0
+
+        // Calculate debit and credit
+        if (p.purchase_type === 'Buy' && isCashOrOnline) {
+            debit = p.total_amount
+            credit = p.total_amount
+        } else if (p.purchase_type === 'Sell' && isCashOrOnline) {
+            debit = p.total_amount
+            credit = p.total_amount
+        } else if (p.purchase_type === 'Sell' && p.payment_type === 'Due') {
+            debit = p.total_amount
+        } else if (p.purchase_type === 'Buy' && p.payment_type === 'Due') {
+            credit = p.total_amount
+        }
+
+        const paymentLabel = isCashOrOnline ? 'Cash' : 'Due'
+        const typeLabel = p.purchase_type
+
+        ledgerEntries.push({
+            id: p.id,
+            date: p.purchase_date,
+            particular: (p.products as any)?.product_name || 'Unknown Product',
+            particular_detail: `${paymentLabel} ${typeLabel}`,
+            debit,
+            credit,
+            running_amount: 0,
+            type: 'purchase'
+        })
+    })
+
+    // Process transactions
+    transactions?.forEach(t => {
+        const isPaid = t.transaction_type === 'Paid'
+        const isReceived = t.transaction_type === 'Received'
+
+        let particular = `${t.transaction_type} (${t.payment_method || t.transaction_mode})`
+        if (t.remarks) {
+            particular += ` - ${t.remarks}`
+        }
+
+        ledgerEntries.push({
+            id: t.id,
+            date: t.transaction_date,
+            particular,
+            particular_detail: null,
+            debit: isPaid ? t.amount : 0,
+            credit: isReceived ? t.amount : 0,
+            running_amount: 0,
+            type: 'transaction'
+        })
+    })
+
+    // 6. Sort by date descending (latest first)
+    ledgerEntries.sort((a, b) => {
+        const dateA = new Date(a.date).getTime()
+        const dateB = new Date(b.date).getTime()
+        return dateB - dateA
+    })
+
+    // 7. Calculate running balance
+    let runningBalance = 0
+    for (let i = ledgerEntries.length - 1; i >= 0; i--) {
+        runningBalance = runningBalance + ledgerEntries[i].credit - ledgerEntries[i].debit
+        ledgerEntries[i].running_amount = runningBalance
+    }
+
+    return { ledger: ledgerEntries, supplierName }
 }

@@ -21,13 +21,13 @@ const styles = StyleSheet.create({
         paddingHorizontal: Spacing.md,
         paddingBottom: Spacing.md,
         backgroundColor: Colors.card,
-        borderBottomWidth: 1,
-        borderBottomColor: Colors.border,
+        // No border, just shadow
         shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 2,
-        elevation: 4,
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.25,
+        shadowRadius: 8,
+        elevation: 15,
+        zIndex: 10,
     },
     leftSlot: {
         width: 50,
@@ -85,11 +85,15 @@ export function DarazTabs() {
                 tabBarInactiveTintColor: Colors.textSecondary,
                 tabBarStyle: {
                     backgroundColor: Colors.card,
-                    borderTopWidth: 1,
-                    borderTopColor: Colors.border,
-                    height: 110, // Matching main app height
-                    paddingBottom: 45, // Matching main app padding
+                    height: 110,
+                    paddingBottom: 45,
                     paddingTop: 10,
+                    shadowColor: '#000',
+                    shadowOffset: { width: 0, height: -8 },
+                    shadowOpacity: 0.3,
+                    shadowRadius: 12,
+                    elevation: 25,
+                    borderTopWidth: 0,
                 },
                 tabBarItemStyle: {
                     height: 60,
@@ -132,6 +136,6 @@ export function DarazTabs() {
                     headerTitle: "Sales Report",
                 }}
             />
-        </Tab.Navigator>
+        </Tab.Navigator >
     );
 }

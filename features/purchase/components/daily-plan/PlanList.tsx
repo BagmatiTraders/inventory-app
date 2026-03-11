@@ -42,7 +42,10 @@ export function PlanList({ plans, completedProductIds, onPlanUpdated }: PlanList
     const [isBulkSharing, setIsBulkSharing] = useState(false)
 
     // Dynamic Grouping
-    const isPurchased = (plan: PurchasePlan) => completedProductIds.includes(plan.product_id)
+    const isPurchased = (plan: PurchasePlan) => {
+        if (plan.status === 'Pending') return false;
+        return completedProductIds.includes(plan.product_id)
+    }
 
     const rawPurchasedPlans = plans.filter(isPurchased)
 

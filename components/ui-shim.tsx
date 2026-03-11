@@ -412,6 +412,87 @@ const TableCaption = React.forwardRef<
 ))
 TableCaption.displayName = "TableCaption"
 
+// --- TEXTAREA ---
+export interface TextareaProps
+    extends React.TextareaHTMLAttributes<HTMLTextAreaElement> { }
+
+const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
+    ({ className, ...props }, ref) => {
+        return (
+            <textarea
+                className={cn(
+                    "flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
+                    className
+                )}
+                ref={ref}
+                {...props}
+            />
+        )
+    }
+)
+Textarea.displayName = "Textarea"
+
+// --- ALERT DIALOG (simplified) ---
+const AlertDialog = (props: any) => <>{props.children}</>
+const AlertDialogTrigger = (props: any) => <div {...props}>{props.children}</div>
+const AlertDialogContent = (props: any) => <div className={cn("bg-white dark:bg-zinc-900 p-6 rounded-lg shadow-lg", props.className)} {...props}>{props.children}</div>
+const AlertDialogHeader = (props: any) => <div className="mb-4" {...props}>{props.children}</div>
+const AlertDialogTitle = (props: any) => <h2 className="text-lg font-semibold" {...props}>{props.children}</h2>
+const AlertDialogDescription = (props: any) => <p className="text-sm text-muted-foreground" {...props}>{props.children}</p>
+const AlertDialogFooter = (props: any) => <div className="flex justify-end gap-2 mt-4" {...props}>{props.children}</div>
+const AlertDialogAction = (props: any) => <button className="px-4 py-2 bg-primary text-primary-foreground rounded-md" {...props}>{props.children}</button>
+const AlertDialogCancel = (props: any) => <button className="px-4 py-2 border rounded-md" {...props}>{props.children}</button>
+
+// --- TOOLTIP (simplified) ---
+const TooltipProvider = (props: any) => <>{props.children}</>
+const Tooltip = (props: any) => <>{props.children}</>
+const TooltipTrigger = (props: any) => <div {...props}>{props.children}</div>
+const TooltipContent = (props: any) => <div className={cn("absolute z-50 overflow-hidden rounded-md border bg-popover px-3 py-1.5 text-sm text-popover-foreground shadow-md", props.className)} {...props}>{props.children}</div>
+
+// --- FORM (react-hook-form compatible) ---
+import { useFormContext, Controller, FormProvider } from 'react-hook-form'
+
+const Form = FormProvider
+
+const FormField = ({ control, name, render }: any) => {
+    return (
+        <Controller
+            control={control}
+            name={name}
+            render={render}
+        />
+    )
+}
+
+const FormItem = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
+    ({ className, ...props }, ref) => {
+        return <div ref={ref} className={cn("space-y-2", className)} {...props} />
+    }
+)
+FormItem.displayName = "FormItem"
+
+const FormLabel = React.forwardRef<HTMLLabelElement, React.LabelHTMLAttributes<HTMLLabelElement>>(
+    ({ className, ...props }, ref) => {
+        return <label ref={ref} className={cn("text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70", className)} {...props} />
+    }
+)
+FormLabel.displayName = "FormLabel"
+
+const FormControl = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
+    ({ ...props }, ref) => {
+        return <div ref={ref} {...props} />
+    }
+)
+FormControl.displayName = "FormControl"
+
+const FormMessage = React.forwardRef<HTMLParagraphElement, React.HTMLAttributes<HTMLParagraphElement>>(
+    ({ className, children, ...props }, ref) => {
+        const { formState } = useFormContext() || {}
+        return <p ref={ref} className={cn("text-sm font-medium text-destructive", className)} {...props}>{children}</p>
+    }
+)
+FormMessage.displayName = "FormMessage"
+
 export {
     Button,
     Input,
@@ -448,4 +529,24 @@ export {
     SelectLabel,
     SelectItem,
     SelectSeparator,
+    Textarea,
+    AlertDialog,
+    AlertDialogTrigger,
+    AlertDialogContent,
+    AlertDialogHeader,
+    AlertDialogTitle,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogAction,
+    AlertDialogCancel,
+    TooltipProvider,
+    Tooltip,
+    TooltipTrigger,
+    TooltipContent,
+    Form,
+    FormField,
+    FormItem,
+    FormLabel,
+    FormControl,
+    FormMessage,
 }

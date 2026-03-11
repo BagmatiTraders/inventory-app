@@ -1,3 +1,4 @@
+import 'react-native-get-random-values'; // Must be imported before uuid
 import { registerRootComponent } from 'expo';
 
 import App from './App';

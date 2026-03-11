@@ -71,6 +71,15 @@ export const PurchaseRepo = {
         }));
     },
 
+    async hasPendingPlan(productId: string): Promise<boolean> {
+        const db = await getDb();
+        const result = await db.getFirstAsync<{ count: number }>(
+            `SELECT COUNT(*) as count FROM purchase_plans WHERE product_id = ? AND status = 'Pending'`,
+            [productId]
+        );
+        return (result?.count || 0) > 0;
+    },
+
     async updatePlanStatus(id: string, status: 'Pending' | 'Complete' | 'Cancel') {
         const db = await getDb();
 
@@ -84,6 +93,9 @@ export const PurchaseRepo = {
         } else if (status === 'Cancel') {
             // Cancel: 2 hours from now
             expiresAt = new Date(now.getTime() + 2 * 60 * 60 * 1000).toISOString();
+        } else if (status === 'Pending') {
+            // Pending: Reset to 24 hours from now
+            expiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString();
         }
 
         const query = expiresAt
@@ -185,23 +197,34 @@ export const PurchaseRepo = {
             await db.runAsync("DELETE FROM purchase_plans WHERE expires_at < ? AND status != 'Pending'", [now]);
 
             console.log('Starting paginated purchase plans sync...');
+            const supabase = require('../lib/supabase').supabase;
             let hasMore = true;
             let offset = 0;
-            const batchSize = 1000;
+            const batchSize = 100;
             let totalFetched = 0;
 
             while (hasMore) {
                 const { data, error } = await supabase
                     .from('purchase_plans')
-                    .select('*, product:products(product_name, image_url)')
+                    .select(`
+                        *,
+                        product:products(
+                            product_name, 
+                            image_url,
+                            seller_sku1,
+                            seller_sku2,
+                            seller_sku3,
+                            seller_sku4
+                        )
+                    `)
                     .order('created_at', { ascending: false })
-                    .order('id', { ascending: true }) // Stable tie-breaker
                     .range(offset, offset + batchSize - 1);
 
                 if (error) throw error;
 
                 if (data && data.length > 0) {
                     totalFetched += data.length;
+                    const db = await getDb();
                     await db.withTransactionAsync(async () => {
                         for (const plan of data) {
                             await this.upsertPlan({
@@ -222,6 +245,41 @@ export const PurchaseRepo = {
         } catch (error) {
             console.error('Failed to sync purchase plans:', error);
         }
+    },
+
+    async completePlanForProduct(productId: string) {
+        const db = await getDb();
+        const now = new Date();
+        // Auto-complete (Purchased): 8 hours from now
+        const expiresAt = new Date(now.getTime() + 8 * 60 * 60 * 1000).toISOString();
+
+        // 1. Update local database
+        await db.runAsync(
+            `UPDATE purchase_plans SET status = 'Complete', expires_at = ?, sync_status = 'pending' 
+             WHERE product_id = ? AND status = 'Pending'`,
+            [expiresAt, productId]
+        );
+
+        // 2. Sync to remote (Fire and forget)
+        (async () => {
+            try {
+                const { error } = await require('../lib/supabase').supabase
+                    .from('purchase_plans')
+                    .update({ status: 'Complete', expires_at: expiresAt })
+                    .eq('product_id', productId)
+                    .eq('status', 'Pending');
+
+                if (!error) {
+                    await db.runAsync(
+                        `UPDATE purchase_plans SET sync_status = 'synced' 
+                         WHERE product_id = ? AND status = 'Complete' AND expires_at = ?`,
+                        [productId, expiresAt]
+                    );
+                }
+            } catch (err) {
+                console.error('Remote auto-complete fail:', err);
+            }
+        })();
     },
 
     // --- Purchases ---

@@ -20,15 +20,31 @@ export const initDatabase = async () => {
   // Create sync_queue table
   await db.execAsync(`
     PRAGMA journal_mode = WAL;
-    CREATE TABLE IF NOT EXISTS sync_queue (
+  `);
+
+  const addColumnIfNotExists = async (tableName: string, columnName: string, columnDefinition: string) => {
+    try {
+      const tableInfo = await db.getAllAsync<any>(`PRAGMA table_info(${tableName})`);
+      if (!tableInfo.find(info => info.name === columnName)) {
+        await db.execAsync(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${columnDefinition};`);
+        console.log(`Added ${columnName} column to ${tableName} table`);
+      }
+    } catch (e) {
+      console.error(`Error adding column ${columnName} to ${tableName}:`, e);
+    }
+  };
+
+  // Create tables individually for better stability
+  const tables = [
+    `CREATE TABLE IF NOT EXISTS sync_queue (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       table_name TEXT NOT NULL,
       action TEXT NOT NULL,
       data TEXT NOT NULL,
       timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
       status TEXT DEFAULT 'pending'
-    );
-    CREATE TABLE IF NOT EXISTS products (
+    )`,
+    `CREATE TABLE IF NOT EXISTS products (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
       sku TEXT,
@@ -38,24 +54,24 @@ export const initDatabase = async () => {
       product_type TEXT,
       product_id TEXT,
       updated_at DATETIME
-    );
-    CREATE TABLE IF NOT EXISTS transactions (
+    )`,
+    `CREATE TABLE IF NOT EXISTS transactions (
       id TEXT PRIMARY KEY,
       party_name TEXT,
       amount REAL,
       type TEXT,
       timestamp DATETIME,
       sync_status TEXT DEFAULT 'synced'
-    );
-    CREATE TABLE IF NOT EXISTS suppliers (
+    )`,
+    `CREATE TABLE IF NOT EXISTS suppliers (
       id TEXT PRIMARY KEY,
       supplier_name TEXT NOT NULL,
       contact_details TEXT,
       remarks TEXT,
       is_deleted INTEGER DEFAULT 0,
       updated_at DATETIME
-    );
-    CREATE TABLE IF NOT EXISTS purchase_plans (
+    )`,
+    `CREATE TABLE IF NOT EXISTS purchase_plans (
       id TEXT PRIMARY KEY,
       plan_date TEXT NOT NULL,
       product_id TEXT NOT NULL,
@@ -71,8 +87,8 @@ export const initDatabase = async () => {
       cached_product_name TEXT,
       cached_product_image TEXT,
       sync_status TEXT DEFAULT 'synced'
-    );
-    CREATE TABLE IF NOT EXISTS purchases (
+    )`,
+    `CREATE TABLE IF NOT EXISTS purchases (
       id TEXT PRIMARY KEY,
       purchase_date TEXT NOT NULL,
       product_id TEXT,
@@ -85,8 +101,8 @@ export const initDatabase = async () => {
       purchase_type TEXT,
       purchase_name TEXT,
       sync_status TEXT DEFAULT 'synced'
-    );
-    CREATE TABLE IF NOT EXISTS supplier_transactions (
+    )`,
+    `CREATE TABLE IF NOT EXISTS supplier_transactions (
       id TEXT PRIMARY KEY,
       transaction_date TEXT NOT NULL,
       supplier_id TEXT NOT NULL,
@@ -97,8 +113,8 @@ export const initDatabase = async () => {
       cheque_date TEXT,
       remarks TEXT,
       sync_status TEXT DEFAULT 'synced'
-    );
-    CREATE TABLE IF NOT EXISTS opening_stocks (
+    )`,
+    `CREATE TABLE IF NOT EXISTS opening_stocks (
       id TEXT PRIMARY KEY,
       date TEXT NOT NULL,
       location TEXT NOT NULL,
@@ -108,8 +124,8 @@ export const initDatabase = async () => {
       created_at DATETIME,
       updated_at DATETIME,
       sync_status TEXT DEFAULT 'synced'
-    );
-    CREATE TABLE IF NOT EXISTS manual_adjustments (
+    )`,
+    `CREATE TABLE IF NOT EXISTS manual_adjustments (
       id TEXT PRIMARY KEY,
       date TEXT NOT NULL,
       location TEXT NOT NULL,
@@ -119,8 +135,8 @@ export const initDatabase = async () => {
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
       sync_status TEXT DEFAULT 'pending'
-    );
-    CREATE TABLE IF NOT EXISTS mobile_captures (
+    )`,
+    `CREATE TABLE IF NOT EXISTS mobile_captures (
       id TEXT PRIMARY KEY,
       image_path TEXT,
       image_url TEXT NOT NULL,
@@ -129,8 +145,8 @@ export const initDatabase = async () => {
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
       sync_status TEXT DEFAULT 'pending'
-    );
-    CREATE TABLE IF NOT EXISTS store_sales (
+    )`,
+    `CREATE TABLE IF NOT EXISTS store_sales (
       id TEXT PRIMARY KEY,
       sale_date TEXT NOT NULL,
       customer_name TEXT DEFAULT 'User',
@@ -140,8 +156,8 @@ export const initDatabase = async () => {
       created_at DATETIME,
       updated_at DATETIME,
       sync_status TEXT DEFAULT 'synced'
-    );
-    CREATE TABLE IF NOT EXISTS store_sales_items (
+    )`,
+    `CREATE TABLE IF NOT EXISTS store_sales_items (
       id TEXT PRIMARY KEY,
       sale_id TEXT NOT NULL,
       product_id TEXT,
@@ -150,8 +166,79 @@ export const initDatabase = async () => {
       qty REAL,
       amount REAL,
       FOREIGN KEY(sale_id) REFERENCES store_sales(id)
-    );
-    `);
+    )`,
+    `CREATE TABLE IF NOT EXISTS expenses (
+      id TEXT PRIMARY KEY,
+      date TEXT NOT NULL,
+      category TEXT NOT NULL,
+      expense_item TEXT NOT NULL,
+      amount REAL NOT NULL,
+      remarks TEXT,
+      created_by TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_by TEXT,
+      updated_at TEXT,
+      edit_count INTEGER DEFAULT 0,
+      last_edited_at TEXT,
+      sync_status TEXT DEFAULT 'pending'
+    )`,
+    `CREATE TABLE IF NOT EXISTS reminders (
+      id TEXT PRIMARY KEY,
+      date TEXT NOT NULL,
+      type TEXT NOT NULL,
+      reminder TEXT NOT NULL,
+      reminder_datetime TEXT,
+      status TEXT NOT NULL,
+      created_by TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      sync_status TEXT DEFAULT 'pending'
+    )`,
+    `CREATE TABLE IF NOT EXISTS pan_vat_bills (
+      id TEXT PRIMARY KEY,
+      issue_bill_date_ad TEXT NOT NULL,
+      issue_bill_date_bs TEXT NOT NULL,
+      supplier_company_id TEXT,
+      supplier_company_name TEXT,
+      supplier_pan_vat TEXT,
+      invoice_no TEXT NOT NULL,
+      buyer_company_id TEXT,
+      buyer_company_name TEXT,
+      buyer_pan_vat TEXT,
+      sub_total_amount REAL NOT NULL,
+      taxable_amount REAL NOT NULL,
+      vat_13_percent REAL NOT NULL,
+      total_amount REAL NOT NULL,
+      fiscal_year_id TEXT,
+      created_by TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT,
+      is_deleted INTEGER DEFAULT 0,
+      sync_status TEXT DEFAULT 'synced'
+    )`,
+    `CREATE TABLE IF NOT EXISTS pan_vat_bill_items (
+      id TEXT PRIMARY KEY,
+      bill_id TEXT NOT NULL,
+      hs_code TEXT,
+      particulars TEXT NOT NULL,
+      quantity REAL NOT NULL,
+      rate REAL NOT NULL,
+      amount REAL NOT NULL,
+      line_order INTEGER NOT NULL,
+      FOREIGN KEY(bill_id) REFERENCES pan_vat_bills(id)
+    )`,
+    `CREATE TABLE IF NOT EXISTS notified_orders (
+      id TEXT PRIMARY KEY,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`
+  ];
+
+  for (const query of tables) {
+    try {
+      await db.execAsync(query);
+    } catch (e) {
+      console.error('Error creating table:', e, 'Query:', query);
+    }
+  }
 
   // --- Migrations / Schema Updates ---
   // Since CREATE TABLE IF NOT EXISTS doesn't add columns or change constraints, we do it manually
@@ -186,34 +273,13 @@ export const initDatabase = async () => {
   } catch (e) {
     console.error('Migration error:', e);
   }
-  try {
-    await db.execAsync('ALTER TABLE products ADD COLUMN image_url TEXT;');
-    console.log('Added image_url column to products table');
-  } catch (e) {
-    // Column probably already exists, ignore
-  }
-
-  try {
-    await db.execAsync('ALTER TABLE products ADD COLUMN product_type TEXT;');
-    console.log('Added product_type column to products table');
-  } catch (e) { }
-
-  try {
-    await db.execAsync('ALTER TABLE purchase_plans ADD COLUMN snapshot_low_price REAL;');
-    await db.execAsync('ALTER TABLE purchase_plans ADD COLUMN snapshot_low_supplier TEXT;');
-  } catch (e) { }
-
-  try {
-    await db.execAsync('ALTER TABLE purchase_plans ADD COLUMN cached_product_name TEXT;');
-    await db.execAsync('ALTER TABLE purchase_plans ADD COLUMN cached_product_image TEXT;');
-  } catch (e) { }
-
-  try {
-    await db.execAsync('ALTER TABLE products ADD COLUMN product_id TEXT;');
-    console.log('Added product_id column to products table');
-  } catch (e) {
-    console.log('Migration note (product_id):', e);
-  }
+  await addColumnIfNotExists('products', 'image_url', 'TEXT');
+  await addColumnIfNotExists('products', 'product_type', 'TEXT');
+  await addColumnIfNotExists('products', 'product_id', 'TEXT');
+  await addColumnIfNotExists('purchase_plans', 'snapshot_low_price', 'REAL');
+  await addColumnIfNotExists('purchase_plans', 'snapshot_low_supplier', 'TEXT');
+  await addColumnIfNotExists('purchase_plans', 'cached_product_name', 'TEXT');
+  await addColumnIfNotExists('purchase_plans', 'cached_product_image', 'TEXT');
 
   // Seed data if empty
   const productCount = await db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM products');
@@ -246,4 +312,37 @@ export const getDb = async () => {
     dbPromise = SQLite.openDatabaseAsync('inventory.db');
   }
   return await dbPromise;
+};
+
+export const purgeAllTables = async () => {
+  const db = await getDb();
+  console.log('Purging all local tables...');
+
+  const tables = [
+    'sync_queue',
+    'products',
+    'transactions',
+    'suppliers',
+    'purchase_plans',
+    'purchases',
+    'supplier_transactions',
+    'opening_stocks',
+    'manual_adjustments',
+    'mobile_captures',
+    'store_sales',
+    'store_sales_items',
+    'expenses',
+    'reminders',
+    'pan_vat_bills',
+    'pan_vat_bill_items',
+    'notified_orders'
+  ];
+
+  await db.withTransactionAsync(async () => {
+    for (const table of tables) {
+      await db.execAsync(`DELETE FROM ${table}`);
+    }
+  });
+
+  console.log('Database purge complete.');
 };

@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, FlatList, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, FlatList, Alert, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ChevronLeft, ArrowUpCircle, ArrowDownCircle, Info, Package, Loader2, Plus, Receipt } from 'lucide-react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { Colors } from '../theme/colors';
 import { Spacing, Radius } from '../theme/spacing';
 import { SupplierRepo } from '../db/supplierRepo';
+import { useDataStore } from '../store/useDataStore';
 import AddPurchaseModal from './AddPurchaseModal';
 
 type RootStackParamList = {
@@ -35,6 +36,7 @@ export default function SupplierDetailScreen() {
     const [page, setPage] = useState(0);
     const [hasMore, setHasMore] = useState(true);
     const [showPurchaseModal, setShowPurchaseModal] = useState(false);
+    const { isLoading, syncPurchasingData } = useDataStore();
 
     const fetchStats = async () => {
         try {
@@ -48,6 +50,14 @@ export default function SupplierDetailScreen() {
             setLoading(false);
         }
     };
+
+    const handleRefresh = useCallback(async () => {
+        await syncPurchasingData();
+        await Promise.all([
+            fetchStats(),
+            fetchTransactions(true)
+        ]);
+    }, [supplierId, activeTab]);
 
     const fetchTransactions = async (isNewTab = false) => {
         if (transLoading) return;
@@ -157,7 +167,23 @@ export default function SupplierDetailScreen() {
                 </View>
             </View>
 
-            <ScrollView style={styles.flex} stickyHeaderIndices={[1]} showsVerticalScrollIndicator={false}>
+            <ScrollView
+                style={styles.flex}
+                stickyHeaderIndices={[2]}
+                showsVerticalScrollIndicator={false}
+                refreshControl={
+                    <RefreshControl refreshing={isLoading} onRefresh={handleRefresh} colors={[Colors.primary]} />
+                }
+            >
+                {/* Ledger Button */}
+                <TouchableOpacity
+                    style={styles.ledgerButton}
+                    onPress={() => navigation.navigate('SupplierLedger', { supplierId, supplierName })}
+                >
+                    <Receipt size={20} color={Colors.primary} />
+                    <Text style={styles.ledgerButtonText}>View Full Ledger</Text>
+                </TouchableOpacity>
+
                 {/* Summary Cards */}
                 <View style={styles.summaryGrid}>
                     {renderSummaryCard('DEBIT SIDE', Colors.primary, totalDebit, [
@@ -478,5 +504,24 @@ const styles = StyleSheet.create({
     footerButtonText: {
         fontSize: 13,
         fontWeight: 'bold',
+    },
+    ledgerButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: Colors.primarySoft,
+        paddingVertical: 12,
+        paddingHorizontal: 16,
+        marginHorizontal: Spacing.md,
+        marginTop: Spacing.sm,
+        borderRadius: Radius.md,
+        borderWidth: 1,
+        borderColor: Colors.primary,
+        gap: 8,
+    },
+    ledgerButtonText: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: Colors.primary,
     },
 });

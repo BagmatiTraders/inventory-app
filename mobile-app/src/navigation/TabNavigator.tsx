@@ -35,17 +35,15 @@ export default function TabNavigator() {
                 header: () => <AppHeader />,
                 tabBarStyle: {
                     backgroundColor: Colors.card,
-                    borderTopWidth: 1,
-                    borderTopColor: Colors.border,
-                    height: 110, // Increased for significant clearance
-                    paddingBottom: 45, // Heavy padding for system bars
+                    height: 110,
+                    paddingBottom: 45,
                     paddingTop: 10,
-                    // Shadow for footer
                     shadowColor: '#000',
-                    shadowOffset: { width: 0, height: -4 },
-                    shadowOpacity: 0.1,
-                    shadowRadius: 8,
-                    elevation: 20,
+                    shadowOffset: { width: 0, height: -8 },
+                    shadowOpacity: 0.3,
+                    shadowRadius: 12,
+                    elevation: 25,
+                    borderTopWidth: 0,
                 },
                 tabBarItemStyle: {
                     height: 60,

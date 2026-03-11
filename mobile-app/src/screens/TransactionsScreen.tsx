@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Alert, View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, ActivityIndicator } from 'react-native';
+import { Alert, View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, ActivityIndicator, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Search, X, Repeat, Users, Loader2 } from 'lucide-react-native';
 import { Colors } from '../theme/colors';
@@ -8,6 +8,7 @@ import { SupplierRepo, SupplierLedgerEntry } from '../db/supplierRepo';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/RootNavigator';
+import { useDataStore } from '../store/useDataStore';
 
 export default function TransactionsScreen() {
     const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
@@ -15,6 +16,7 @@ export default function TransactionsScreen() {
     const [suppliers, setSuppliers] = useState<SupplierLedgerEntry[]>([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
+    const { syncPurchasingData } = useDataStore();
 
     const fetchSuppliers = async () => {
         try {
@@ -25,13 +27,22 @@ export default function TransactionsScreen() {
             Alert.alert('Error', 'Failed to load supplier records.');
         } finally {
             setLoading(false);
-            setRefreshing(false);
         }
     };
 
     useEffect(() => {
         fetchSuppliers();
     }, [search]);
+
+    const handleRefresh = async () => {
+        setRefreshing(true);
+        try {
+            await syncPurchasingData(); // Full cloud sync
+            await fetchSuppliers(); // Re-calculate local ledger
+        } finally {
+            setRefreshing(false);
+        }
+    };
 
     const handlePress = (supplier: SupplierLedgerEntry) => {
         navigation.navigate('SupplierDetail', {
@@ -73,6 +84,9 @@ export default function TransactionsScreen() {
                 <ScrollView
                     style={styles.container}
                     contentContainerStyle={suppliers.length === 0 ? styles.emptyScroll : null}
+                    refreshControl={
+                        <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} colors={[Colors.primary]} />
+                    }
                 >
                     {suppliers.length === 0 ? (
                         <View style={styles.emptyContainer}>

@@ -205,7 +205,7 @@ const PurchasePlanCard = ({ item, onStatusUpdate, onImagePress, onDetailsPress, 
     };
 
     return (
-        <View style={styles.card}>
+        <View style={[styles.card, isAlreadyEntered && styles.purchasedCard]}>
             {/* Header: Countdown and High Price */}
             <View style={styles.cardTopRow}>
                 <CountdownTimer expiryDate={item.expires_at} />
@@ -219,7 +219,7 @@ const PurchasePlanCard = ({ item, onStatusUpdate, onImagePress, onDetailsPress, 
                 <TouchableOpacity
                     style={styles.imageContainer}
                     onPress={() => item.product?.image_url && onImagePress?.(item.product.image_url)}
-                    disabled={!item.product?.image_url}
+                    disabled={!item.product?.image_url || isAlreadyEntered}
                 >
                     {item.product?.image_url ? (
                         <Image source={{ uri: item.product.image_url }} style={styles.productImage} />
@@ -232,8 +232,11 @@ const PurchasePlanCard = ({ item, onStatusUpdate, onImagePress, onDetailsPress, 
                 <TouchableOpacity
                     style={styles.productInfoArea}
                     onPress={() => onDetailsPress?.(item)}
+                    disabled={isAlreadyEntered}
                 >
-                    <Text style={styles.productNameText}>{item.product?.product_name || 'Syncing...'}</Text>
+                    <Text style={[styles.productNameText, isAlreadyEntered && styles.entryDoneTextPrimary]}>
+                        {item.product?.product_name || 'Syncing...'}
+                    </Text>
                 </TouchableOpacity>
             </View>
 
@@ -255,49 +258,54 @@ const PurchasePlanCard = ({ item, onStatusUpdate, onImagePress, onDetailsPress, 
 
             {/* Footer: Actions */}
             <View style={styles.cardActions}>
-                {isPending && (
-                    <View style={styles.buttonRow}>
-                        <TouchableOpacity
-                            style={[styles.actionButton, styles.completeButton]}
-                            onPress={() => onStatusUpdate(item.id, 'Choice')}
-                        >
-                            <Check size={18} color="#4A5568" />
-                            <Text style={styles.completeButtonText}>Complete</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                            style={[styles.actionButton, styles.cancelButton]}
-                            onPress={() => {
-                                Alert.alert(
-                                    'Cancel Plan',
-                                    'Are you sure to cancel?',
-                                    [
-                                        { text: 'No', style: 'cancel' },
-                                        { text: 'Yes', onPress: () => onStatusUpdate(item.id, 'Cancel'), style: 'destructive' }
-                                    ]
-                                );
-                            }}
-                        >
-                            <Text style={styles.cancelButtonText}>Cancel</Text>
-                        </TouchableOpacity>
+                {isAlreadyEntered ? (
+                    <View style={[styles.addPurchaseBigButton, styles.entryDoneButton]}>
+                        <Text style={[styles.addPurchaseBigButtonText, styles.entryDoneText]}>Entry Done</Text>
                     </View>
-                )}
+                ) : (
+                    <>
+                        {isPending && (
+                            <View style={styles.buttonRow}>
+                                <TouchableOpacity
+                                    style={[styles.actionButton, styles.completeButton]}
+                                    onPress={() => onStatusUpdate(item.id, 'Choice')}
+                                >
+                                    <Check size={18} color="#4A5568" />
+                                    <Text style={styles.completeButtonText}>Complete</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                    style={[styles.actionButton, styles.cancelButton]}
+                                    onPress={() => {
+                                        Alert.alert(
+                                            'Cancel Plan',
+                                            'Are you sure to cancel?',
+                                            [
+                                                { text: 'No', style: 'cancel' },
+                                                { text: 'Yes', onPress: () => onStatusUpdate(item.id, 'Cancel'), style: 'destructive' }
+                                            ]
+                                        );
+                                    }}
+                                >
+                                    <Text style={styles.cancelButtonText}>Cancel</Text>
+                                </TouchableOpacity>
+                            </View>
+                        )}
 
-                {isComplete && (
-                    <TouchableOpacity
-                        style={[styles.addPurchaseBigButton, isAlreadyEntered && styles.entryDoneButton]}
-                        onPress={handleEntry}
-                        disabled={isAlreadyEntered}
-                    >
-                        <Text style={[styles.addPurchaseBigButtonText, isAlreadyEntered && styles.entryDoneText]}>
-                            {isAlreadyEntered ? 'Entry Done' : 'Add Purchase'}
-                        </Text>
-                    </TouchableOpacity>
-                )}
+                        {isComplete && (
+                            <TouchableOpacity
+                                style={styles.addPurchaseBigButton}
+                                onPress={handleEntry}
+                            >
+                                <Text style={styles.addPurchaseBigButtonText}>Add Purchase</Text>
+                            </TouchableOpacity>
+                        )}
 
-                {isCancel && (
-                    <View style={styles.cancelledBadgeWide}>
-                        <Text style={styles.cancelledTextWide}>Cancelled</Text>
-                    </View>
+                        {isCancel && (
+                            <View style={styles.cancelledBadgeWide}>
+                                <Text style={styles.cancelledTextWide}>Cancelled</Text>
+                            </View>
+                        )}
+                    </>
                 )}
             </View>
         </View>
@@ -381,6 +389,7 @@ export default function DailyPurchaseListScreen() {
 
     // Helper to check if a plan is already purchased
     const checkIsPurchased = (item: any) => {
+        if (item.status === 'Pending') return false;
         return todayPurchases.some(p => {
             const pId = String(p.product_id || '').trim();
             const itemId = String(item.product_id || '').trim();
@@ -395,22 +404,26 @@ export default function DailyPurchaseListScreen() {
     };
 
     // Correct section grouping based on prompt requirements
+    // Filter and group plans
+    const now = new Date().toISOString();
+    const activePlans = purchasePlans.filter(p => p.status === 'Pending' || p.expires_at > now);
+
     const sections = [
         {
             title: 'Pending Items',
-            data: purchasePlans.filter(p => p.status === 'Pending' && !checkIsPurchased(p)),
+            data: activePlans.filter(p => p.status === 'Pending' && !checkIsPurchased(p)),
         },
         {
             title: 'Manually Completed',
-            data: purchasePlans.filter(p => p.status === 'Complete' && !checkIsPurchased(p)),
+            data: activePlans.filter(p => p.status === 'Complete' && !checkIsPurchased(p)),
         },
         {
             title: 'Purchased Today',
-            data: purchasePlans.filter(p => checkIsPurchased(p)),
+            data: activePlans.filter(p => checkIsPurchased(p)),
         },
         {
             title: 'Cancelled',
-            data: purchasePlans.filter(p => p.status === 'Cancel'),
+            data: activePlans.filter(p => p.status === 'Cancel'),
         }
     ].filter(s => s.data.length > 0);
 
@@ -728,7 +741,14 @@ const styles = StyleSheet.create({
         borderWidth: 1,
     },
     entryDoneText: {
-        color: '#718096', // Darker grey text
+        color: '#2F855A', // Dark green text
+    },
+    entryDoneTextPrimary: {
+        color: '#2F855A',
+    },
+    purchasedCard: {
+        backgroundColor: '#F0FFF4', // Light green highlight
+        borderColor: '#C6F6D5',
     },
     cancelledBadgeWide: {
         backgroundColor: '#FFF5F5',

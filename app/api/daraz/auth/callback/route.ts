@@ -27,9 +27,9 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ error: 'Store ID (state) is missing' }, { status: 400 })
     }
 
-    const appKey = process.env.NEXT_PUBLIC_DARAZ_APP_KEY
-    const appSecret = process.env.DARAZ_APP_SECRET
-    const apiUrl = process.env.DARAZ_API_URL || 'https://api.daraz.com.np/rest'
+    const appKey = process.env.NEXT_PUBLIC_DARAZ_APP_KEY?.trim()
+    const appSecret = process.env.DARAZ_APP_SECRET?.trim()
+    const apiUrl = process.env.DARAZ_API_URL?.trim() || 'https://api.daraz.com.np/rest'
 
     if (!appKey || !appSecret) {
         return NextResponse.json({ error: 'Daraz API configuration missing' }, { status: 500 })

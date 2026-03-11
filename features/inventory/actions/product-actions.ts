@@ -489,6 +489,17 @@ export async function createProduct(data: {
         }
     }
 
+    // Log the product creation activity
+    try {
+        const { logActivity } = await import('@/features/activity/actions/log-activity')
+        await logActivity('product_created', {
+            product_name: data.product_name.trim(),
+            product_sku: data.seller_sku1 || undefined
+        })
+    } catch (logError) {
+        console.error('Failed to log product creation:', logError)
+    }
+
     revalidatePath('/dashboard/inventory/product-list')
     return product
 }
@@ -561,6 +572,17 @@ export async function updateProduct(
             .insert(comboInserts)
 
         if (comboError) throw new Error(`Failed to update combo items: ${comboError.message}`)
+    }
+
+    // Log the product update activity
+    try {
+        const { logActivity } = await import('@/features/activity/actions/log-activity')
+        await logActivity('product_updated', {
+            product_name: data.product_name || existingProduct.product_name,
+            product_sku: data.seller_sku1 || existingProduct.seller_sku1 || undefined
+        })
+    } catch (logError) {
+        console.error('Failed to log product update:', logError)
     }
 
     revalidatePath('/dashboard/inventory/product-list')

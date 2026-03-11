@@ -10,12 +10,16 @@ interface AddPurchasePlanModalProps {
     visible: boolean;
     onClose: () => void;
     onSave?: (data: any) => Promise<void>;
+    initialProduct?: Product | null;
+    initialQuantity?: number;
 }
 
 export default function AddPurchasePlanModal({
     visible,
     onClose,
-    onSave
+    onSave,
+    initialProduct,
+    initialQuantity = 1
 }: AddPurchasePlanModalProps) {
     const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
     const [status, setStatus] = useState<'Pending' | 'Complete' | 'Cancel'>('Pending');
@@ -35,16 +39,25 @@ export default function AddPurchasePlanModal({
             // Reset form
             setDate(new Date().toISOString().split('T')[0]);
             setStatus('Pending');
-            setSelectedProduct(null);
-            setSku('');
-            setQuantity('1');
-            setRemarks('');
-            setStats({ latestPrice: 0, latestSupplier: '-', lowPrice: 0, lowSupplier: '-' });
-            setSearchQuery('');
+
+            if (initialProduct) {
+                // If checking for duplicates here, we might want to do it before opening?
+                // But let's set it up.
+                handleProductSelect(initialProduct);
+                setQuantity(initialQuantity.toString());
+            } else {
+                setSelectedProduct(null);
+                setSku('');
+                setQuantity('1');
+                setRemarks('');
+                setStats({ latestPrice: 0, latestSupplier: '-', lowPrice: 0, lowSupplier: '-' });
+                setSearchQuery('');
+            }
+
             setShowProductList(false);
             setShowStatusDropdown(false);
         }
-    }, [visible]);
+    }, [visible, initialProduct]);
 
     const loadProducts = async () => {
         const data = await ProductRepo.getAll();
@@ -319,6 +332,12 @@ const styles = StyleSheet.create({
         borderBottomColor: '#E2E8F0',
         backgroundColor: '#FFFFFF',
         zIndex: 10,
+        // Enhanced Shadow
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.15,
+        shadowRadius: 4,
+        elevation: 5,
     },
     modalHeaderRow: {
         flexDirection: 'row',
@@ -477,7 +496,12 @@ const styles = StyleSheet.create({
         borderTopWidth: 1,
         borderTopColor: '#E2E8F0',
         backgroundColor: '#FFFFFF',
-        elevation: 3,
+        // Enhanced Shadow
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: -3 },
+        shadowOpacity: 0.15,
+        shadowRadius: 5,
+        elevation: 10,
     },
     modalCancelButton: {
         paddingHorizontal: 24,

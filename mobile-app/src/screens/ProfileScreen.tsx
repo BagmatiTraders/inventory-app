@@ -249,6 +249,44 @@ export default function ProfileScreen() {
                         )}
                     </View>
 
+                    {/* Data Management Section */}
+                    <View style={styles.section}>
+                        <View style={styles.sectionHeader}>
+                            <Text style={styles.sectionTitle}>Data Management</Text>
+                        </View>
+                        <View style={styles.card}>
+                            <Text style={styles.infoLabel}>If you see data discrepancies or calculation errors, you can force a fresh sync from the server.</Text>
+                            <TouchableOpacity
+                                style={[styles.button, styles.resetButton, { marginTop: Spacing.md }]}
+                                onPress={() => {
+                                    Alert.alert(
+                                        'Force Re-sync?',
+                                        'This will clear all local data and download everything again from Supabase. This may take a minute.',
+                                        [
+                                            { text: 'Cancel', style: 'cancel' },
+                                            {
+                                                text: 'Proceed',
+                                                style: 'destructive',
+                                                onPress: async () => {
+                                                    try {
+                                                        const { useDataStore } = await import('../store/useDataStore');
+                                                        await useDataStore.getState().resetAndSync();
+                                                        Alert.alert('Success', 'Data has been reset and synchronized.');
+                                                    } catch (error: any) {
+                                                        Alert.alert('Error', 'Failed to reset data: ' + error.message);
+                                                    }
+                                                }
+                                            }
+                                        ]
+                                    );
+                                }}
+                            >
+                                <Save size={18} color="#FFF" style={{ marginRight: 8 }} />
+                                <Text style={styles.saveButtonText}>Force Data Re-sync</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+
                     {/* Sign Out Button (Logout automatically handles the session) */}
                     <TouchableOpacity style={styles.signOutButton} onPress={handleSignOut}>
                         <LogOut size={20} color={Colors.danger} style={{ marginRight: 12 }} />
@@ -357,6 +395,11 @@ const styles = StyleSheet.create({
     saveButtonText: {
         color: '#FFF',
         fontWeight: 'bold',
+    },
+    resetButton: {
+        backgroundColor: Colors.warning,
+        flexDirection: 'row',
+        width: '100%',
     },
     cancelButton: {
         backgroundColor: 'transparent',

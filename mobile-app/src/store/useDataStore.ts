@@ -8,6 +8,8 @@ import { StockRepo, OpeningStock, ManualAdjustment } from '../db/stockRepo';
 import { CaptureRepo, MobileCapture } from '../db/captureRepo';
 import { supabase } from '../lib/supabase';
 import { MarketplaceRepo, MarketplaceSummary } from '../db/marketplaceRepo';
+import { NotificationHelper } from '../utils/notificationHelper';
+import { purgeAllTables } from '../db/database';
 
 interface DataState {
     products: Product[];
@@ -39,6 +41,8 @@ interface DataState {
     fetchAutoAdjustments: () => Promise<void>;
     addCapture: (data: any) => Promise<void>;
     addStoreSale: (data: any) => Promise<void>;
+    checkNewDarazOrders: () => Promise<void>;
+    handleNewDarazOrder: (orderId: string) => Promise<void>;
     subscribeToChanges: () => () => void;
     transactionSummaries: {
         totalPurchase: number;
@@ -46,6 +50,7 @@ interface DataState {
         paymentAnalysis: { type: string; sales: number; purchase: number }[];
         supplierBreakdown: { name: string; count: number; type: 'BUY' | 'SELL'; total: number }[];
     };
+    resetAndSync: () => Promise<void>;
 }
 
 export const useDataStore = create<DataState>((set, get) => ({
@@ -220,6 +225,82 @@ export const useDataStore = create<DataState>((set, get) => ({
         }
     },
 
+    handleNewDarazOrder: async (orderId: string) => {
+        try {
+            console.log(`[DataStore] 📦 New Daraz Order event detected: ${orderId}`);
+            const alreadyNotified = await DarazRepo.isOrderNotified(orderId);
+            if (alreadyNotified) {
+                console.log(`[DataStore] ℹ️ Order ${orderId} has already been notified locally. Skipping to avoid duplicates.`);
+                return;
+            }
+
+            // Wait a moment for items to be synced by the webhook (they follow the order record)
+            console.log(`[DataStore] ⏳ Order ${orderId}: Waiting 3s for items sync...`);
+            await new Promise(resolve => setTimeout(resolve, 3000));
+
+            const orderDetail = await DarazRepo.getOrderById(orderId);
+            if (!orderDetail) {
+                console.warn(`[DataStore] ⚠️ Order ${orderId} not found in DB after delay.`);
+                return;
+            }
+
+            console.log(`[DataStore] 📄 Order details: status=${orderDetail.order_status}, account=${orderDetail.seller_account}`);
+
+            // Be a bit more liberal with status for notification, but focus on Pending
+            if (orderDetail.order_status !== 'Pending' && orderDetail.order_status !== 'Packed') {
+                console.log(`[DataStore] ℹ️ Order ${orderId} status is ${orderDetail.order_status}. Skipping notification.`);
+                return;
+            }
+
+            // Assemble product names
+            let productNames = orderDetail.items_detail && orderDetail.items_detail.length > 0
+                ? orderDetail.items_detail.map((item: any) => item.product_name || item.name).join(', ')
+                : orderDetail.first_product_name || 'New Order';
+
+            // Send notification
+            await NotificationHelper.notifyImmediate(
+                `New Order Received - ${orderDetail.seller_account}`,
+                `Product: ${productNames}`
+            );
+
+            // Mark as notified
+            await DarazRepo.markOrderNotified(orderId);
+            console.log(`[DataStore] ✅ Notification flow complete for ${orderId}`);
+        } catch (error) {
+            console.error('[DataStore] ❌ Error handling new Daraz order:', error);
+        }
+    },
+
+    checkNewDarazOrders: async () => {
+        try {
+            // Fetch only Pending orders from Supabase
+            const pendingOrders = await DarazRepo.getOrders({ status: 'Pending', pageSize: 50 });
+
+            for (const order of pendingOrders) {
+                const alreadyNotified = await DarazRepo.isOrderNotified(order.id);
+
+                if (!alreadyNotified) {
+                    // Assemble product names
+                    let productNames = order.first_product_name || 'Multiple Products';
+                    if (order.items_detail && order.items_detail.length > 0) {
+                        productNames = order.items_detail.map(item => item.name).join(', ');
+                    }
+
+                    // Send notification
+                    await NotificationHelper.notifyImmediate(
+                        `New Order Received - ${order.seller_account}`,
+                        `Product: ${productNames}`
+                    );
+
+                    // Mark as notified
+                    await DarazRepo.markOrderNotified(order.id);
+                }
+            }
+        } catch (error) {
+            console.error('Error checking new Daraz orders:', error);
+        }
+    },
+
     syncPurchasingData: async () => {
         if (get().isSyncingInternal) return;
 
@@ -227,6 +308,7 @@ export const useDataStore = create<DataState>((set, get) => ({
         try {
             await ProductRepo.syncWithRemote();
             await SupplierRepo.syncWithRemote();
+            await SupplierRepo.syncTransactionsWithRemote();
             await PurchaseRepo.syncPlansWithRemote();
             await PurchaseRepo.syncPurchasesWithRemote();
             await StockRepo.syncFromRemote();
@@ -240,6 +322,29 @@ export const useDataStore = create<DataState>((set, get) => ({
         }
     },
 
+    resetAndSync: async () => {
+        set({ isLoading: true });
+        try {
+            await purgeAllTables();
+            // Clear local state immediately for better UX
+            set({
+                products: [],
+                transactions: [],
+                todayPurchases: [],
+                purchasePlans: [],
+                suppliers: [],
+                marketplaceSummary: null,
+                darazSummary: null
+            });
+            await get().syncPurchasingData();
+        } catch (error) {
+            console.error('Reset and sync failed:', error);
+            throw error;
+        } finally {
+            set({ isLoading: false });
+        }
+    },
+
     updatePlanStatus: async (id, status) => {
         await PurchaseRepo.updatePlanStatus(id, status);
         await get().refreshData();
@@ -247,6 +352,8 @@ export const useDataStore = create<DataState>((set, get) => ({
 
     addPurchase: async (purchase: Purchase) => {
         await PurchaseRepo.upsertPurchase(purchase);
+        // Auto-complete any pending plans for this product on mobile
+        await PurchaseRepo.completePlanForProduct(purchase.product_id);
         await get().refreshData();
 
         (async () => {
@@ -283,6 +390,36 @@ export const useDataStore = create<DataState>((set, get) => ({
     updatePurchase: async (purchase: Purchase) => {
         await PurchaseRepo.updatePurchase(purchase);
         await get().refreshData();
+
+        (async () => {
+            try {
+                const { data: { user } } = await supabase.auth.getUser();
+                if (user) {
+                    const { error } = await supabase
+                        .from('purchases')
+                        .update({
+                            purchase_date: purchase.purchase_date,
+                            product_id: purchase.product_id,
+                            supplier_id: purchase.supplier_id,
+                            quantity: purchase.quantity,
+                            unit_amount: purchase.unit_amount,
+                            total_amount: purchase.total_amount,
+                            payment_type: purchase.payment_type,
+                            remarks: purchase.remarks,
+                            purchase_type: purchase.purchase_type,
+                            updated_by: user.id,
+                            updated_at: new Date().toISOString()
+                        })
+                        .eq('id', purchase.id);
+
+                    if (!error) {
+                        await PurchaseRepo.upsertPurchase({ ...purchase, sync_status: 'synced' });
+                    }
+                }
+            } catch (err) {
+                console.error('Remote update fail:', err);
+            }
+        })();
     },
 
     deletePurchase: async (id: string) => {
@@ -395,36 +532,44 @@ export const useDataStore = create<DataState>((set, get) => ({
     },
 
     addSupplierTransaction: async (transaction: SupplierTransaction) => {
+        // Save to local database first
         await SupplierRepo.addSupplierTransaction(transaction);
-        await get().refreshData();
 
-        (async () => {
-            try {
-                const { data: { user } } = await supabase.auth.getUser();
-                if (user) {
-                    const { error } = await supabase
-                        .from('supplier_transactions')
-                        .insert({
-                            id: transaction.id,
-                            transaction_date: transaction.transaction_date,
-                            supplier_id: transaction.supplier_id,
-                            transaction_mode: transaction.transaction_mode,
-                            transaction_type: transaction.transaction_type,
-                            amount: transaction.amount,
-                            payment_method: transaction.payment_method,
-                            cheque_date: transaction.cheque_date,
-                            remarks: transaction.remarks,
-                            created_by: user.id
-                        });
-
-                    if (!error) {
-                        await SupplierRepo.upsertSupplierTransaction({ ...transaction, sync_status: 'synced' });
-                    }
-                }
-            } catch (err) {
-                console.error('Remote sync error (supplier_transactions):', err);
+        // Sync to remote database synchronously
+        try {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (!user) {
+                throw new Error('User not authenticated');
             }
-        })();
+
+            const { error } = await supabase
+                .from('supplier_transactions')
+                .insert({
+                    id: transaction.id,
+                    transaction_date: transaction.transaction_date,
+                    supplier_id: transaction.supplier_id,
+                    transaction_mode: transaction.transaction_mode,
+                    transaction_type: transaction.transaction_type,
+                    amount: transaction.amount,
+                    payment_method: transaction.payment_method,
+                    cheque_date: transaction.cheque_date,
+                    remarks: transaction.remarks
+                });
+
+            if (error) {
+                console.error('Failed to sync to remote:', error);
+                throw new Error(`Failed to sync transaction: ${error.message}`);
+            }
+
+            // Update local record to mark as synced
+            await SupplierRepo.upsertSupplierTransaction({ ...transaction, sync_status: 'synced' });
+        } catch (err) {
+            console.error('Remote sync error (supplier_transactions):', err);
+            throw err; // Re-throw to let caller handle the error
+        }
+
+        // Refresh data after successful sync
+        await get().refreshData();
     },
 
     subscribeToChanges: () => {
@@ -437,11 +582,37 @@ export const useDataStore = create<DataState>((set, get) => ({
         };
 
         const channel = supabase
-            .channel('db-changes')
+            .channel('daraz-notifications')
             .on('postgres_changes', { event: '*', schema: 'public', table: 'purchases' }, triggerSync)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'purchase_plans' }, triggerSync)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'store_sales' }, triggerSync)
-            .subscribe();
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'suppliers' }, triggerSync)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'supplier_transactions' }, triggerSync)
+            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'daraz_orders' }, (payload: any) => {
+                console.log('[DataStore] ⚡ Realtime INSERT: daraz_orders', payload.new?.id, payload.new?.order_status);
+                if (payload.new?.order_status === 'Pending' || payload.new?.order_status === 'Packed') {
+                    get().handleNewDarazOrder(payload.new.id);
+                }
+                triggerSync();
+            })
+            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'daraz_orders' }, (payload: any) => {
+                console.log('[DataStore] ⚡ Realtime UPDATE: daraz_orders', payload.new?.id, payload.new?.order_status);
+                // Also trigger notification on UPDATE in case status was set after INSERT
+                if (payload.new?.order_status === 'Pending' || payload.new?.order_status === 'Packed') {
+                    get().handleNewDarazOrder(payload.new.id);
+                }
+                triggerSync();
+            })
+            .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'daraz_orders' }, triggerSync)
+            .subscribe((status, err) => {
+                console.log('[DataStore] 📡 Realtime subscription status:', status);
+                if (err) console.error('[DataStore] ❌ Realtime subscription error:', err);
+
+                if (status === 'CHANNEL_ERROR') {
+                    console.log('[DataStore] 🔄 Attempting to re-subscribe due to channel error...');
+                    setTimeout(() => get().subscribeToChanges(), 5000);
+                }
+            });
 
         return () => {
             if (syncTimeout) clearTimeout(syncTimeout);

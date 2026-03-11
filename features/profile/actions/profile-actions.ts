@@ -70,6 +70,15 @@ export async function updateProfile(data: {
 
     if (error) throw new Error(error.message)
 
+    // Log the profile update activity
+    try {
+        const { logActivity } = await import('@/features/activity/actions/log-activity')
+        await logActivity('profile_updated')
+    } catch (logError) {
+        // Silent fail for logging
+        console.error('Failed to log profile update:', logError)
+    }
+
     revalidatePath('/dashboard/profile')
     revalidatePath('/dashboard/staff-management')
 }
@@ -104,6 +113,15 @@ export async function verifyAndChangePassword(currentPass: string, newPass: stri
     })
 
     if (updateError) throw new Error(updateError.message)
+
+    // Log the password change activity
+    try {
+        const { logActivity } = await import('@/features/activity/actions/log-activity')
+        await logActivity('password_changed')
+    } catch (logError) {
+        // Silent fail for logging
+        console.error('Failed to log password change:', logError)
+    }
 
     // 4. Logout from all devices
     try {
@@ -183,7 +201,7 @@ export async function getActivityLogs() {
         .select('*')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false })
-        .limit(100)
+        .limit(5)
 
     return logs || []
 }

@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, SafeAreaView, KeyboardAvoidingView, Platform, ScrollView, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, ScrollView, Alert, ActivityIndicator } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '../lib/supabase';
 import { Colors } from '../theme/colors';
 import { Spacing, Radius } from '../theme/spacing';
 import { Mail, Lock, ArrowLeft, CheckCircle } from 'lucide-react-native';
 
 export default function SignupScreen({ navigation }: any) {
+    const insets = useSafeAreaInsets();
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
@@ -139,7 +141,6 @@ const styles = StyleSheet.create({
         flexGrow: 1,
         paddingHorizontal: Spacing.xl,
         paddingTop: 20,
-        paddingBottom: 40,
     },
     backButton: {
         width: 44,

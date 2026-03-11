@@ -95,10 +95,18 @@ export default function SupplierDetailLedgerPage({ params }: { params: Promise<{
                     </div>
                 </div>
                 {/* Running Balance Display */}
-                <div className="text-right">
-                    <div className="text-xs text-gray-500 uppercase font-semibold">Running Balance</div>
-                    <div className={`text-xl font-bold ${runningBalance > 1 ? 'text-red-600' : runningBalance < -1 ? 'text-green-600' : 'text-gray-900 dark:text-gray-100'}`}>
-                        Rs {runningBalance.toLocaleString('en-NP', { minimumFractionDigits: 2 })}
+                <div className="flex items-center gap-4">
+                    <Link
+                        href={`/dashboard/suppliers/suppliers-ledger/${supplierId}?fiscalYearId=${fiscalYearId || ''}&supplierName=${encodeURIComponent(supplierName)}`}
+                        className="px-4 py-2 text-sm font-medium text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 bg-blue-50 hover:bg-blue-100 dark:bg-blue-900/20 dark:hover:bg-blue-900/30 rounded-md border border-blue-200 dark:border-blue-800 transition-colors"
+                    >
+                        View Full Ledger
+                    </Link>
+                    <div className="text-right">
+                        <div className="text-xs text-gray-500 uppercase font-semibold">Running Balance</div>
+                        <div className={`text-xl font-bold ${runningBalance > 1 ? 'text-red-600' : runningBalance < -1 ? 'text-green-600' : 'text-gray-900 dark:text-gray-100'}`}>
+                            Rs {runningBalance.toLocaleString('en-NP', { minimumFractionDigits: 2 })}
+                        </div>
                     </div>
                 </div>
             </div>

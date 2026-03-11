@@ -9,8 +9,8 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ error: 'Store ID is required' }, { status: 400 })
     }
 
-    const appKey = process.env.NEXT_PUBLIC_DARAZ_APP_KEY
-    const redirectUri = process.env.DARAZ_CALLBACK_URL || `${process.env.NEXT_PUBLIC_APP_URL}/api/daraz/auth/callback`
+    const appKey = process.env.NEXT_PUBLIC_DARAZ_APP_KEY?.trim()
+    const redirectUri = process.env.DARAZ_CALLBACK_URL?.trim() || `${process.env.NEXT_PUBLIC_APP_URL?.trim()}/api/daraz/auth/callback`
 
     if (!appKey) {
         return NextResponse.json({ error: 'Daraz App Key is not configured' }, { status: 500 })

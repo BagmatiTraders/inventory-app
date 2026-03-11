@@ -17,6 +17,7 @@ import { Colors } from '../theme/colors';
 import { Spacing, Radius } from '../theme/spacing';
 import { useDataStore } from '../store/useDataStore';
 import SearchablePicker from '../components/SearchablePicker';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PurchaseRepo, Purchase, PurchasePlan } from '../db/purchaseRepo';
 
 interface AddPurchaseModalProps {
@@ -30,6 +31,7 @@ interface AddPurchaseModalProps {
 
 export default function AddPurchaseModal({ visible, onClose, editPurchase, planData, defaultSupplierId, defaultSupplierName }: AddPurchaseModalProps) {
     const { products, suppliers, addPurchase, updatePurchase } = useDataStore();
+    const insets = useSafeAreaInsets();
     const [loading, setLoading] = useState(false);
 
     // Form State
@@ -159,7 +161,13 @@ export default function AddPurchaseModal({ visible, onClose, editPurchase, planD
     };
 
     return (
-        <Modal visible={visible} animationType="slide" transparent={false}>
+        <Modal
+            visible={visible}
+            animationType="slide"
+            transparent={false}
+            onRequestClose={onClose}
+            statusBarTranslucent={true}
+        >
             <KeyboardAvoidingView
                 behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
                 style={styles.container}
@@ -306,7 +314,7 @@ export default function AddPurchaseModal({ visible, onClose, editPurchase, planD
                     </View>
                 </ScrollView>
 
-                <View style={styles.footer}>
+                <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, Spacing.md) }]}>
                     <TouchableOpacity style={styles.cancelBtn} onPress={onClose}>
                         <Text style={styles.cancelBtnText}>Cancel</Text>
                     </TouchableOpacity>
@@ -373,9 +381,9 @@ const styles = StyleSheet.create({
         // Shadow for header
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 3,
-        elevation: 4,
+        shadowOpacity: 0.15, // Match enhanced style
+        shadowRadius: 4,
+        elevation: 5,
         zIndex: 10,
     },
     headerTitle: {
@@ -516,9 +524,9 @@ const styles = StyleSheet.create({
         // Shadow for footer
         shadowColor: '#000',
         shadowOffset: { width: 0, height: -3 },
-        shadowOpacity: 0.1,
-        shadowRadius: 3,
-        elevation: 8,
+        shadowOpacity: 0.15, // Match enhanced style
+        shadowRadius: 5,
+        elevation: 10,
     },
     cancelBtn: {
         paddingHorizontal: 20,

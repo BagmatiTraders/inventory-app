@@ -7,6 +7,7 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Picker } from '@react-native-picker/picker';
 import { DarazRepo, DarazOrder, DarazStore } from '../db/darazRepo';
+import { DarazOrderDetailModal } from '../components/DarazOrderDetailModal';
 
 const STATUS_FILTERS = ['All', 'Pending', 'Packed', 'RTS', 'Shipped'];
 
@@ -17,6 +18,8 @@ export default function DarazOrdersScreen() {
     const [orders, setOrders] = useState<DarazOrder[]>([]);
     const [stores, setStores] = useState<DarazStore[]>([]);
     const [loading, setLoading] = useState(false);
+    const [selectedOrder, setSelectedOrder] = useState<DarazOrder | null>(null);
+    const [detailVisible, setDetailVisible] = useState(false);
 
     // Pagination State
     const [page, setPage] = useState(0);
@@ -157,6 +160,11 @@ export default function DarazOrdersScreen() {
             currency: 'NPR',
             minimumFractionDigits: 0
         }).format(value).replace('NPR', 'रु');
+    };
+
+    const handleOrderPress = (order: DarazOrder) => {
+        setSelectedOrder(order);
+        setDetailVisible(true);
     };
 
     return (
@@ -356,7 +364,11 @@ export default function DarazOrdersScreen() {
                         const shortTime = dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
                         return (
-                            <View style={[styles.orderCard, isCancelled && styles.cancelledCard]}>
+                            <TouchableOpacity
+                                style={[styles.orderCard, isCancelled && styles.cancelledCard]}
+                                onPress={() => handleOrderPress(item)}
+                                activeOpacity={0.7}
+                            >
                                 <View style={styles.cardRow}>
                                     <View>
                                         <Text style={styles.orderId}>#{item.order_number}</Text>
@@ -393,7 +405,7 @@ export default function DarazOrdersScreen() {
                                     </View>
                                     <Text style={styles.totalAmountText}>{formatPrice(item.grand_total)}</Text>
                                 </View>
-                            </View>
+                            </TouchableOpacity>
                         );
                     }}
                     ListEmptyComponent={<Text style={styles.emptyText}>No orders found</Text>}
@@ -406,6 +418,12 @@ export default function DarazOrdersScreen() {
                     <View style={styles.scannerOverlay}><View style={styles.scanFrame} /><Text style={styles.scanText}>Scanning...</Text></View>
                 </View>
             </Modal>
+
+            <DarazOrderDetailModal
+                order={selectedOrder}
+                visible={detailVisible}
+                onClose={() => setDetailVisible(false)}
+            />
         </View>
     );
 }

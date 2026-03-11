@@ -1,7 +1,7 @@
 import React from 'react';
 import { Alert, View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { User, ChevronRight, Settings, CreditCard, BarChart2, RefreshCcw, LogOut, TrendingUp } from 'lucide-react-native';
+import { User, ChevronRight, Settings, CreditCard, BarChart2, RefreshCcw, LogOut, TrendingUp, Receipt, Bell } from 'lucide-react-native';
 import { useNavigation } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
 import { Colors } from '../theme/colors';
@@ -26,6 +26,12 @@ export default function MoreScreen() {
             navigation.navigate('Profile');
         } else if (label === 'Profit Tracker') {
             navigation.navigate('ProfitTracker' as any);
+        } else if (label === 'Expenses') {
+            navigation.navigate('Expense');
+        } else if (label === 'Reminder') {
+            navigation.navigate('Reminder');
+        } else if (label === 'Account / Billing') {
+            navigation.navigate('AccountBilling');
         } else {
             Alert.alert('Menu Item Clicked', `You pressed ${label}`);
         }
@@ -59,6 +65,8 @@ export default function MoreScreen() {
         {
             title: 'Management',
             items: [
+                { label: 'Expenses', icon: <Receipt size={20} color={Colors.danger} /> },
+                { label: 'Reminder', icon: <Bell size={20} color={Colors.warning || '#F59E0B'} /> },
                 { label: 'Order Status Sync', icon: <RefreshCcw size={20} color={Colors.primary} /> },
                 { label: 'Profit Tracker', icon: <TrendingUp size={20} color={Colors.success} /> },
                 { label: 'Account / Billing', icon: <CreditCard size={20} color={Colors.text} /> },

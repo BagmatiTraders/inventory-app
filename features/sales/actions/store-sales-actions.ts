@@ -187,6 +187,17 @@ export async function createStoreSale(saleData: CreateStoreSaleData) {
         return { error: itemsError.message }
     }
 
+    // Log the sale creation activity
+    try {
+        const { logActivity } = await import('@/features/activity/actions/log-activity')
+        await logActivity('sale_created', {
+            customer_name: saleData.customer_name?.trim() || 'User',
+            amount: totalAmount
+        })
+    } catch (logError) {
+        console.error('Failed to log sale creation:', logError)
+    }
+
     revalidatePath('/dashboard/sales/store-sales')
     return { data: sale }
 }
@@ -239,6 +250,17 @@ export async function updateStoreSale(id: string, saleData: CreateStoreSaleData)
     if (itemsError) {
         console.error('Error updating sale items:', itemsError)
         return { error: itemsError.message }
+    }
+
+    // Log the sale update activity
+    try {
+        const { logActivity } = await import('@/features/activity/actions/log-activity')
+        await logActivity('sale_updated', {
+            customer_name: saleData.customer_name?.trim() || 'User',
+            amount: totalAmount
+        })
+    } catch (logError) {
+        console.error('Failed to log sale update:', logError)
     }
 
     revalidatePath('/dashboard/sales/store-sales')

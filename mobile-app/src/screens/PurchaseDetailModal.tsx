@@ -58,7 +58,12 @@ export default function PurchaseDetailModal({ visible, onClose, purchase, onEdit
     );
 
     return (
-        <Modal visible={visible} animationType="fade" transparent={true}>
+        <Modal
+            visible={visible}
+            animationType="fade"
+            transparent={true}
+            onRequestClose={onClose}
+        >
             <View style={styles.overlay}>
                 <View style={styles.modalContainer}>
                     {/* Header */}

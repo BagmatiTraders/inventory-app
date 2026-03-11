@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase';
 import { API_CONFIG } from '../config/api';
+import { getDb } from './database';
 
 export interface DarazOrder {
     id: string;
@@ -168,15 +169,55 @@ export const DarazRepo = {
                         .filter(item => item.order_id === order.id)
                         .map(item => ({
                             name: item.product_name,
+                            product_name: item.product_name,
+                            product_id: item.product_id, // UUID
                             quantity: item.quantity,
                             item_price: item.amount,
-                            paid_price: item.total_amount
+                            paid_price: item.total_amount,
+                            seller_sku: item.seller_sku
                         }))
                 })) as DarazOrder[];
             }
         }
 
         return formattedData as DarazOrder[];
+    },
+
+    async getOrderById(id: string): Promise<DarazOrder | null> {
+        const { data, error } = await supabase
+            .from('daraz_orders')
+            .select(`
+                *,
+                online_stores!inner(seller_account)
+            `)
+            .eq('id', id)
+            .maybeSingle();
+
+        if (error || !data) return null;
+
+        const order = {
+            ...data,
+            seller_account: data.online_stores?.seller_account || 'Unknown'
+        };
+
+        const { data: itemsData } = await supabase
+            .from('daraz_order_items')
+            .select('*')
+            .eq('order_id', id)
+            .order('item_sequence', { ascending: true });
+
+        if (itemsData) {
+            order.items_detail = itemsData.map(item => ({
+                name: item.product_name,
+                product_name: item.product_name,
+                product_id: item.product_id, // UUID
+                quantity: item.quantity,
+                item_price: item.amount,
+                seller_sku: item.seller_sku
+            }));
+        }
+
+        return order as DarazOrder;
     },
 
     async getDailySalesReport(): Promise<DailySalesData[]> {
@@ -741,7 +782,10 @@ export const DarazRepo = {
             query = query.or('daraz_fees.is.null,daraz_fees.lte.0,total_purchase_cost.lte.0');
         }
 
-        const { data, error } = await query;
+        const { data, error } = await query
+            .order('delivered_by_daraz', { ascending: false, nullsFirst: false })
+            .order('delivered_at', { ascending: false, nullsFirst: false })
+            .limit(10000);
         if (error) throw error;
 
         const dateStats: Record<string, any> = {};
@@ -760,9 +804,10 @@ export const DarazRepo = {
                 dateStats[dateKey].statsBySeller[seller] = { profit: 0, missing: 0, revenue: 0, cost: 0 };
             }
 
-            const orderProfit = order.estimated_profit || 0;
-            const orderRevenue = order.total_revenue || 0;
-            const orderCost = order.total_purchase_cost || 0;
+
+            const orderProfit = parseFloat(order.estimated_profit) || 0;
+            const orderRevenue = parseFloat(order.total_revenue) || 0;
+            const orderCost = parseFloat(order.total_purchase_cost) || 0;
             const isMissing = !orderCost || orderCost <= 0;
 
             dateStats[dateKey].totalProfit += orderProfit;
@@ -805,6 +850,129 @@ export const DarazRepo = {
         } catch (error: any) {
             console.error('Error syncing order profit:', error);
             throw error;
+        }
+    },
+
+    async getOrderStock(identifiers: string[]): Promise<Record<string, number>> {
+        try {
+            const db = await getDb();
+            if (identifiers.length === 0) return {};
+
+            const placeholders = identifiers.map(() => '?').join(',');
+            // Try to match by ID (UUID) first, then by name as fallback
+            const rows = await db.getAllAsync<{ id: string, name: string, stock: number }>(
+                `SELECT id, name, stock FROM products WHERE id IN (${placeholders}) OR name IN (${placeholders})`,
+                [...identifiers, ...identifiers]
+            );
+
+            const stockMap: Record<string, number> = {};
+            // First pass: names for fallback
+            rows.forEach(row => {
+                stockMap[row.name] = row.stock;
+            });
+            // Second pass: IDs for precision (overwrites if matching)
+            rows.forEach(row => {
+                stockMap[row.id] = row.stock;
+            });
+
+            return stockMap;
+        } catch (error) {
+            console.error('Error fetching order stock:', error);
+            return {};
+        }
+    },
+
+    async getLiveOrderStock(identifiers: string[]): Promise<Record<string, number>> {
+        try {
+            if (identifiers.length === 0) return {};
+
+            // Split identifiers into valid UUIDs and others (names)
+            const uuids = identifiers.filter(id => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id));
+            const names = identifiers.filter(id => !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id));
+
+            let query = supabase.from('inventory_price_reports_view').select('product_id, product_name, current_stock');
+
+            const conditions: string[] = [];
+            if (uuids.length > 0) {
+                conditions.push(`product_id.in.(${uuids.join(',')})`);
+            }
+            if (names.length > 0) {
+                // Ensure names are properly quoted for the filter
+                conditions.push(`product_name.in.(${names.map(n => `"${n.replace(/"/g, '\\"')}"`).join(',')})`);
+            }
+
+            if (conditions.length > 0) {
+                query = query.or(conditions.join(','));
+            } else {
+                return {};
+            }
+
+            const { data, error } = await query;
+
+            if (error) throw error;
+
+            const stockMap: Record<string, number> = {};
+            data?.forEach(row => {
+                // Map by both name and ID for robust matching
+                stockMap[row.product_name] = row.current_stock;
+                stockMap[row.product_id] = row.current_stock;
+            });
+
+            return stockMap;
+        } catch (error) {
+            console.error('Error fetching live order stock:', error);
+            // Fallback to local stock if live fetch fails
+            return this.getOrderStock(identifiers);
+        }
+    },
+
+    async isOrderNotified(orderId: string): Promise<boolean> {
+        try {
+            const db = await getDb();
+            const result = await db.getFirstAsync<{ id: string }>('SELECT id FROM notified_orders WHERE id = ?', [orderId]);
+            return !!result;
+        } catch (e) {
+            return false;
+        }
+    },
+
+    async getProductGlobalDemand(productId: string, productName: string): Promise<number> {
+        try {
+            // Build OR condition safely
+            let orCondition = `product_name.eq."${productName}"`;
+            if (productId && productId.length > 10) {
+                orCondition = `product_id.eq.${productId},` + orCondition;
+            }
+
+            // Using daraz_orders!inner to filter by order status
+            const { data: filteredData, error: filteredError } = await supabase
+                .from('daraz_order_items')
+                .select(`
+                    quantity,
+                    daraz_orders!inner (
+                        order_status
+                    )
+                `)
+                .or(orCondition)
+                .in('daraz_orders.order_status', ['Pending', 'Packed', 'Ready to Ship', 'pending', 'packed', 'ready_to_ship']);
+
+            if (filteredError) throw filteredError;
+
+            const total = (filteredData || []).reduce((sum, item) => sum + (item.quantity || 0), 0);
+            return total;
+
+        } catch (error) {
+            console.error('Error fetching global demand:', error);
+            return 0;
+        }
+    },
+
+    async markOrderNotified(orderId: string) {
+        try {
+            const db = await getDb();
+            await db.runAsync('INSERT OR IGNORE INTO notified_orders (id) VALUES (?)', [orderId]);
+        } catch (e) {
+            console.error('Failed to mark order as notified:', e);
         }
     }
 };

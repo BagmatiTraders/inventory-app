@@ -36,6 +36,10 @@ export default function HomeScreen() {
             navigation.navigate('StockAdjustment');
         } else if (label === 'Capture') {
             navigation.navigate('Capture');
+        } else if (label === 'Expense') {
+            navigation.navigate('Expense');
+        } else if (label === 'Reminder') {
+            navigation.navigate('Reminder');
         } else {
             Alert.alert('Coming Soon', `${label} detail view is under development.`);
         }
@@ -131,6 +135,11 @@ export default function HomeScreen() {
                         icon={<Receipt size={24} color={Colors.danger} />}
                         onPress={() => handlePress('Expense')}
                         color={Colors.dangerSoft}
+                    />
+                    <ShortcutButton
+                        label="Reminder"
+                        icon={<Bell size={24} color={Colors.primary} />}
+                        onPress={() => handlePress('Reminder')}
                     />
                     <ShortcutButton
                         label="Add Suppliers"

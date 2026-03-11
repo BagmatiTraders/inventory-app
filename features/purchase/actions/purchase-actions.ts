@@ -217,6 +217,29 @@ export async function createPurchase(data: CreatePurchaseData) {
     // Auto-complete any pending plans for this product
     await completePlanForProduct(data.product_id)
 
+    // Log the purchase creation activity
+    try {
+        const { logActivity } = await import('@/features/activity/actions/log-activity')
+
+        // Get supplier name if available
+        let supplierName = undefined
+        if (data.supplier_id) {
+            const { data: supplier } = await supabase
+                .from('suppliers')
+                .select('supplier_name')
+                .eq('id', data.supplier_id)
+                .single()
+            supplierName = supplier?.supplier_name
+        }
+
+        await logActivity('purchase_created', {
+            supplier_name: supplierName,
+            amount: data.total_amount
+        })
+    } catch (logError) {
+        console.error('Failed to log purchase creation:', logError)
+    }
+
     revalidatePath('/dashboard/purchase/purchase-entry')
     revalidatePath('/dashboard/purchase/daily-purchase-list')
 
