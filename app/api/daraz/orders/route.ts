@@ -1,9 +1,10 @@
-
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createAdminClient } from '@/lib/supabase/server'
 import crypto from 'crypto'
 import axios from 'axios'
 import { syncOrderPurchaseCost } from '@/features/sales/actions/report-actions'
+
+export const dynamic = 'force-dynamic'
 
 function signRequest(apiName: string, params: Record<string, any>, appSecret: string) {
     const keys = Object.keys(params).sort()
@@ -399,10 +400,25 @@ export async function GET(request: NextRequest) {
             const invoiceMap = new Map<string, string>()
             if (ordersRequiringInvoice.length > 0) {
                 console.log(`[DarazSync] Generating ${ordersRequiringInvoice.length} invoice numbers`)
-                for (const order of ordersRequiringInvoice) {
-                    const { data: invData, error: invErr } = await supabase.rpc('generate_daraz_invoice_number')
-                    if (!invErr && invData) {
-                        invoiceMap.set(String(order.order_id), invData)
+                const { data: baseInvData, error: invErr } = await supabase.rpc('generate_daraz_invoice_number')
+                
+                if (!invErr && baseInvData) {
+                    const match = baseInvData.match(/(.*- )(\d+)$/);
+                    if (match && match.length === 3) {
+                        const prefix = match[1];
+                        let startingNum = parseInt(match[2], 10);
+                        
+                        for (let i = 0; i < ordersRequiringInvoice.length; i++) {
+                            const order = ordersRequiringInvoice[i];
+                            const currentInv = `${prefix}${startingNum + i}`;
+                            invoiceMap.set(String(order.order_id), currentInv);
+                        }
+                    } else {
+                        // Fallback if regex doesn't match
+                        for (let i = 0; i < ordersRequiringInvoice.length; i++) {
+                            const order = ordersRequiringInvoice[i];
+                            invoiceMap.set(String(order.order_id), i === 0 ? baseInvData : `${baseInvData}-${i}`);
+                        }
                     }
                 }
             }
@@ -518,14 +534,25 @@ export async function GET(request: NextRequest) {
                             let attempt = 0
                             let inserted = false
 
-                            while (attempt < 3 && !inserted) {
+                            while (attempt < 4 && !inserted) {
                                 try {
-                                    // If invoice conflict, generate a new invoice number
+                                    // If invoice conflict, manually increment the invoice string or append random suffix
+                                    // Bypasses Next.js fetch caching which repeats identical RPC data
                                     if (attempt > 0) {
-                                        const { data: newInvoice } = await supabase.rpc('generate_daraz_invoice_number')
-                                        if (newInvoice) {
-                                            orderToInsert.payload.invoice_number = newInvoice
-                                            console.log(`[DarazSync] Regenerated invoice for order ${orderToInsert.payload.order_number}: ${newInvoice}`)
+                                        const currentInv = orderToInsert.payload.invoice_number;
+                                        if (currentInv) {
+                                            const match = currentInv.match(/(.*- )(\d+)$/);
+                                            if (match && match.length === 3) {
+                                                 const prefix = match[1];
+                                                 const num = parseInt(match[2], 10);
+                                                 const newInvoiceStr = `${prefix}${num + attempt}`;
+                                                 orderToInsert.payload.invoice_number = newInvoiceStr;
+                                                 console.log(`[DarazSync] Regenerated sequence invoice for order ${orderToInsert.payload.order_number}: ${newInvoiceStr}`);
+                                            } else {
+                                                 const randAppendix = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+                                                 orderToInsert.payload.invoice_number = `${currentInv}-${randAppendix}`;
+                                                 console.log(`[DarazSync] Appended random suffix for order ${orderToInsert.payload.order_number}`);
+                                            }
                                         }
                                     }
 

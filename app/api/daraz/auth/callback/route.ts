@@ -46,11 +46,12 @@ export async function GET(request: NextRequest) {
         }
 
         const apiPath = '/auth/token/create'
+        const authApiUrl = process.env.DARAZ_API_URL?.trim() || 'https://api.daraz.com.np/rest'
         params.sign = signRequest(apiPath, params, appSecret)
 
-        console.log('Requesting Daraz token...', { url: `${apiUrl}${apiPath}`, params })
+        console.log('Requesting Daraz token...', { url: `${authApiUrl}${apiPath}`, params })
 
-        const response = await axios.post(`${apiUrl}${apiPath}`, null, { params })
+        const response = await axios.post(`${authApiUrl}${apiPath}`, null, { params })
         const data = response.data
 
         if (data.access_token) {

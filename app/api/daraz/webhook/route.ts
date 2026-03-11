@@ -39,8 +39,8 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
         }
 
-        const appKey = process.env.NEXT_PUBLIC_DARAZ_APP_KEY
-        const appSecret = process.env.DARAZ_APP_SECRET
+        const appKey = process.env.NEXT_PUBLIC_DARAZ_APP_KEY?.trim()
+        const appSecret = process.env.DARAZ_APP_SECRET?.trim()
 
         if (!appKey || !appSecret) {
             console.error('[Webhook] Missing Daraz credentials')

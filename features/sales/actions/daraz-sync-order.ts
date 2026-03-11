@@ -53,9 +53,9 @@ function generateDeterministicId(seed: string): string {
  * This is used by both the manual "Refresh" button and the automated Webhook.
  */
 export async function syncSingleDarazOrderAction(orderId: string, storeId: string) {
-    const appKey = process.env.NEXT_PUBLIC_DARAZ_APP_KEY
-    const appSecret = process.env.DARAZ_APP_SECRET
-    const apiUrl = process.env.DARAZ_API_URL || 'https://api.daraz.com.np/rest'
+    const appKey = process.env.NEXT_PUBLIC_DARAZ_APP_KEY?.trim()
+    const appSecret = process.env.DARAZ_APP_SECRET?.trim()
+    const apiUrl = process.env.DARAZ_API_URL?.trim() || 'https://api.daraz.com.np/rest'
 
     if (!appKey || !appSecret) {
         throw new Error('Daraz API configuration missing')
@@ -183,13 +183,32 @@ export async function syncSingleDarazOrderAction(orderId: string, storeId: strin
             upsertPayload.delivered_at = eventTime
         }
 
-        const { data: savedOrder, error: saveError } = await supabase
+        const { data: initialSavedOrder, error: saveError } = await supabase
             .from('daraz_orders')
             .upsert(upsertPayload, { onConflict: 'order_id' })
             .select()
             .single()
 
-        if (saveError) throw new Error(`Failed to save order: ${saveError.message}`)
+        let savedOrder = initialSavedOrder;
+        if (saveError) {
+             if (saveError.code === '23505' && saveError.message.includes('invoice_number_key')) {
+                 // Collision on single insert. Append a random suffix to bypass Next.js cache and guarantee uniqueness
+                 const randAppendix = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+                 upsertPayload.invoice_number = `${invoiceNumber}-${randAppendix}`;
+                 console.log(`[DarazSync] Invoice collision detected for order ${order.order_number}. Retrying with: ${upsertPayload.invoice_number}`);
+                 
+                 const { data: retrySavedOrder, error: retrySaveError } = await supabase
+                      .from('daraz_orders')
+                      .upsert(upsertPayload, { onConflict: 'order_id' })
+                      .select()
+                      .single()
+                 
+                 if (retrySaveError) throw new Error(`Failed to save order on retry: ${retrySaveError.message}`)
+                 savedOrder = retrySavedOrder
+             } else {
+                 throw new Error(`Failed to save order: ${saveError.message}`)
+             }
+        }
 
         // 5. Sync items for reports
         if (items.length > 0 && savedOrder) {
