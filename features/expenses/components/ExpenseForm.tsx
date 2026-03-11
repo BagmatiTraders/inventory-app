@@ -146,7 +146,7 @@ export function ExpenseForm({ expense, mode = 'create' }: ExpenseFormProps) {
                         <FormField
                             control={form.control}
                             name="date"
-                            render={({ field }) => (
+                            render={({ field }: { field: any }) => (
                                 <FormItem>
                                     <FormLabel>Date</FormLabel>
                                     <FormControl>
@@ -160,7 +160,7 @@ export function ExpenseForm({ expense, mode = 'create' }: ExpenseFormProps) {
                         <FormField
                             control={form.control}
                             name="category"
-                            render={({ field }) => (
+                            render={({ field }: { field: any }) => (
                                 <FormItem>
                                     <FormLabel>Category</FormLabel>
                                     <FormControl>
@@ -190,7 +190,7 @@ export function ExpenseForm({ expense, mode = 'create' }: ExpenseFormProps) {
                         <FormField
                             control={form.control}
                             name="expense_item"
-                            render={({ field }) => (
+                            render={({ field }: { field: any }) => (
                                 <FormItem>
                                     <FormLabel>Expense Item</FormLabel>
                                     <FormControl>
@@ -229,7 +229,7 @@ export function ExpenseForm({ expense, mode = 'create' }: ExpenseFormProps) {
                         <FormField
                             control={form.control}
                             name="amount"
-                            render={({ field }) => (
+                            render={({ field }: { field: any }) => (
                                 <FormItem>
                                     <FormLabel>Amount</FormLabel>
                                     <FormControl>
@@ -248,7 +248,7 @@ export function ExpenseForm({ expense, mode = 'create' }: ExpenseFormProps) {
                         <FormField
                             control={form.control}
                             name="remarks"
-                            render={({ field }) => (
+                            render={({ field }: { field: any }) => (
                                 <FormItem>
                                     <FormLabel>
                                         Remarks

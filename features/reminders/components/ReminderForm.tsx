@@ -131,7 +131,7 @@ export function ReminderForm({ reminder, mode = 'create' }: ReminderFormProps) {
                         <FormField
                             control={form.control}
                             name="date"
-                            render={({ field }) => (
+                            render={({ field }: { field: any }) => (
                                 <FormItem>
                                     <FormLabel>Date</FormLabel>
                                     <FormControl>
@@ -145,7 +145,7 @@ export function ReminderForm({ reminder, mode = 'create' }: ReminderFormProps) {
                         <FormField
                             control={form.control}
                             name="type"
-                            render={({ field }) => (
+                            render={({ field }: { field: any }) => (
                                 <FormItem>
                                     <FormLabel>Type</FormLabel>
                                     <FormControl>
@@ -166,7 +166,7 @@ export function ReminderForm({ reminder, mode = 'create' }: ReminderFormProps) {
                             <FormField
                                 control={form.control}
                                 name="reminder_datetime"
-                                render={({ field }) => (
+                                render={({ field }: { field: any }) => (
                                     <FormItem>
                                         <FormLabel>Reminder Date & Time</FormLabel>
                                         <FormControl>
@@ -181,7 +181,7 @@ export function ReminderForm({ reminder, mode = 'create' }: ReminderFormProps) {
                         <FormField
                             control={form.control}
                             name="reminder"
-                            render={({ field }) => (
+                            render={({ field }: { field: any }) => (
                                 <FormItem>
                                     <FormLabel>Reminder</FormLabel>
                                     <FormControl>
@@ -198,7 +198,7 @@ export function ReminderForm({ reminder, mode = 'create' }: ReminderFormProps) {
                         <FormField
                             control={form.control}
                             name="status"
-                            render={({ field }) => (
+                            render={({ field }: { field: any }) => (
                                 <FormItem>
                                     <FormLabel>Status</FormLabel>
                                     <FormControl>
