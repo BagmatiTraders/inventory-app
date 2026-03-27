@@ -391,15 +391,30 @@ export async function getSupplierDetailedTransactions({
         if (error) return { error: error.message }
 
         // Normalize
-        data = (resData || []).map((p: any) => ({
+        const resTransactions = (resData || []).map((p: any) => ({
             id: p.id,
             date: p.purchase_date,
             description: `${p.purchase_type} - ${p.product?.product_name}`,
             reference: p.payment_type,
             amount: p.total_amount,
             type: p.purchase_type, // 'Buy' | 'Sell'
+            quantity: p.quantity,
+            unit_amount: p.unit_amount,
             meta: p
         }))
+
+        // Fetch comments for these purchases
+        const purchaseIds = resTransactions.map(t => t.id)
+        const { data: comments } = await supabase
+            .from('ledger_comments')
+            .select('*')
+            .in('purchase_id', purchaseIds)
+
+        data = resTransactions.map(t => ({
+            ...t,
+            comments: (comments || []).filter((c: any) => c.purchase_id === t.id)
+        }))
+
         count = resCount || 0
     }
 
@@ -449,7 +464,7 @@ export async function getSupplierFullLedger({
     // 3. Fetch all purchases for this supplier
     let purchaseQuery = supabase
         .from('purchases')
-        .select('id, purchase_date, purchase_type, payment_type, total_amount, product_id, products(product_name)')
+        .select('id, purchase_date, purchase_type, payment_type, total_amount, product_id, quantity, unit_amount, products(product_name)')
         .eq('supplier_id', supplierId)
         .order('purchase_date', { ascending: false })
 
@@ -502,6 +517,8 @@ export async function getSupplierFullLedger({
             date: p.purchase_date,
             particular: (p.products as any)?.product_name || 'Unknown Product',
             particular_detail: `${paymentLabel} ${typeLabel}`,
+            quantity: p.quantity,
+            unit_amount: p.unit_amount,
             debit,
             credit,
             running_amount: 0,
@@ -545,5 +562,130 @@ export async function getSupplierFullLedger({
         ledgerEntries[i].running_amount = runningBalance
     }
 
+    // 8. Fetch comments for all items
+    const purchaseIds = ledgerEntries.filter(e => e.type === 'purchase').map(e => e.id)
+    const transactionIds = ledgerEntries.filter(e => e.type === 'transaction').map(e => e.id)
+
+    const { data: comments } = await supabase
+        .from('ledger_comments')
+        .select('*')
+        .or(`purchase_id.in.(${purchaseIds.join(',')}),transaction_id.in.(${transactionIds.join(',')})`)
+
+    ledgerEntries.forEach(entry => {
+        entry.comments = (comments || []).filter((c: any) =>
+            (entry.type === 'purchase' && c.purchase_id === entry.id) ||
+            (entry.type === 'transaction' && c.transaction_id === entry.id)
+        )
+    })
+
     return { ledger: ledgerEntries, supplierName }
+}
+
+// ============================================================================
+// SHARING & COMMENTS
+// ============================================================================
+
+export async function createLedgerShare({
+    supplierId,
+    fiscalYearId
+}: {
+    supplierId: string
+    fiscalYearId?: string
+}) {
+    const supabase = await createClient()
+    const token = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15)
+
+    const { data, error } = await supabase
+        .from('supplier_ledger_shares')
+        .insert({
+            supplier_id: supplierId,
+            token,
+            fiscal_year_id: fiscalYearId,
+            expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString() // 30 days
+        })
+        .select()
+        .single()
+
+    if (error) return { error: error.message }
+    return { share: data }
+}
+
+export async function getLedgerByToken(token: string) {
+    const supabase = await createClient()
+
+    // 1. Get Share Info
+    const { data: share, error: shareError } = await supabase
+        .from('supplier_ledger_shares')
+        .select('*, supplier:suppliers(supplier_name)')
+        .eq('token', token)
+        .single()
+
+    if (shareError || !share) return { error: 'Invalid or expired share link' }
+
+    // 2. Fetch Ledger
+    const ledgerData = await getSupplierFullLedger({
+        supplierId: share.supplier_id,
+        fiscalYearId: share.fiscal_year_id
+    })
+
+    return {
+        ...ledgerData,
+        shareInfo: share
+    }
+}
+
+export async function addLedgerComment({
+    supplierId,
+    purchaseId,
+    transactionId,
+    content,
+    author
+}: {
+    supplierId: string
+    purchaseId?: string
+    transactionId?: string
+    content: string
+    author: 'Supplier' | 'Admin'
+}) {
+    const supabase = await createClient()
+
+    // Verify 15-day rule (if supplier)
+    if (author === 'Supplier') {
+        let targetDate: string | null = null
+        if (purchaseId) {
+            const { data: p } = await supabase.from('purchases').select('purchase_date').eq('id', purchaseId).single()
+            targetDate = p?.purchase_date || null
+        } else if (transactionId) {
+            const { data: t } = await supabase.from('supplier_transactions').select('transaction_date').eq('id', transactionId).single()
+            targetDate = t?.transaction_date || null
+        }
+
+        if (targetDate) {
+            const diff = Math.abs(new Date().getTime() - new Date(targetDate).getTime())
+            const days = diff / (1000 * 60 * 60 * 24)
+            if (days > 15) return { error: 'Comments are only allowed on transactions within the last 15 days.' }
+        }
+    }
+
+    const { data, error } = await supabase
+        .from('ledger_comments')
+        .insert({
+            supplier_id: supplierId,
+            purchase_id: purchaseId,
+            transaction_id: transactionId,
+            content,
+            author
+        })
+        .select()
+        .single()
+
+    if (error) return { error: error.message }
+    return { comment: data }
+}
+
+export async function deleteLedgerComment(commentId: string) {
+    const supabase = await createClient()
+    const { error } = await supabase.from('ledger_comments').delete().eq('id', commentId)
+    if (error) return { error: error.message }
+    return { success: true }
 }

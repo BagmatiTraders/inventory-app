@@ -66,7 +66,8 @@ export default function PurchaseForm({ onClose, onSuccess, editMode = false, pur
             .then(({ suppliers }) => {
                 const options = suppliers.map((s: any) => ({
                     value: s.id,
-                    label: s.supplier_name
+                    label: s.supplier_name,
+                    price_requirement: s.price_requirement !== false
                 }))
                 setSupplierOptions(options)
             })
@@ -87,6 +88,7 @@ export default function PurchaseForm({ onClose, onSuccess, editMode = false, pur
         total_amount: editMode && purchaseData ? purchaseData.total_amount : 0,
         supplier_id: editMode && purchaseData ? purchaseData.supplier_id : '',
         supplier_name: editMode && purchaseData ? purchaseData.supplier?.supplier_name : '',
+        supplier_price_requirement: editMode && purchaseData ? (purchaseData.supplier?.price_requirement !== false) : true,
         payment_type: editMode && purchaseData ? purchaseData.payment_type : 'Cash',
         purchase_name: editMode && purchaseData ? (purchaseData.purchase_name || '') : (fixedPurchaseName || ''),
         purchase_type: editMode && purchaseData ? (purchaseData.purchase_type || 'Buy') : 'Buy', // Default to Buy if showing extra fields
@@ -122,8 +124,10 @@ export default function PurchaseForm({ onClose, onSuccess, editMode = false, pur
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
 
-        if (!formData.product_id || !formData.quantity || !formData.unit_amount || !formData.supplier_id || !formData.payment_type) {
-            toast.warning('Please fill in all required fields')
+        const isPriceRequired = formData.supplier_price_requirement
+
+        if (!formData.product_id || !formData.quantity || (isPriceRequired && !formData.unit_amount) || !formData.supplier_id || !formData.payment_type) {
+            toast.warning(`Please fill in all required fields${isPriceRequired ? ' (including Unit Amount)' : ''}`)
             return
         }
 
@@ -134,7 +138,7 @@ export default function PurchaseForm({ onClose, onSuccess, editMode = false, pur
                 purchase_date: formData.purchase_date,
                 product_id: formData.product_id,
                 quantity: parseFloat(formData.quantity),
-                unit_amount: parseFloat(formData.unit_amount),
+                unit_amount: formData.unit_amount ? parseFloat(formData.unit_amount) : 0,
                 total_amount: formData.total_amount,
                 supplier_id: formData.supplier_id,
                 payment_type: formData.payment_type,
@@ -260,7 +264,9 @@ export default function PurchaseForm({ onClose, onSuccess, editMode = false, pur
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-xs font-bold mb-1 text-black dark:text-white">Unit Amount <span className="text-red-500">*</span></label>
+                                    <label className="block text-xs font-bold mb-1 text-black dark:text-white">
+                                        Unit Amount {formData.supplier_price_requirement && <span className="text-red-500">*</span>}
+                                    </label>
                                     <input
                                         type="number"
                                         min="0"
@@ -268,7 +274,7 @@ export default function PurchaseForm({ onClose, onSuccess, editMode = false, pur
                                         value={formData.unit_amount}
                                         onChange={(e) => setFormData({ ...formData, unit_amount: e.target.value })}
                                         className="w-full px-3 py-2 text-sm border-2 border-gray-500 dark:border-gray-400 rounded-md bg-white dark:bg-zinc-900"
-                                        placeholder="Amount"
+                                        placeholder={formData.supplier_price_requirement ? "Amount (Required)" : "Amount (Optional)"}
                                     />
                                 </div>
                             </div>
@@ -289,7 +295,12 @@ export default function PurchaseForm({ onClose, onSuccess, editMode = false, pur
                                         options={supplierOptions}
                                         isLoading={loadingSuppliers}
                                         value={formData.supplier_id ? { label: formData.supplier_name, value: formData.supplier_id } : null}
-                                        onChange={(opt: any) => setFormData({ ...formData, supplier_id: opt?.value || '', supplier_name: opt?.label || '' })}
+                                        onChange={(opt: any) => setFormData({ 
+                                            ...formData, 
+                                            supplier_id: opt?.value || '', 
+                                            supplier_name: opt?.label || '',
+                                            supplier_price_requirement: opt?.price_requirement ?? true
+                                        })}
                                         className="text-sm"
                                         placeholder={loadingSuppliers ? "Loading..." : "Select supplier..."}
                                         styles={customSelectStyles}
@@ -371,7 +382,9 @@ export default function PurchaseForm({ onClose, onSuccess, editMode = false, pur
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-xs font-bold mb-1 text-black dark:text-white">Unit Amount <span className="text-red-500">*</span></label>
+                                    <label className="block text-xs font-bold mb-1 text-black dark:text-white">
+                                        Unit Amount {formData.supplier_price_requirement && <span className="text-red-500">*</span>}
+                                    </label>
                                     <input
                                         type="number"
                                         min="0"
@@ -379,7 +392,7 @@ export default function PurchaseForm({ onClose, onSuccess, editMode = false, pur
                                         value={formData.unit_amount}
                                         onChange={(e) => setFormData({ ...formData, unit_amount: e.target.value })}
                                         className="w-full px-3 py-2 text-sm border-2 border-gray-500 dark:border-gray-400 rounded-md bg-white dark:bg-zinc-900"
-                                        placeholder="Amount"
+                                        placeholder={formData.supplier_price_requirement ? "Amount (Required)" : "Amount (Optional)"}
                                     />
                                 </div>
                             </div>
@@ -399,7 +412,12 @@ export default function PurchaseForm({ onClose, onSuccess, editMode = false, pur
                                     options={supplierOptions}
                                     isLoading={loadingSuppliers}
                                     value={formData.supplier_id ? { label: formData.supplier_name, value: formData.supplier_id } : null}
-                                    onChange={(opt: any) => setFormData({ ...formData, supplier_id: opt?.value || '', supplier_name: opt?.label || '' })}
+                                    onChange={(opt: any) => setFormData({ 
+                                        ...formData, 
+                                        supplier_id: opt?.value || '', 
+                                        supplier_name: opt?.label || '',
+                                        supplier_price_requirement: opt?.price_requirement ?? true
+                                    })}
                                     className="text-sm"
                                     placeholder={loadingSuppliers ? "Loading..." : "Select supplier..."}
                                     styles={customSelectStyles}

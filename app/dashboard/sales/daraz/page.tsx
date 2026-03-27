@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 
 import { FileText, Package, BarChart2, TrendingUp, ArrowLeft, RefreshCw } from 'lucide-react'
 import Link from 'next/link'
@@ -23,6 +23,12 @@ export default function DarazSalesMenuPage() {
             icon: FileText,
             href: '/dashboard/sales/daraz/update-status',
             color: 'bg-blue-500'
+        },
+        {
+            name: 'Average Sales Price',
+            icon: TrendingUp,
+            href: '/dashboard/sales/daraz/average-sales-price',
+            color: 'bg-purple-500'
         }
     ]
 

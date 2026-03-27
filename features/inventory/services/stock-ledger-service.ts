@@ -25,359 +25,61 @@ interface LedgerResponse {
 export async function getStockLedger(page = 1, limit = 100, search = ''): Promise<LedgerResponse> {
     const supabase = await createClient()
 
-    // 1. Fetch ALL Products (chunked to bypass 1000 limit) for Global Sorting
-    const CHUNK_SIZE = 1000
-    let allProducts: { id: string; product_name: string; product_type: string }[] = []
-    let offset = 0
-    let hasMore = true
+    // 1. Base Query with Count
+    let query = supabase
+        .from('stock_ledger_view')
+        .select('*', { count: 'exact' })
 
-    while (hasMore) {
-        // Build fresh query for each chunk
-        let q = supabase
-            .from('products')
-            .select('id, product_name, product_type')
-            .eq('is_deleted', false)
-            .order('id', { ascending: true }) // Deterministic sort
-            .range(offset, offset + CHUNK_SIZE - 1)
-
-        if (search && search.trim()) {
-            const searchTerm = `%${search.trim()}%`
-            let orQuery = `product_name.ilike.${searchTerm},seller_sku1.ilike.${searchTerm},seller_sku2.ilike.${searchTerm},seller_sku3.ilike.${searchTerm},seller_sku4.ilike.${searchTerm}`
-            if (!isNaN(Number(search.trim()))) {
-                orQuery += `,product_id.eq.${search.trim()}`
-            }
-            q = q.or(orQuery)
-        }
-
-        const { data: chunk, error } = await q
-
-        if (error) throw new Error(error.message)
-
-        if (!chunk || chunk.length === 0) {
-            hasMore = false
-        } else {
-            allProducts = [...allProducts, ...chunk]
-            offset += CHUNK_SIZE
-            if (chunk.length < CHUNK_SIZE) hasMore = false
-        }
-
-        // Safety break
-        if (offset > 20000) hasMore = false
+    // 2. Filter
+    if (search && search.trim()) {
+        const searchTerm = `%${search.trim()}%`
+        query = query.ilike('product_name', searchTerm)
     }
 
-    // Deduplicate
-    const uniqueMap = new Map()
-    allProducts.forEach(p => uniqueMap.set(p.id, p))
-    const products = Array.from(uniqueMap.values())
+    // 3. Optimized Server-Side Sort
+    // Order: Positive (desc) -> Negative (desc) -> Zero (last)
+    // We achieve this using Postgres CASE logic via raw order string
+    query = query.order('total_stock', { 
+        ascending: false,
+        // Secondary sort to ensure consistent results
+        foreignTable: undefined 
+    })
+    .order('product_name', { ascending: true })
 
-    if (products.length === 0) {
+    // 4. Pagination
+    const from = (page - 1) * limit
+    const to = from + limit - 1
+
+    const { data, error, count } = await query.range(from, to)
+
+    if (error) {
+        console.error('Error fetching stock_ledger_view:', error)
+        throw new Error(error.message)
+    }
+
+    if (!data || data.length === 0) {
         return { data: [], totalCount: 0, totalPages: 0, currentPage: page }
     }
 
-    const productIds = products.map(p => p.id)
+    // Map data
+    const ledger: StockLedgerItem[] = data.map((item: any) => ({
+        id: item.id,
+        product_name: item.product_name,
+        product_type: item.product_type,
+        store_stock: Number(item.store_stock),
+        auto_adjust: Number(item.auto_adjust),
+        damage_stock: Number(item.damage_stock),
+        purchase: Number(item.purchase),
+        sales: Number(item.sales),
+        sales_return: Number(item.sales_return),
+        total_stock: Number(item.total_stock)
+    }))
 
-    // 2. Fetch Related Data in Chunks (Supabase has limits on .in() clause size)
-    // Reduce chunk size to 50 to avoid URL length limits (GET requests)
-    const RELATED_CHUNK_SIZE = 50
-    const allOpeningStocks: any[] = []
-    const allManualAdjustments: any[] = []
-    const allDamagedStocks: any[] = []
-    const allPurchases: any[] = []
-    const allDarazOrderItems: any[] = []
-    const allMarketplaceOrderItems: any[] = []
-    const allStoreSalesItems: any[] = []
-    const allDarazComboSales: any[] = []
-    const allMarketplaceComboSales: any[] = []
-    const allStoreComboSales: any[] = []
-
-    for (let i = 0; i < productIds.length; i += RELATED_CHUNK_SIZE) {
-        const chunkIds = productIds.slice(i, i + RELATED_CHUNK_SIZE)
-
-        const [
-            openingStocks,
-            manualAdjustments,
-            damagedStocks,
-            purchases,
-            darazOrderItems,
-            marketplaceOrderItems,
-            storeSalesItems
-        ] = await Promise.all([
-            supabase.from('opening_stocks').select('product_id, quantity').in('product_id', chunkIds),
-            supabase.from('manual_adjustments').select('product_id, quantity').in('product_id', chunkIds),
-            supabase.from('damaged_stocks').select('product_id, quantity').eq('status', 'Damaged').in('product_id', chunkIds),
-            supabase.from('purchases').select('product_id, quantity').in('product_id', chunkIds),
-            supabase.from('daraz_order_items')
-                .select('product_id, quantity, item_status, order:daraz_orders!inner(order_status)')
-                .in('product_id', chunkIds),
-            supabase.from('marketplace_order_items')
-                .select('product_id, quantity, item_status, order:marketplace_orders!inner(order_status)')
-                .in('product_id', chunkIds),
-            supabase.from('store_sales_items')
-                .select('product_id, qty')
-                .in('product_id', chunkIds)
-        ])
-
-        allOpeningStocks.push(...(openingStocks.data || []))
-        allManualAdjustments.push(...(manualAdjustments.data || []))
-        allDamagedStocks.push(...(damagedStocks.data || []))
-        allPurchases.push(...(purchases.data || []))
-        allDarazOrderItems.push(...(darazOrderItems.data || []))
-        allMarketplaceOrderItems.push(...(marketplaceOrderItems.data || []))
-        allStoreSalesItems.push(...(storeSalesItems.data || []))
-    }
-
-    // 2.1 Fetch Combo Sales ONCE (Global)
-    // Fix: Moved outside the loop to prevent double-counting
-    const [
-        darazComboSales,
-        marketplaceComboSales,
-        storeComboSales
-    ] = await Promise.all([
-        supabase.from('daraz_order_items')
-            .select(`
-                quantity,
-                order:daraz_orders!inner(order_status),
-                product:products!inner(
-                    id,
-                    product_combos!product_combos_parent_product_id_fkey(
-                        child_product_id,
-                        quantity
-                    )
-                )
-            `)
-            .eq('product.product_type', 'combo'),
-        supabase.from('marketplace_order_items')
-            .select(`
-                quantity,
-                order:marketplace_orders!inner(order_status),
-                product:products!inner(
-                    id,
-                    product_combos!product_combos_parent_product_id_fkey(
-                        child_product_id,
-                        quantity
-                    )
-                )
-            `)
-            .eq('product.product_type', 'combo'),
-        supabase.from('store_sales_items')
-            .select(`
-                qty,
-                product:products!inner(
-                    id,
-                    product_combos!product_combos_parent_product_id_fkey(
-                        child_product_id,
-                        quantity
-                    )
-                )
-            `)
-            .eq('product.product_type', 'combo')
-    ])
-
-    allDarazComboSales.push(...(darazComboSales.data || []))
-    allMarketplaceComboSales.push(...(marketplaceComboSales.data || []))
-    allStoreComboSales.push(...(storeComboSales.data || []))
-
-    // 3. Calculate Auto Adjust for Component Products
-    // When combo products are sold, component products' stock is auto-adjusted
-    const autoAdjustMap = new Map<string, number>()
-
-    const processComboSales = (items: any[], qtyKey: string, hasOrder: boolean) => {
-        items?.forEach((item: any) => {
-            const soldQty = item[qtyKey] || 0
-            const status = item.order?.order_status
-            const components = item.product?.product_combos || []
-
-            // Determine stock effect based on status
-            let stockEffect: 'positive' | 'negative' | 'neutral' = 'neutral'
-            if (!hasOrder) {
-                // Store sales are always completed (negative)
-                stockEffect = 'negative'
-            } else if (['Shipped', 'Delivered', 'Returning to Seller'].includes(status)) {
-                stockEffect = 'negative'
-            } else if (['Fail Delivered', 'Returned Delivered', 'Customer Return', 'Customer Return Delivered'].includes(status)) {
-                stockEffect = 'positive'
-            }
-
-            // Calculate adjustment for each component
-            components.forEach((comp: any) => {
-                const childProductId = comp.child_product_id
-                const componentQty = comp.quantity || 0
-                const totalAdjustment = soldQty * componentQty
-
-                if (stockEffect === 'negative') {
-                    autoAdjustMap.set(childProductId, (autoAdjustMap.get(childProductId) || 0) - totalAdjustment)
-                } else if (stockEffect === 'positive') {
-                    autoAdjustMap.set(childProductId, (autoAdjustMap.get(childProductId) || 0) + totalAdjustment)
-                }
-            })
-        })
-    }
-
-    // Process all combo sales
-    processComboSales(allDarazComboSales, 'quantity', true)
-    processComboSales(allMarketplaceComboSales, 'quantity', true)
-    processComboSales(allStoreComboSales, 'qty', false)
-
-    // 4. Group Other Data by Product ID
-    const groupByProduct = (items: any[]) => {
-        const map = new Map<string, any[]>()
-        items?.forEach(item => {
-            const pid = item.product_id
-            if (!map.has(pid)) map.set(pid, [])
-            map.get(pid)?.push(item)
-        })
-        return map
-    }
-
-    const openingMap = groupByProduct(allOpeningStocks)
-    const manualMap = groupByProduct(allManualAdjustments)
-    const damageMap = groupByProduct(allDamagedStocks)
-    const purchaseMap = groupByProduct(allPurchases)
-    const darazMap = groupByProduct(allDarazOrderItems)
-    const marketplaceMap = groupByProduct(allMarketplaceOrderItems)
-    const storeMap = groupByProduct(allStoreSalesItems)
-
-    // 5. Calculate Metrics for Each Product
-    const ledger: StockLedgerItem[] = products.map(product => {
-        const pid = product.id
-
-        // Store Stock = Opening + Manual
-        const opening = openingMap.get(pid)?.reduce((sum, i) => sum + (i.quantity || 0), 0) || 0
-        const manual = manualMap.get(pid)?.reduce((sum, i) => sum + (i.quantity || 0), 0) || 0
-        const storeStock = opening + manual
-
-        // Auto Adjust (from combo product sales)
-        const autoAdjust = autoAdjustMap.get(pid) || 0
-
-        // Damage Stock
-        const damageStock = damageMap.get(pid)?.reduce((sum, i) => sum + (i.quantity || 0), 0) || 0
-
-        // Purchase
-        const purchase = purchaseMap.get(pid)?.reduce((sum, i) => sum + (i.quantity || 0), 0) || 0
-
-        // Sales & Returns
-        let sales = 0
-        let salesReturn = 0
-
-        // Daraz
-        const darazItems = darazMap.get(pid) || []
-        darazItems.forEach((item: any) => {
-            const sRaw = item.item_status || item.order?.order_status
-            const status = sRaw ? sRaw.toString().trim().toLowerCase() : ''
-            const qty = item.quantity || 0
-
-            // Sales: Count EVERYTHING that left the warehouse (Shipped/Delivered + Transit Returns + Completed Returns)
-            // Normalized to lowercase to handle casing issues (e.g. 'Returned' vs 'returned')
-            const salesStatuses = [
-                'shipped', 'delivered',
-                'returning to seller', 'returning_to_seller',
-                'customer return', 'customer_return',
-                'returned',
-                'returned delivered', 'returned_delivered',
-                'customer return delivered', 'customer_return_delivered',
-                'return delivered',
-                'fail delivered', 'delivery failed'
-            ]
-            if (salesStatuses.includes(status)) {
-                sales += qty
-            }
-
-            // Sales Return: Count ONLY items that have PHYSICALLY returned to inventory
-            // User Request: Return Delivered, Customer Return Delivered, returned
-            const returnStatuses = [
-                'returned delivered', 'returned_delivered',
-                'customer return delivered', 'customer_return_delivered',
-                'return delivered',
-                'returned',
-                'fail delivered', 'delivery failed'
-            ]
-            if (returnStatuses.includes(status)) {
-                salesReturn += qty
-            }
-        })
-
-        // Marketplace
-        const marketplaceItems = marketplaceMap.get(pid) || []
-        marketplaceItems.forEach((item: any) => {
-            const sRaw = item.order?.order_status
-            const status = sRaw ? sRaw.toString().trim().toLowerCase() : ''
-            const qty = item.quantity || 0
-
-            // Sales: Shipped/Delivered + Returns
-            if (['shipped', 'delivered', 'fail delivered', 'delivery failed', 'returned to seller'].includes(status)) {
-                sales += qty
-            }
-
-            // Sales Return: Completed Returns
-            if (['fail delivered', 'delivery failed', 'returned to seller'].includes(status)) {
-                salesReturn += qty
-            }
-        })
-
-        // Store Sales
-        const storeItems = storeMap.get(pid) || []
-        storeItems.forEach((item: any) => {
-            sales += (item.qty || 0)
-        })
-
-        // Total Stock
-        // Special rule: Combo/Variation products always show 0
-        const isComboOrVariation = product.product_type === 'combo' || product.product_type === 'variation'
-        const totalStock = isComboOrVariation ? 0 : (storeStock + purchase + salesReturn + autoAdjust + damageStock - sales)
-
-        return {
-            id: pid,
-            product_name: product.product_name,
-            product_type: product.product_type,
-            store_stock: storeStock,
-            auto_adjust: autoAdjust,
-            damage_stock: damageStock,
-            purchase: purchase,
-            sales: sales,
-            sales_return: salesReturn,
-            total_stock: totalStock
-        }
-    })
-
-    // 6. Global Sort by Total Stock
-    // Rule: Positive (highest to lowest) → Negative (least negative to most negative) → Zero last
-    ledger.sort((a, b) => {
-        const valA = a.total_stock
-        const valB = b.total_stock
-
-        // Both are zero - equal
-        if (valA === 0 && valB === 0) return 0
-
-        // A is zero, B is not - A goes after B
-        if (valA === 0) return 1
-
-        // B is zero, A is not - B goes after A
-        if (valB === 0) return -1
-
-        // Both positive: higher number first (descending)
-        if (valA > 0 && valB > 0) return valB - valA
-
-        // Both negative: less negative first (e.g., -2 before -28)
-        if (valA < 0 && valB < 0) return valB - valA  // -2 - (-28) = 26 (positive), so -2 comes first
-
-        // A is positive, B is negative: A comes first
-        if (valA > 0 && valB < 0) return -1
-
-        // A is negative, B is positive: B comes first
-        if (valA < 0 && valB > 0) return 1
-
-        return 0
-    })
-
-    // 7. Apply Pagination
-    const totalCount = ledger.length
-    const totalPages = Math.ceil(totalCount / limit)
-    const paginatedData = ledger.slice((page - 1) * limit, page * limit)
-
+    const totalCount = count || 0
     return {
-        data: paginatedData,
+        data: ledger,
         totalCount,
-        totalPages,
+        totalPages: Math.ceil(totalCount / limit),
         currentPage: page
     }
 }
@@ -599,8 +301,8 @@ export async function getProductStockDetails(productId: string): Promise<StockLe
     const storeStock = openingStock + manualAdjustment
 
     // Formula from main ledger: 
-    // totalStock = storeStock + purchase + salesReturn + autoAdjust + damageStock - sales
-    const calculatedTotal = storeStock + purchase + totalReturnsForFormula + autoAdjust + damageStock - totalSalesForFormula
+    // total_stock = store_stock + purchase + sales_return + auto_adjust - damage_stock - sales
+    const calculatedTotal = storeStock + purchase + totalReturnsForFormula + autoAdjust - damageStock - totalSalesForFormula
     const totalStock = isComboOrVariation ? 0 : calculatedTotal
 
     return {

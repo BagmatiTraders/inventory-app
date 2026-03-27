@@ -8,6 +8,7 @@ interface CreateSupplierData {
     supplier_name: string
     contact_details?: string
     remarks?: string
+    price_requirement?: boolean
 }
 
 interface GetSuppliersParams {
@@ -31,6 +32,7 @@ export async function createSupplier(data: CreateSupplierData) {
                 supplier_name: data.supplier_name,
                 contact_details: data.contact_details,
                 remarks: data.remarks,
+                price_requirement: data.price_requirement ?? true,
                 created_by: user.id
             })
             .select()
@@ -112,6 +114,7 @@ export async function updateSupplier(supplierId: string, data: Partial<CreateSup
                 supplier_name: data.supplier_name,
                 contact_details: data.contact_details,
                 remarks: data.remarks,
+                price_requirement: data.price_requirement,
                 updated_by: user.id
             })
             .eq('id', supplierId)

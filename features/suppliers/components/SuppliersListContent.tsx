@@ -127,6 +127,7 @@ export default function SuppliersListContent({ isEmbedded = false }: SuppliersLi
                                     <th className="px-2 py-1.5 text-xs font-bold uppercase text-gray-600 dark:text-gray-400">Supplier Name</th>
                                     <th className="px-2 py-1.5 text-xs font-bold uppercase text-gray-600 dark:text-gray-400">Contact Details</th>
                                     <th className="px-2 py-1.5 text-xs font-bold uppercase text-gray-600 dark:text-gray-400">Remarks</th>
+                                    <th className="px-2 py-1.5 text-xs font-bold uppercase text-gray-600 dark:text-gray-400">Price Req.</th>
                                     <th className="px-2 py-1.5 text-xs font-bold uppercase text-gray-600 dark:text-gray-400 text-right">Actions</th>
                                 </tr>
                             </thead>
@@ -164,6 +165,11 @@ export default function SuppliersListContent({ isEmbedded = false }: SuppliersLi
                                             </td>
                                             <td className="px-2 py-1.5 text-[13px] text-gray-600 dark:text-gray-400">
                                                 {supplier.remarks || '-'}
+                                            </td>
+                                            <td className="px-2 py-1.5 text-[13px]">
+                                                <span className={`px-1.5 py-0.5 rounded-full text-[11px] font-medium ${supplier.price_requirement !== false ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-gray-100 text-gray-700 dark:bg-zinc-800 dark:text-gray-400'}`}>
+                                                    {supplier.price_requirement !== false ? 'Yes' : 'No'}
+                                                </span>
                                             </td>
                                             <td className="px-2 py-1.5">
                                                 <div className="flex items-center justify-end gap-1">
@@ -205,7 +211,12 @@ export default function SuppliersListContent({ isEmbedded = false }: SuppliersLi
                                 className="bg-white dark:bg-zinc-900 p-3 rounded-lg border shadow-sm active:bg-gray-50 transition-colors"
                             >
                                 <div className="font-medium text-gray-900 dark:text-gray-100">{supplier.supplier_name}</div>
-                                <div className="text-xs text-gray-500 mt-1">{supplier.contact_details || 'No contact info'}</div>
+                                <div className="flex justify-between items-center mt-1">
+                                    <div className="text-xs text-gray-500">{supplier.contact_details || 'No contact info'}</div>
+                                    <div className={`text-[10px] px-1.5 py-0.5 rounded-full ${supplier.price_requirement !== false ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'}`}>
+                                        Price Req: {supplier.price_requirement !== false ? 'Yes' : 'No'}
+                                    </div>
+                                </div>
                             </div>
                         ))
                     )}
@@ -263,6 +274,10 @@ export default function SuppliersListContent({ isEmbedded = false }: SuppliersLi
                             <div>
                                 <label className="text-xs font-bold text-gray-500 uppercase">Remarks</label>
                                 <div className="text-sm">{viewingSupplier.remarks || '-'}</div>
+                            </div>
+                            <div>
+                                <label className="text-xs font-bold text-gray-500 uppercase">Price Requirement</label>
+                                <div className="text-sm">{viewingSupplier.price_requirement !== false ? 'Yes (Unit Amount Required)' : 'No (Unit Amount Optional)'}</div>
                             </div>
                         </div>
                         <div className="p-4 border-t dark:border-zinc-800 flex gap-2">

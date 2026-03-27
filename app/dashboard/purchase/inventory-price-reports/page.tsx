@@ -297,7 +297,10 @@ export default function InventoryPriceReportsPage() {
                             placeholder="Search products..."
                             className="w-full pl-9 pr-4 py-2 text-sm border dark:border-zinc-700 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-zinc-800 dark:text-gray-100 placeholder:text-gray-400"
                             value={search}
-                            onChange={(e) => setSearch(e.target.value)}
+                            onChange={(e) => {
+                                setSearch(e.target.value)
+                                setPagination(prev => ({ ...prev, currentPage: 1 }))
+                            }}
                         />
                     </div>
                 </div>

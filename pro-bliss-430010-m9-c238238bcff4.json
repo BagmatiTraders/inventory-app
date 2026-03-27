@@ -1,0 +1,13 @@
+{
+  "type": "service_account",
+  "project_id": "pro-bliss-430010-m9",
+  "private_key_id": "c238238bcff4d83ba3b22d7ccd16d3b9d045c4be",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQDpc41gW184D2Ko\nrt65ZIGFSEUrQ5fNLTEN8co9t9LnddeuFEUjp/4DdnCqKk7Bsa57wxHPE3deP5XI\npYbkp7Jwc0AQ/Dcg2jEw8zaFEHF+xKGid2JhLTYH+5STgywwziBQq6dui9llfp7H\nfzZrt+be0B4e8X9Fm4nqC5e2Ti9lWFdrgYPbL9H6WOIllSDKkqL3TJpQx1d74+vi\nglUQ7otcpLfobRC/Zd24ONZYYkZ7uM3Kg2TLxSTKu9LHvuJ9Patip+W1kJZU/OHp\nklR/lXsjVXfmgsZW1wvICZaBBgqPNT/Em5U15jI/5sdYQO6sRIaOZUGzoQ3BcXAa\nON9cocaXAgMBAAECggEAJKPcNplgsn3HsE3x6wsZQP/8yzOKqctD/bpLUbB+S5G1\nTj8kMtp1BbobKLoHLmNizU3qh6O4gnRcX+eK6mxfl0KfdYsAZAma2uHxVqUkCw91\nhvhR2oqsBki4IwbdcrOHYuHuH22Xq1RaO1l+Ax4UADiN4bFpllU5KiCzqQtQaQlN\nrxntfEri5GjT+/gxeNte+122BXshzBo7pK+gWz2fRrLt0ZhR4kcwu8ypwgWACVhv\nEer5S+TCmjIpvcl/8Ed4RDojEyh+m6elUVyA3Gzcbc468V4JT6b86W4uLDA0vGVL\nmQ07HIo9Aj+zurWPskeH59NAECQqXdpjmUlyvXBdkQKBgQD/c0hgP40F0Zq836o8\nLYUHJuhejgsxlAlhT7j32fdSu8y4ppc0T2qPlzWhO9kT9zCzO3ufBtF0IMXlCeGg\nVC4sjbL/7FVFKVlWwRAjIhsJqelvsyx1zf93sP/qHoRroohzgF4xhzk8JWA8+BiU\nNJqYjazPpWuWZhHwBHYH8ZqjfQKBgQDp9Ca1DJG+lnT26VQ72GpYmPkhP/5RoN8t\nRQEWdfuwLuaE2A6egC6Zdz2Bs0b+R/3qBJnixHPm2Ls+bjDwe5rBluzZ6DQON62s\ne70427fYmCrbKbS5ONgP7For89gPNIBlxLEqS7yAuAAYU+FpdD+aS4FyBVfMn5kB\ndkBgeu3GowKBgQCzALGi4GWNwkdQOtsruCoTzOvf9mFZqIa6LgdLhu2MiBT4/6PN\nACmH3UmzZiDDoN/7eJ8z3K9BVQXXbYkxtEt25QSd2ZoXENaNuFP6ipevueTeZQuu\nsV9nHBz4jdH1Kru7VCStSDiPMRGzJ5bxo7sBU6XZC+3MQlIngrjC8EaQcQKBgGs3\nGq4KDpi7NusYzyOF8Gad5D4ap6AdC2ohn3f9pdR+CeKDaV+1+qUWAjf4Quaxc2nV\npfhIc50tYdIgiYkL/EYPtoe+ZGzHk23iXzs5Zi16vtklac8gf9P8Su6tlyyQsO7y\njwaFIuQSbui3OCwtvCAnzjDExhHeai5DVQliDKnlAoGBAKuGA0eSUA2EqshB9Vfe\nsXs6ze//9IQ2dOVHs6oyFslgLqSVz3dnxTS3clql/BUp6iVhfgepJ1dPzsxtrgEn\nuSoX1Zjai7wT24ThBHExbGuHmNbMxvoP4y+jokNuxf1DLt8S36Vw6erlxnL4MuYj\nzTf6GiI0s/7/j4qpXkM5fG5A\n-----END PRIVATE KEY-----\n",
+  "client_email": "daraz-sales-price-45@pro-bliss-430010-m9.iam.gserviceaccount.com",
+  "client_id": "109089935422087317224",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/daraz-sales-price-45%40pro-bliss-430010-m9.iam.gserviceaccount.com",
+  "universe_domain": "googleapis.com"
+}

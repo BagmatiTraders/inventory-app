@@ -17,7 +17,8 @@ export function AddSupplierModal({ isOpen, onClose, editMode = false, supplierDa
     const [formData, setFormData] = useState({
         supplier_name: '',
         contact_details: '',
-        remarks: ''
+        remarks: '',
+        price_requirement: true
     })
     const [errors, setErrors] = useState<Record<string, string>>({})
     const queryClient = useQueryClient()
@@ -39,13 +40,15 @@ export function AddSupplierModal({ isOpen, onClose, editMode = false, supplierDa
             setFormData({
                 supplier_name: supplierData.supplier_name || '',
                 contact_details: supplierData.contact_details || '',
-                remarks: supplierData.remarks || ''
+                remarks: supplierData.remarks || '',
+                price_requirement: supplierData.price_requirement ?? true
             })
         } else {
             setFormData({
                 supplier_name: '',
                 contact_details: '',
-                remarks: ''
+                remarks: '',
+                price_requirement: true
             })
         }
         setErrors({})
@@ -181,6 +184,24 @@ export function AddSupplierModal({ isOpen, onClose, editMode = false, supplierDa
                             rows={3}
                             placeholder="Additional notes (optional)"
                         />
+                    </div>
+
+                    {/* Price Requirement */}
+                    <div>
+                        <label className="block text-sm font-medium mb-1">
+                            Price Requirement <span className="text-red-500">*</span>
+                        </label>
+                        <select
+                            value={formData.price_requirement ? 'true' : 'false'}
+                            onChange={(e) => setFormData({ ...formData, price_requirement: e.target.value === 'true' })}
+                            className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-zinc-800 dark:border-zinc-700 bg-white dark:text-gray-50"
+                        >
+                            <option value="true">Yes</option>
+                            <option value="false">No</option>
+                        </select>
+                        <p className="text-[11px] text-gray-500 mt-1 italic">
+                            If 'Yes', Unit Amount will be required in purchase entry.
+                        </p>
                     </div>
 
                     {/* Actions */}

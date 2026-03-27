@@ -208,7 +208,7 @@ export default function SupplierDetailLedgerPage({ params }: { params: Promise<{
                             <thead className="bg-gray-50 dark:bg-zinc-800">
                                 <tr>
                                     <th className="px-4 py-3 text-xs font-bold uppercase text-gray-600 dark:text-gray-400">Date</th>
-                                    <th className="px-4 py-3 text-xs font-bold uppercase text-gray-600 dark:text-gray-400">Description</th>
+                                    <th className="px-4 py-3 text-xs font-bold uppercase text-gray-600 dark:text-gray-400">Particular</th>
                                     <th className="px-4 py-3 text-xs font-bold uppercase text-gray-600 dark:text-gray-400">Payment/Method</th>
                                     <th className="px-4 py-3 text-xs font-bold uppercase text-gray-600 dark:text-gray-400 text-right">Amount</th>
                                 </tr>
@@ -227,16 +227,26 @@ export default function SupplierDetailLedgerPage({ params }: { params: Promise<{
                                         </td>
                                     </tr>
                                 ) : (
-                                    transData.transactions.map((t: any) => (
-                                        <tr key={t.id} className="hover:bg-gray-50 dark:hover:bg-zinc-800/50">
-                                            <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">{t.date}</td>
-                                            <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-gray-100">{t.description}</td>
-                                            <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">{t.reference}</td>
-                                            <td className="px-4 py-3 text-sm text-right font-medium">
-                                                Rs {Number(t.amount).toLocaleString('en-NP', { minimumFractionDigits: 2 })}
-                                            </td>
-                                        </tr>
-                                    ))
+                                    transData.transactions.map((t: any) => {
+                                        const isZeroAmount = Number(t.amount) === 0;
+                                        return (
+                                            <tr key={t.id} className={`hover:bg-gray-50 dark:hover:bg-zinc-800/50 ${isZeroAmount ? 'bg-red-50 dark:bg-red-900/20' : ''}`}>
+                                                <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">{t.date}</td>
+                                                <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-gray-100">
+                                                    {t.description}
+                                                    {t.quantity !== undefined && (
+                                                        <span className="ml-2 text-xs text-gray-500 dark:text-gray-400 font-normal">
+                                                            ({t.quantity} × {t.unit_amount})
+                                                        </span>
+                                                    )}
+                                                </td>
+                                                <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">{t.reference}</td>
+                                                <td className={`px-4 py-3 text-sm text-right font-medium ${isZeroAmount ? 'text-red-600' : ''}`}>
+                                                    Rs {Number(t.amount).toLocaleString('en-NP', { minimumFractionDigits: 2 })}
+                                                </td>
+                                            </tr>
+                                        );
+                                    })
                                 )}
                             </tbody>
                         </table>

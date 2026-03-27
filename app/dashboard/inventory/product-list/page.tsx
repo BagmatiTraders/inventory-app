@@ -1,8 +1,8 @@
-﻿'use client'
+'use client'
 
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { getProducts, exportProducts, deleteAllProducts, toggleProductStatus } from '@/features/inventory/actions/product-actions'
+import { getProducts, exportProducts, toggleProductStatus } from '@/features/inventory/actions/product-actions'
 import { ArrowLeft, Plus, Upload, Download, Search, X, Package, Trash2, Box, Image as ImageIcon } from 'lucide-react'
 import Link from 'next/link'
 import Image from 'next/image'
@@ -77,26 +77,6 @@ export default function ProductListPage() {
             alert(`Export error: ${error.message}`)
         }
     }
-
-    const handleDeleteAll = async () => {
-        if (!confirm('âš ï¸ WARNING: This will delete ALL products from the list!\n\nThis action will:\n- Delete all products permanently\n- Move them to the restore backup (15 days)\n\nAre you absolutely sure you want to continue?')) {
-            return
-        }
-
-        if (!confirm('This is your FINAL confirmation.\n\nType YES to confirm deletion of all products.')) {
-            return
-        }
-
-        try {
-            const result = await deleteAllProducts()
-            alert(result.message)
-            // Refresh data
-            window.location.reload()
-        } catch (error: any) {
-            alert(`Delete error: ${error.message}`)
-        }
-    }
-
 
     const handleToggleStatus = async (productId: string, currentStatus: string) => {
         try {
@@ -174,13 +154,6 @@ export default function ProductListPage() {
                             Export
                         </button>
                         <div className="hidden md:block w-px h-6 bg-gray-200 dark:bg-zinc-700 mx-1"></div>
-                        <button
-                            onClick={handleDeleteAll}
-                            className="hidden md:flex items-center gap-2 px-3 py-2 text-sm font-medium text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/10 rounded-lg transition-colors"
-                        >
-                            <Trash2 size={14} />
-                            Delete All
-                        </button>
                         <button
                             onClick={() => setIsModalOpen(true)}
                             className="hidden md:flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-md hover:shadow-lg hover:shadow-blue-500/20 transition-all active:scale-[0.98]"
@@ -433,4 +406,3 @@ export default function ProductListPage() {
         </div>
     )
 }
-

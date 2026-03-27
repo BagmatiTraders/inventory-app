@@ -43,7 +43,19 @@ export async function getInventoryPriceReports(params: GetPriceReportsParams) {
 
     if (search && search.trim()) {
         const searchTerm = `%${search.trim()}%`
-        query = query.or(`product_name.ilike.${searchTerm},seller_sku1.ilike.${searchTerm},seller_sku2.ilike.${searchTerm},seller_sku3.ilike.${searchTerm},seller_sku4.ilike.${searchTerm}`)
+        // The view might not have SKUs, so we search the products table first
+        const { data: matchedProducts } = await supabase
+            .from('products')
+            .select('id')
+            .or(`product_name.ilike.${searchTerm},seller_sku1.ilike.${searchTerm},seller_sku2.ilike.${searchTerm},seller_sku3.ilike.${searchTerm},seller_sku4.ilike.${searchTerm}`)
+            
+        if (matchedProducts && matchedProducts.length > 0) {
+            const matchedIds = matchedProducts.map(p => p.id)
+            query = query.in('product_id', matchedIds)
+        } else {
+            // Force empty result if no match
+            query = query.eq('product_id', '00000000-0000-0000-0000-000000000000')
+        }
     }
 
     query = query
@@ -109,13 +121,13 @@ export async function getInventoryPriceReports(params: GetPriceReportsParams) {
 
         if (allChildProductIds.length > 0) {
             const { data: childPricesData } = await supabase
-                .from('products')
-                .select('id, est_price')
-                .in('id', allChildProductIds)
+                .from('inventory_price_reports_view')
+                .select('product_id, est_price, last_price')
+                .in('product_id', allChildProductIds)
 
             const childEstPricesMap: Record<string, number> = {}
             childPricesData?.forEach((p: any) => {
-                childEstPricesMap[p.id] = p.est_price || 0
+                childEstPricesMap[p.product_id] = p.est_price || p.last_price || 0
             })
 
             // Calculate est_price for each combo product
@@ -188,6 +200,7 @@ export async function updateProductEstPrice(productId: string, estPrice: number)
     }
 
     revalidatePath('/dashboard/purchase/inventory-price-reports')
+    revalidatePath('/dashboard/sales/daraz/average-sales-price')
     return { success: true }
 }
 
@@ -241,6 +254,7 @@ export async function bulkUpdateEstPrices(updates: Array<{ product_code: string,
     const failed = results.filter(r => r.status === 'rejected').length
 
     revalidatePath('/dashboard/purchase/inventory-price-reports')
+    revalidatePath('/dashboard/sales/daraz/average-sales-price')
 
     return {
         success: true,
