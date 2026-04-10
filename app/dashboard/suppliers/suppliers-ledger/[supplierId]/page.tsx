@@ -152,7 +152,7 @@ export default function SupplierLedgerPage({ params }: { params: Promise<{ suppl
                     <Card className="overflow-hidden bg-white shadow-sm dark:bg-zinc-900 border">
                         <div className="overflow-x-auto">
                             <table className="w-full text-left">
-                                <thead className="bg-gray-50 dark:bg-zinc-800">
+                                <thead className="hidden md:table-header-group bg-gray-50 dark:bg-zinc-800">
                                     <tr>
                                         <th className="px-4 py-3 text-xs font-bold uppercase text-gray-600 dark:text-gray-400">Date</th>
                                         <th className="px-4 py-3 text-xs font-bold uppercase text-gray-600 dark:text-gray-400">Particular</th>
@@ -166,7 +166,8 @@ export default function SupplierLedgerPage({ params }: { params: Promise<{ suppl
                                         const isZeroAmount = entry.type === 'purchase' && Number(entry.debit) === 0 && Number(entry.credit) === 0;
                                         return (
                                             <React.Fragment key={entry.id}>
-                                                <tr className={`hover:bg-gray-50 dark:hover:bg-zinc-800/50 ${isZeroAmount ? 'bg-red-50 dark:bg-red-900/20' : ''}`}>
+                                                {/* Desktop Row */}
+                                                <tr className={`hidden md:table-row hover:bg-gray-50 dark:hover:bg-zinc-800/50 ${isZeroAmount ? 'bg-red-50 dark:bg-red-900/20' : ''}`}>
                                                     <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400 whitespace-nowrap align-top">
                                                         {new Date(entry.date).toLocaleDateString('en-GB')}
                                                     </td>
@@ -199,6 +200,54 @@ export default function SupplierLedgerPage({ params }: { params: Promise<{ suppl
                                                     </td>
                                                     <td className={`px-4 py-3 text-sm text-right font-bold align-top ${entry.running_amount > 1 ? 'text-red-600' : entry.running_amount < -1 ? 'text-green-600' : 'text-gray-900 dark:text-gray-100'}`}>
                                                         Rs {Number(entry.running_amount).toLocaleString('en-NP', { minimumFractionDigits: 2 })}
+                                                    </td>
+                                                </tr>
+
+                                                {/* Mobile Row */}
+                                                <tr className={`md:hidden ${isZeroAmount ? 'bg-red-50 dark:bg-red-900/20' : ''}`}>
+                                                    <td colSpan={5} className="px-4 py-4 space-y-3">
+                                                        <div className="flex justify-between items-start">
+                                                            <div>
+                                                                <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">{new Date(entry.date).toLocaleDateString('en-GB')}</div>
+                                                                <div className="text-[10px] text-gray-500 font-medium uppercase mt-1 tracking-tighter">{entry.type}</div>
+                                                            </div>
+                                                            <div className="text-right">
+                                                                <div className={`text-sm font-bold ${entry.running_amount > 1 ? 'text-red-600' : entry.running_amount < -1 ? 'text-green-600' : 'text-gray-900 dark:text-gray-100'}`}>
+                                                                    Rs {Number(entry.running_amount).toLocaleString('en-NP', { minimumFractionDigits: 2 })}
+                                                                </div>
+                                                                <button
+                                                                    onClick={() => setCommentingId(commentingId === entry.id ? null : entry.id)}
+                                                                    className={`mt-1 p-1.5 transition-colors rounded-lg inline-block ${commentingId === entry.id ? 'bg-blue-100 text-blue-600' : 'text-gray-400 hover:text-blue-500 hover:bg-gray-100 dark:hover:bg-zinc-800'}`}
+                                                                >
+                                                                    <MessageSquare size={14} />
+                                                                </button>
+                                                            </div>
+                                                        </div>
+
+                                                        <div>
+                                                            <div className="text-sm font-medium text-gray-800 dark:text-gray-200 leading-tight">{entry.particular}</div>
+                                                            {entry.particular_detail && <div className="text-[11px] text-gray-500 mt-0.5">{entry.particular_detail}</div>}
+                                                            {entry.quantity !== undefined && entry.quantity > 0 && (
+                                                                <div className="text-[10px] font-bold text-blue-500 mt-1 uppercase">
+                                                                    Qty: {entry.quantity} × {entry.unit_amount}
+                                                                </div>
+                                                            )}
+                                                        </div>
+
+                                                        <div className="flex gap-4 pt-2 border-t dark:border-zinc-800/50">
+                                                            <div className="flex-1">
+                                                                <div className="text-[10px] font-bold text-gray-500 uppercase">Debit</div>
+                                                                <div className="text-sm font-medium text-red-500">
+                                                                    {entry.debit > 0 ? `Rs ${Number(entry.debit).toLocaleString('en-NP', { minimumFractionDigits: 2 })}` : '-'}
+                                                                </div>
+                                                            </div>
+                                                            <div className="flex-1 text-right">
+                                                                <div className="text-[10px] font-bold text-gray-500 uppercase">Credit</div>
+                                                                <div className="text-sm font-medium text-green-600">
+                                                                    {entry.credit > 0 ? `Rs ${Number(entry.credit).toLocaleString('en-NP', { minimumFractionDigits: 2 })}` : '-'}
+                                                                </div>
+                                                            </div>
+                                                        </div>
                                                     </td>
                                                 </tr>
                                                 {/* Comments Section */}
