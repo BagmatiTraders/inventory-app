@@ -25,15 +25,16 @@ export default function PublicLedgerPage({ params }: { params: Promise<{ token: 
         if (res.error) {
             setError(res.error)
         } else {
-            if (view === 'recent') {
-                const zeroIndex = res.ledger.findIndex((e: any) => Number(e.running_amount) === 0)
+            const validRes = res as any;
+            if (view === 'recent' && validRes.ledger) {
+                const zeroIndex = validRes.ledger.findIndex((e: any) => Number(e.running_amount) === 0)
                 if (zeroIndex !== -1 && zeroIndex > 0) {
-                    res.ledger = res.ledger.slice(0, zeroIndex)
+                    validRes.ledger = validRes.ledger.slice(0, zeroIndex)
                 } else if (zeroIndex === 0) {
-                    res.ledger = []
+                    validRes.ledger = []
                 }
             }
-            setData(res)
+            setData(validRes)
         }
         setLoading(false)
     }, [token, view])
