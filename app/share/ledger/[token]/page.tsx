@@ -1,6 +1,7 @@
 'use client'
 
 import { use, useState, useEffect, useCallback } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { getLedgerByToken, addLedgerComment } from '@/features/suppliers/actions/supplier-ledger-actions'
 import { Card } from '@/components/ui-shim'
 import { Loader2, MessageSquare, Send, CheckCircle2, AlertCircle } from 'lucide-react'
@@ -8,6 +9,9 @@ import { toast } from 'sonner'
 
 export default function PublicLedgerPage({ params }: { params: Promise<{ token: string }> }) {
     const { token } = use(params)
+    const searchParams = useSearchParams()
+    const view = searchParams.get('view')
+    
     const [loading, setLoading] = useState(true)
     const [data, setData] = useState<any>(null)
     const [error, setError] = useState<string | null>(null)
@@ -21,10 +25,18 @@ export default function PublicLedgerPage({ params }: { params: Promise<{ token: 
         if (res.error) {
             setError(res.error)
         } else {
+            if (view === 'recent') {
+                const zeroIndex = res.ledger.findIndex((e: any) => Number(e.running_amount) === 0)
+                if (zeroIndex !== -1 && zeroIndex > 0) {
+                    res.ledger = res.ledger.slice(0, zeroIndex)
+                } else if (zeroIndex === 0) {
+                    res.ledger = []
+                }
+            }
             setData(res)
         }
         setLoading(false)
-    }, [token])
+    }, [token, view])
 
     useEffect(() => {
         fetchData()

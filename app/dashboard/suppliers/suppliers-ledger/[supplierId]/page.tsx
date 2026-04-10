@@ -21,7 +21,8 @@ export default function SupplierLedgerPage({ params }: { params: Promise<{ suppl
     // State
     const [isSharing, setIsSharing] = useState(false)
     const [shareUrl, setShareUrl] = useState<string | null>(null)
-    const [copied, setCopied] = useState(false)
+    const [copiedFull, setCopiedFull] = useState(false)
+    const [copiedRecent, setCopiedRecent] = useState(false)
     const [commentingId, setCommentingId] = useState<string | null>(null)
     const [commentText, setCommentText] = useState('')
 
@@ -46,7 +47,7 @@ export default function SupplierLedgerPage({ params }: { params: Promise<{ suppl
         mutationFn: () => createLedgerShare({ supplierId, fiscalYearId }),
         onSuccess: (res) => {
             if (res.share) {
-                const url = `${window.location.host === 'localhost' ? 'http://' : 'https://'}${window.location.host}/share/ledger/${res.share.token}`
+                const url = `${window.location.hostname === 'localhost' ? 'http://' : 'https://'}${window.location.host}/share/ledger/${res.share.token}`
                 setShareUrl(url)
                 setIsSharing(true)
             } else {
@@ -77,11 +78,16 @@ export default function SupplierLedgerPage({ params }: { params: Promise<{ suppl
     const supplierName = ledgerData?.supplierName || paramSupplierName || 'Loading...'
     const runningBalance = ledger.length > 0 ? ledger[0].running_amount : 0
 
-    const copyToClipboard = () => {
-        if (shareUrl) {
-            navigator.clipboard.writeText(shareUrl)
-            setCopied(true)
-            setTimeout(() => setCopied(false), 2000)
+    const copyUrl = (url: string, type: 'full' | 'recent') => {
+        if (url) {
+            navigator.clipboard.writeText(url)
+            if (type === 'full') {
+                setCopiedFull(true)
+                setTimeout(() => setCopiedFull(false), 2000)
+            } else {
+                setCopiedRecent(true)
+                setTimeout(() => setCopiedRecent(false), 2000)
+            }
             toast.success('Link copied to clipboard.')
         }
     }
@@ -280,25 +286,47 @@ export default function SupplierLedgerPage({ params }: { params: Promise<{ suppl
                             <button onClick={() => setIsSharing(false)} className="text-gray-400 hover:text-gray-500">×</button>
                         </div>
 
-                        <div className="space-y-4">
+                        <div className="space-y-6">
                             <p className="text-sm text-gray-500 dark:text-gray-400">
-                                Copy this link and send it to <strong>{supplierName}</strong>. They will be able to view their ledger and leave comments on recent transactions.
+                                Copy a link below and send it to <strong>{supplierName}</strong>. They will be able to view their ledger.
                             </p>
 
-                            <div className="flex gap-2">
-                                <div className="flex-1 px-3 py-2 bg-gray-50 dark:bg-zinc-950 border dark:border-zinc-800 rounded-md text-sm text-gray-600 dark:text-gray-400 truncate">
-                                    {shareUrl}
+                            <div className="space-y-4">
+                                <div>
+                                    <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100 mb-2">1. Full Ledger Link</h3>
+                                    <div className="flex gap-2">
+                                        <div className="flex-1 px-3 py-2 bg-gray-50 dark:bg-zinc-950 border dark:border-zinc-800 rounded-md text-sm text-gray-600 dark:text-gray-400 truncate">
+                                            {shareUrl}
+                                        </div>
+                                        <button
+                                            onClick={() => copyUrl(shareUrl as string, 'full')}
+                                            className={`px-3 py-2 rounded-md border flex items-center justify-center transition-all ${copiedFull ? 'bg-green-50 text-green-600 border-green-200' : 'bg-white hover:bg-gray-50 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-gray-700 dark:text-gray-200 border-gray-200 dark:border-zinc-700'}`}
+                                        >
+                                            {copiedFull ? <Check size={18} /> : <Copy size={18} />}
+                                        </button>
+                                    </div>
+                                    <p className="text-xs text-gray-400 mt-1">Shows the entire history.</p>
                                 </div>
-                                <button
-                                    onClick={copyToClipboard}
-                                    className={`px-3 py-2 rounded-md border flex items-center justify-center transition-all ${copied ? 'bg-green-50 text-green-600 border-green-200' : 'bg-white hover:bg-gray-50 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-gray-700 dark:text-gray-200 border-gray-200 dark:border-zinc-700'}`}
-                                >
-                                    {copied ? <Check size={18} /> : <Copy size={18} />}
-                                </button>
+
+                                <div>
+                                    <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100 mb-2">2. Unsettled Transactions Link</h3>
+                                    <div className="flex gap-2">
+                                        <div className="flex-1 px-3 py-2 bg-gray-50 dark:bg-zinc-950 border dark:border-zinc-800 rounded-md text-sm text-gray-600 dark:text-gray-400 truncate">
+                                            {shareUrl}?view=recent
+                                        </div>
+                                        <button
+                                            onClick={() => copyUrl(`${shareUrl}?view=recent`, 'recent')}
+                                            className={`px-3 py-2 rounded-md border flex items-center justify-center transition-all ${copiedRecent ? 'bg-green-50 text-green-600 border-green-200' : 'bg-white hover:bg-gray-50 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-gray-700 dark:text-gray-200 border-gray-200 dark:border-zinc-700'}`}
+                                        >
+                                            {copiedRecent ? <Check size={18} /> : <Copy size={18} />}
+                                        </button>
+                                    </div>
+                                    <p className="text-xs text-gray-400 mt-1">Filters out past settled transactions (starts after the last 0 balance).</p>
+                                </div>
                             </div>
 
                             <p className="text-[10px] text-zinc-400 font-medium">
-                                * This link will expire in 30 days for security. Anyone with the link can view the ledger.
+                                * Links will expire in 30 days for security. Anyone with the link can view the ledger.
                             </p>
                         </div>
 
