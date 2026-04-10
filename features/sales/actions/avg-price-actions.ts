@@ -13,7 +13,8 @@ export interface DarazAvgPriceItem {
     seller_sku2: string | null
     seller_sku3: string | null
     seller_sku4: string | null
-    purchasing_price: number // Priority: Last Price -> Est Price -> 0
+    purchasing_price: number // Priority: Last Price -> Est Price -> Wholesale -> 0
+    purchasing_remark: string | null
     commission_percent: number | null // Daraz fee % based on delivered orders
     is_default_commission: boolean
     breakeven_price: number // purchasing_price / (1 - commission_percent)
@@ -76,19 +77,45 @@ export async function getDarazAvgPrices() {
         })
     })
 
-    const basePricesMap: Record<string, number> = {}
-    productsData?.forEach((p: any) => {
-        basePricesMap[p.product_id] = p.est_price || p.last_price || 0
+    // 1d. Fetch Wholesale Prices for fallback if no history exists
+    const { data: wholesalePricesData } = await supabase
+        .from('product_wholesale_prices')
+        .select('product_id, wholesale_price')
+
+    const bestWholesaleMap = new Map<string, number>()
+    wholesalePricesData?.forEach(wp => {
+        const currentMin = bestWholesaleMap.get(wp.product_id) || Infinity
+        if (wp.wholesale_price < currentMin) {
+            bestWholesaleMap.set(wp.product_id, Number(wp.wholesale_price))
+        }
     })
 
-    const calculatedComboPrices: Record<string, number> = {}
+    const basePricesMap: Record<string, { price: number, remark: string | null }> = {}
+    productsData?.forEach((p: any) => {
+        let price = p.last_price || p.est_price || 0
+        let remark: string | null = null
+        
+        if (price === 0 && bestWholesaleMap.has(p.product_id)) {
+            price = bestWholesaleMap.get(p.product_id)!
+            remark = '(Est Price)'
+        }
+        
+        basePricesMap[p.product_id] = { price, remark }
+    })
+
+    const calculatedComboPrices: Record<string, { price: number, remark: string | null }> = {}
     Object.keys(comboComponentsMap).forEach(parentId => {
         const components = comboComponentsMap[parentId]
+        let hasWholesaleFallback = false
         const parentPrice = components.reduce((sum, comp) => {
-            const childPrice = basePricesMap[comp.child_product_id] || 0
-            return sum + (childPrice * comp.quantity)
+            const childData = basePricesMap[comp.child_product_id] || { price: 0, remark: null }
+            if (childData.remark === '(Est Price)') hasWholesaleFallback = true
+            return sum + (childData.price * comp.quantity)
         }, 0)
-        calculatedComboPrices[parentId] = parentPrice
+        calculatedComboPrices[parentId] = { 
+            price: parentPrice, 
+            remark: hasWholesaleFallback ? '(Est Price)' : null 
+        }
     })
 
     // 2. Fetch all Daraz product prices (editable fields)
@@ -158,8 +185,13 @@ export async function getDarazAvgPrices() {
     const result: DarazAvgPriceItem[] = (productsData || []).map((p: any) => {
         const prodSkus = skuMap.get(p.product_id) || {}
         const skus = [prodSkus.seller_sku1, prodSkus.seller_sku2, prodSkus.seller_sku3, prodSkus.seller_sku4].filter(Boolean)
-        const isCombo = calculatedComboPrices.hasOwnProperty(p.product_id)
-        const purchasingPrice = isCombo ? calculatedComboPrices[p.product_id] : (p.last_price || p.est_price || 0)
+
+        const comboData = calculatedComboPrices[p.product_id]
+        const baseData = basePricesMap[p.product_id] || { price: 0, remark: null }
+        
+        const isCombo = !!comboData
+        const purchasingPrice = isCombo ? comboData.price : baseData.price
+        const purchasingRemark = isCombo ? comboData.remark : baseData.remark
 
         // Latest Commission Percent
         const actualCommission = latestCommissionMap.has(p.product_id) ? latestCommissionMap.get(p.product_id)! : null
@@ -194,6 +226,7 @@ export async function getDarazAvgPrices() {
             seller_sku3: prodSkus.seller_sku3 || null,
             seller_sku4: prodSkus.seller_sku4 || null,
             purchasing_price: purchasingPrice,
+            purchasing_remark: purchasingRemark,
             commission_percent: commissionPercent !== null ? commissionPercent * 100 : null, // Convert to percentage 15%
             is_default_commission: isDefaultCommission,
             breakeven_price: breakevenPrice,

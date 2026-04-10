@@ -257,7 +257,14 @@ export default function DarazAverageSalesPricePage() {
                                                 </div>
                                             </TableCell>
                                             <TableCell className="text-right font-medium text-gray-700 dark:text-gray-300">
-                                                Rs. {item.purchasing_price.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                                                <div className="flex flex-col items-end">
+                                                    <span>Rs. {item.purchasing_price.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
+                                                    {item.purchasing_remark && (
+                                                        <span className="text-[10px] text-amber-600 dark:text-amber-500 italic font-medium">
+                                                            {item.purchasing_remark}
+                                                        </span>
+                                                    )}
+                                                </div>
                                             </TableCell>
                                             <TableCell className="text-right">
                                                 {item.is_default_commission ? (

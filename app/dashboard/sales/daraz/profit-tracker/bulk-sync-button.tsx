@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { RefreshCw } from 'lucide-react'
-import { syncBulkOrderPurchaseCosts, syncSpecificOrders } from '@/features/sales/actions/report-actions'
+import { syncBulkOrderPurchaseCosts, syncOrderPurchaseCost } from '@/features/sales/actions/report-actions'
 import { useQueryClient } from '@tanstack/react-query'
 
 interface BulkSyncButtonProps {
@@ -11,6 +11,7 @@ interface BulkSyncButtonProps {
 
 export function BulkSyncButton({ orderNumbers = [] }: BulkSyncButtonProps) {
     const [isSyncing, setIsSyncing] = useState(false)
+    const [progress, setProgress] = useState<{ current: number, total: number } | null>(null)
     const [message, setMessage] = useState('')
     const queryClient = useQueryClient()
 
@@ -26,26 +27,42 @@ export function BulkSyncButton({ orderNumbers = [] }: BulkSyncButtonProps) {
         if (!confirm(promptMsg)) return
 
         setIsSyncing(true)
-        setMessage('Syncing...')
+        setMessage('Starting sync...')
 
         try {
-            let result
             if (mode === 'specific') {
-                result = await syncSpecificOrders(orderNumbers)
-            } else {
-                result = await syncBulkOrderPurchaseCosts()
-            }
+                setProgress({ current: 0, total: count })
+                let successCount = 0
+                let failCount = 0
 
-            // Show first debug message if available for clarity
-            setMessage(`✓ ${result.message}`)
-            // if (result.debug) alert(result.debug) // DEBUG: Show debug info explicitly
+                for (let i = 0; i < count; i++) {
+                    const orderNumber = orderNumbers[i]
+                    setProgress({ current: i + 1, total: count })
+                    try {
+                        await syncOrderPurchaseCost(orderNumber)
+                        successCount++
+                    } catch (e) {
+                        console.error(`Failed to sync ${orderNumber}:`, e)
+                        failCount++
+                    }
+                }
+                setMessage(`✓ Synced ${successCount} orders. ${failCount > 0 ? `Failed: ${failCount}` : ''}`)
+            } else {
+                setMessage('Syncing...')
+                const result = await syncBulkOrderPurchaseCosts()
+                setMessage(`✓ ${result.message}`)
+            }
 
             // Invalidate and refetch the profit tracker data
             await queryClient.invalidateQueries({ queryKey: ['profit-tracker'] })
             await queryClient.invalidateQueries({ queryKey: ['daily-profit-stats'] })
+            await queryClient.invalidateQueries({ queryKey: ['complete-date-stats'] })
 
-            // Clear message after 3 seconds
-            setTimeout(() => setMessage(''), 3000)
+            // Clear message/pogress after 3 seconds
+            setTimeout(() => {
+                setMessage('')
+                setProgress(null)
+            }, 3000)
         } catch (error: any) {
             setMessage(`Error: ${error.message}`)
         } finally {
@@ -61,7 +78,9 @@ export function BulkSyncButton({ orderNumbers = [] }: BulkSyncButtonProps) {
                 className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
                 <RefreshCw className={`h-4 w-4 ${isSyncing ? 'animate-spin' : ''}`} />
-                {isSyncing ? 'Syncing...' : (orderNumbers.length > 0 ? `Sync Visible (${orderNumbers.length})` : 'Bulk Sync Fees')}
+                {isSyncing
+                    ? (progress ? `Syncing (${progress.current}/${progress.total})` : 'Syncing...')
+                    : (orderNumbers.length > 0 ? `Sync Visible (${orderNumbers.length})` : 'Bulk Sync Fees')}
             </button>
             {message && (
                 <span className="text-sm text-gray-600 dark:text-gray-400">{message}</span>

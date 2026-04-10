@@ -378,7 +378,8 @@ export async function getDailyProfitStats(params: GetOrderReportParams) {
                 search_term: params.search || '',
                 sync_status_param: params.syncStatus || 'all',
                 start_date_param: params.startDate || null,
-                end_date_param: params.endDate || null
+                end_date_param: params.endDate || null,
+                seller_account_param: params.sellerAccount || 'All'
             });
 
             if (error) {
@@ -705,53 +706,71 @@ export async function getCompleteDateStats(params: GetOrderReportParams) {
         const { createAdminClient } = await import('@/lib/supabase/server')
         const supabase = await createAdminClient()
 
-        // Create a query similar to getProfitTrackerData but without pagination and range limits
-        let query = supabase
-            .from('daraz_order_report_view')
-            .select('*')
+        // 1. Fetch ALL data using a while loop to bypass pagination limits
+        let allData: any[] = [];
+        let from = 0;
+        const LIMIT = 1000;
+        let hasMore = true;
 
-        // Search by order number or invoice number
-        if (params.search && params.search.trim()) {
-            query = query.or(`order_number.ilike.%${params.search.trim()}%,invoice_number.ilike.%${params.search.trim()}%`)
+        while (hasMore) {
+            let pagedQuery = supabase
+                .from('daraz_order_report_view')
+                .select('*')
+
+            // Search by order number or invoice number
+            if (params.search && params.search.trim()) {
+                pagedQuery = pagedQuery.or(`order_number.ilike.%${params.search.trim()}%,invoice_number.ilike.%${params.search.trim()}%`)
+            }
+
+            // Filter by Seller Account
+            if (params.sellerAccount && params.sellerAccount !== 'All') {
+                pagedQuery = pagedQuery.eq('seller_account', params.sellerAccount)
+            }
+
+            // Apply sync status filter at database level
+            if (params.syncStatus === 'synced') {
+                pagedQuery = pagedQuery.gt('daraz_fees', 0).gt('total_purchase_cost', 0)
+            } else if (params.syncStatus === 'not_synced') {
+                pagedQuery = pagedQuery.or('daraz_fees.is.null,daraz_fees.lte.0,total_purchase_cost.lte.0')
+            }
+
+            // Date Filtering
+            if (params.startDate) {
+                pagedQuery = pagedQuery.gte('delivered_at', params.startDate)
+            }
+            if (params.endDate) {
+                pagedQuery = pagedQuery.lte('delivered_at', params.endDate)
+            }
+
+            // Sort and Range
+            pagedQuery = pagedQuery
+                .order('delivered_by_daraz', { ascending: false, nullsFirst: false })
+                .order('delivered_at', { ascending: false, nullsFirst: false })
+                .order('created_at', { ascending: false, nullsFirst: false })
+                .range(from, from + LIMIT - 1);
+
+            const { data: pageData, error } = await pagedQuery;
+
+            if (error) {
+                console.error('[SERVER ACTION] Complete Date Stats Query Error at range:', from, error);
+                throw new Error(`Failed to fetch complete date stats: ${error.message}`);
+            }
+
+            if (pageData && pageData.length > 0) {
+                allData = [...allData, ...pageData];
+                from += LIMIT;
+                if (pageData.length < LIMIT) hasMore = false;
+            } else {
+                hasMore = false;
+            }
         }
 
-        // Filter by Seller Account
-        if (params.sellerAccount && params.sellerAccount !== 'All') {
-            query = query.eq('seller_account', params.sellerAccount)
-        }
+        const data = allData;
 
-        // Apply sync status filter at database level
-        if (params.syncStatus === 'synced') {
-            // Updated: only orders where both fees and cost are valid
-            query = query.gt('daraz_fees', 0).gt('total_purchase_cost', 0)
-        } else if (params.syncStatus === 'not_synced') {
-            // Updated: orders where fees are null/0 or cost is invalid
-            query = query.or('daraz_fees.is.null,daraz_fees.lte.0,total_purchase_cost.lte.0')
-        }
 
-        // Date Filtering
-        if (params.startDate) {
-            query = query.gte('delivered_at', params.startDate)
-        }
-        if (params.endDate) {
-            query = query.lte('delivered_at', params.endDate)
-        }
-
-        // Sort by delivery date to ensure consistent processing
-        query = query
-            .order('delivered_by_daraz', { ascending: false, nullsFirst: false })
-            .order('delivered_at', { ascending: false, nullsFirst: false })
-            .order('created_at', { ascending: false, nullsFirst: false });
-
-        const { data, error } = await query;
-
-        if (error) {
-            console.error('[SERVER ACTION] Complete Date Stats Query Error:', error);
-            throw new Error('Failed to fetch complete date stats');
-        }
 
         // Process the data to group by date and calculate stats
-        const dateStats: Record<string, { statsBySeller: Record<string, { profit: number, missing: number, revenue: number, cost: number }>, totalProfit: number, totalRevenue: number }> = {};
+        const dateStats: Record<string, { statsBySeller: Record<string, { profit: number, missing: number, revenue: number, cost: number }>, totalProfit: number, totalRevenue: number, orderNumbers: string[] }> = {};
 
         (data || []).forEach((order: any) => {
             if (!order.delivered_by_daraz && !order.delivered_at) return
@@ -760,7 +779,12 @@ export async function getCompleteDateStats(params: GetOrderReportParams) {
             const dateKey = format(new Date(dateRaw), 'yyyy-MM-dd') // Local Time Grouping
 
             if (!dateStats[dateKey]) {
-                dateStats[dateKey] = { statsBySeller: {}, totalProfit: 0, totalRevenue: 0 }
+                dateStats[dateKey] = { statsBySeller: {}, totalProfit: 0, totalRevenue: 0, orderNumbers: [] }
+            }
+
+            // Collect order number for bulk sync
+            if (order.order_number) {
+                dateStats[dateKey].orderNumbers.push(order.order_number)
             }
 
             const seller = order.seller_account || 'Unknown'

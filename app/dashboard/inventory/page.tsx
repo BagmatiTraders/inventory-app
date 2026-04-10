@@ -1,7 +1,7 @@
-﻿'use client'
+'use client'
 
 import Link from 'next/link'
-import { Package, FileText, History, AlertTriangle, Menu, Camera } from 'lucide-react'
+import { Package, FileText, History, AlertTriangle, Menu, Camera, Tag } from 'lucide-react'
 import { Card } from '@/components/ui-shim'
 import { useDashboard } from '../layout'
 
@@ -31,6 +31,12 @@ export default function InventoryPage() {
             icon: AlertTriangle,
             href: '/dashboard/inventory/damaged-stocks',
             color: 'bg-red-500'
+        },
+        {
+            name: 'Wholesale Price',
+            icon: Tag,
+            href: '/dashboard/inventory/wholesale-price',
+            color: 'bg-indigo-500'
         },
 
         {
