@@ -1,18 +1,40 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
-import { Card, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Button } from '@/components/ui-shim'
+import React, { useState, useEffect, useRef } from 'react'
+import { Card, Button } from '@/components/ui-shim'
 import { Search, ChevronLeft, ChevronRight, Edit2, Check, X, Loader2, RefreshCw, AlertTriangle, ArrowLeft } from 'lucide-react'
 import Image from 'next/image'
 import Link from 'next/link'
-import { getDarazAvgPrices, updateDarazAvgPrice, syncDarazAvgPricesGoogleSheets, pullDarazAvgPricesFromGoogleSheets, DarazAvgPriceItem } from '@/features/sales/actions/avg-price-actions'
+import { getDarazAvgPrices, updateDarazAvgPrice, syncDarazAvgPricesGoogleSheets, pullDarazAvgPricesFromGoogleSheets, syncLiveSellerPrices, DarazAvgPriceItem } from '@/features/sales/actions/avg-price-actions'
 
 export default function DarazAverageSalesPricePage() {
     const [data, setData] = useState<DarazAvgPriceItem[]>([])
     const [isLoading, setIsLoading] = useState(true)
     const [isSyncing, setIsSyncing] = useState(false)
     const [isPulling, setIsPulling] = useState(false)
+    const [isSyncingLive, setIsSyncingLive] = useState(false)
     
+    // Drag to scroll
+    const scrollContainerRef = useRef<HTMLDivElement>(null)
+    const [isDragging, setIsDragging] = useState(false)
+    const [startX, setStartX] = useState(0)
+    const [scrollLeft, setScrollLeft] = useState(0)
+
+    const startDrag = (e: React.MouseEvent) => {
+        if (!scrollContainerRef.current) return
+        setIsDragging(true)
+        setStartX(e.pageX - scrollContainerRef.current.offsetLeft)
+        setScrollLeft(scrollContainerRef.current.scrollLeft)
+    }
+    const stopDrag = () => setIsDragging(false)
+    const onDrag = (e: React.MouseEvent) => {
+        if (!isDragging || !scrollContainerRef.current) return
+        e.preventDefault()
+        const x = e.pageX - scrollContainerRef.current.offsetLeft
+        const walk = (x - startX) * 1.5
+        scrollContainerRef.current.scrollLeft = scrollLeft - walk
+    }
+
     // Pagination
     const [currentPage, setCurrentPage] = useState(1)
     const itemsPerPage = 50
@@ -20,6 +42,9 @@ export default function DarazAverageSalesPricePage() {
     // Search
     const [search, setSearch] = useState('')
     const [debouncedSearch, setDebouncedSearch] = useState('')
+
+    // Regular price profit-percent dropdown (15 / 20 / 25)
+    const [regularPct, setRegularPct] = useState<15 | 20 | 25>(15)
 
     // Editing State (we can edit market_price and campaign_price)
     const [editingId, setEditingId] = useState<string | null>(null)
@@ -82,6 +107,23 @@ export default function DarazAverageSalesPricePage() {
         }
     }
 
+    const handleSyncLive = async () => {
+        setIsSyncingLive(true)
+        try {
+            const res = await syncLiveSellerPrices()
+            if (res.success) {
+                alert(`Successfully synced ${res.count} items from Daraz!`)
+                loadData()
+            } else {
+                alert(`Sync failed: ${res.message}`)
+            }
+        } catch (err: any) {
+            alert(`Sync error: ${err.message}`)
+        } finally {
+            setIsSyncingLive(false)
+        }
+    }
+
     const startEditing = (item: DarazAvgPriceItem) => {
         setEditingId(item.product_id)
         setEditMarketPrice(item.market_price ? item.market_price.toString() : '')
@@ -108,7 +150,7 @@ export default function DarazAverageSalesPricePage() {
             // Optimistic update
             setData(prev => prev.map(item => {
                 if (item.product_id === productId) {
-                    const commissionFactor = (item.commission_percent !== null ? item.commission_percent : 20) / 100
+                    const commissionFactor = (item.commission_percent !== null ? item.commission_percent : 25) / 100
                     return {
                         ...item,
                         market_price: mPrice,
@@ -139,7 +181,7 @@ export default function DarazAverageSalesPricePage() {
     const paginatedData = filteredData.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
 
     return (
-        <div className="flex flex-col h-full bg-gray-50 dark:bg-zinc-900">
+        <div className="flex flex-col h-[calc(100vh-64px)] overflow-hidden bg-gray-50 dark:bg-zinc-900">
             {/* Header */}
             <div className="bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 px-4 md:px-6 py-4 flex flex-col md:flex-row md:items-center justify-between gap-4 sticky top-0 z-20 shadow-sm">
                 <div>
@@ -183,6 +225,15 @@ export default function DarazAverageSalesPricePage() {
                     </Button>
 
                     <Button 
+                        onClick={handleSyncLive} 
+                        disabled={isSyncingLive}
+                        className="hidden md:flex items-center gap-2 bg-purple-50 hover:bg-purple-100 text-purple-700 h-9 px-3 text-xs border border-purple-200 transition-colors dark:bg-purple-900/20 dark:hover:bg-purple-900/40 dark:text-purple-300 dark:border-purple-800"
+                    >
+                        {isSyncingLive ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+                        Sync Live Prices
+                    </Button>
+
+                    <Button 
                         onClick={handleSync} 
                         disabled={isSyncing}
                         className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white h-9 px-3 text-xs whitespace-nowrap"
@@ -194,44 +245,89 @@ export default function DarazAverageSalesPricePage() {
             </div>
 
             {/* Content */}
-            <div className="flex-1 overflow-auto p-4 md:p-6 pb-24 md:pb-6">
-                <Card className="min-h-full border-none shadow-md overflow-hidden bg-white dark:bg-zinc-900">
-                    <div className="overflow-x-auto">
-                        <Table className="w-full text-sm min-w-[1200px]">
-                            <TableHeader className="bg-gray-50 dark:bg-zinc-800 sticky top-0 z-10 shadow-sm text-xs uppercase tracking-wider text-gray-500">
-                                <TableRow>
-                                    <TableHead className="w-12 text-center">S.N</TableHead>
-                                    <TableHead className="w-16 text-center">Img</TableHead>
-                                    <TableHead className="w-64">Product</TableHead>
-                                    <TableHead className="w-48">SKUs</TableHead>
-                                    <TableHead className="text-right">Purchasing</TableHead>
-                                    <TableHead className="text-right">Commission</TableHead>
-                                    <TableHead className="text-right text-orange-600">Breakeven</TableHead>
-                                    <TableHead className="text-right text-blue-600">Regular (15%)</TableHead>
-                                    <TableHead className="text-right w-32 border-l border-gray-200 dark:border-gray-700">Market Price</TableHead>
-                                    <TableHead className="text-right w-32">Campaign</TableHead>
-                                    <TableHead className="text-center w-24">Actions</TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
+            <div className="flex-1 px-4 md:px-6 py-4 pb-0 flex flex-col overflow-hidden">
+                <Card className="flex-1 border-none shadow-md overflow-hidden bg-white dark:bg-zinc-900 flex flex-col">
+                    <div 
+                        ref={scrollContainerRef}
+                        className={`flex-1 overflow-auto relative z-0 ${isDragging ? 'cursor-grabbing select-none' : 'cursor-grab'}`}
+                        onMouseDown={startDrag}
+                        onMouseLeave={stopDrag}
+                        onMouseUp={stopDrag}
+                        onMouseMove={onDrag}
+                    >
+                        <table className="w-full text-sm min-w-[1200px] border-collapse relative">
+                            <thead className="text-xs uppercase tracking-wider text-gray-500">
+                                <tr className="border-b dark:border-zinc-800">
+                                    <th className="w-12 text-center p-3 font-medium align-middle sticky left-0 top-0 z-40 bg-gray-50 dark:bg-zinc-800 shadow-[1px_1px_0_0_#e5e7eb] dark:shadow-[1px_1px_0_0_#27272a]">S.N</th>
+                                    <th className="w-16 text-center p-3 font-medium align-middle sticky left-[48px] top-0 z-40 bg-gray-50 dark:bg-zinc-800 shadow-[1px_1px_0_0_#e5e7eb] dark:shadow-[1px_1px_0_0_#27272a]">Img</th>
+                                    <th className="w-64 p-3 text-left font-medium align-middle sticky left-[112px] top-0 z-40 bg-gray-50 dark:bg-zinc-800 shadow-[1px_1px_0_0_#e5e7eb] dark:shadow-[1px_1px_0_0_#27272a]">Product</th>
+                                    <th className="w-48 p-3 text-left font-medium align-middle sticky top-0 z-30 bg-gray-50 dark:bg-zinc-800 shadow-[0_1px_0_0_#e5e7eb] dark:shadow-[0_1px_0_0_#27272a]">SKUs</th>
+                                    <th className="text-right p-3 text-left font-medium align-middle sticky top-0 z-30 bg-gray-50 dark:bg-zinc-800 shadow-[0_1px_0_0_#e5e7eb] dark:shadow-[0_1px_0_0_#27272a]">Purchasing</th>
+                                    <th className="text-right p-3 text-left font-medium align-middle sticky top-0 z-30 bg-gray-50 dark:bg-zinc-800 shadow-[0_1px_0_0_#e5e7eb] dark:shadow-[0_1px_0_0_#27272a]">Commission</th>
+                                    <th className="text-right text-orange-600 p-3 text-left font-medium align-middle sticky top-0 z-30 bg-gray-50 dark:bg-zinc-800 shadow-[0_1px_0_0_#e5e7eb] dark:shadow-[0_1px_0_0_#27272a]">Breakeven</th>
+                                    
+                                    {/* 4 Fixed Live Price Columns */}
+                                    {[1, 2, 3, 4].map(idx => (
+                                        <th key={idx} className="text-right text-purple-600 whitespace-nowrap min-w-[120px] border-l border-gray-200 dark:border-gray-700 bg-purple-50/50 dark:bg-purple-900/20 p-3 font-medium align-middle sticky top-0 z-30 bg-gray-50 dark:bg-zinc-800 shadow-sm border-b dark:border-zinc-800">
+                                            Live Price {idx}
+                                        </th>
+                                    ))}
+
+                                    <th className="text-right text-blue-600 min-w-[140px] p-3 text-left font-medium align-middle sticky top-0 z-30 bg-gray-50 dark:bg-zinc-800 shadow-[0_1px_0_0_#e5e7eb] dark:shadow-[0_1px_0_0_#27272a]">
+                                        <div className="flex items-center justify-end gap-1">
+                                            <span>Regular</span>
+                                            <select
+                                                value={regularPct}
+                                                onChange={(e) => setRegularPct(Number(e.target.value) as 15 | 20 | 25)}
+                                                onClick={(e) => e.stopPropagation()}
+                                                className="ml-1 text-xs font-bold text-blue-600 bg-blue-50 border border-blue-200 rounded px-1 py-0.5 cursor-pointer focus:outline-none focus:ring-1 focus:ring-blue-400 dark:bg-blue-950 dark:border-blue-700 dark:text-blue-300"
+                                            >
+                                                <option value={15}>15%</option>
+                                                <option value={20}>20%</option>
+                                                <option value={25}>25%</option>
+                                            </select>
+                                        </div>
+                                    </th>
+                                    <th className="text-right w-32 border-l border-gray-200 dark:border-gray-700 p-3 text-left font-medium align-middle sticky top-0 z-30 bg-gray-50 dark:bg-zinc-800 shadow-[0_1px_0_0_#e5e7eb] dark:shadow-[0_1px_0_0_#27272a]">Daraz Price</th>
+                                    <th className="text-right w-32 p-3 text-left font-medium align-middle sticky top-0 z-30 bg-gray-50 dark:bg-zinc-800 shadow-[0_1px_0_0_#e5e7eb] dark:shadow-[0_1px_0_0_#27272a]">Campaign</th>
+                                    <th className="text-center w-24 p-3 text-left font-medium align-middle sticky top-0 z-30 bg-gray-50 dark:bg-zinc-800 shadow-[0_1px_0_0_#e5e7eb] dark:shadow-[0_1px_0_0_#27272a]">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
                                 {isLoading ? (
-                                    <TableRow>
-                                        <TableCell colSpan={12} className="h-48 text-center text-gray-500">
+                                    <tr className="border-b dark:border-zinc-800">
+                                        <td colSpan={12} className="h-48 text-center text-gray-500 p-4 align-middle">
                                             <Loader2 className="w-8 h-8 animate-spin mx-auto mb-2" />
                                             Evaluating metrics...
-                                        </TableCell>
-                                    </TableRow>
+                                        </td>
+                                    </tr>
                                 ) : paginatedData.length === 0 ? (
-                                    <TableRow>
-                                        <TableCell colSpan={12} className="h-24 text-center text-gray-500">
+                                    <tr className="border-b dark:border-zinc-800">
+                                        <td colSpan={12} className="h-24 text-center text-gray-500 p-4 align-middle">
                                             No products found.
-                                        </TableCell>
-                                    </TableRow>
+                                        </td>
+                                    </tr>
                                 ) : (
-                                    paginatedData.map((item, index) => (
-                                        <TableRow key={item.product_id} className="hover:bg-gray-50 dark:hover:bg-zinc-800 transition-colors group">
-                                            <TableCell className="text-center text-gray-500">{((currentPage - 1) * itemsPerPage) + index + 1}</TableCell>
-                                            <TableCell className="text-center">
+                                    paginatedData.map((item, index) => {
+                                        const isHighlight = (() => {
+                                            if (!item.market_price) return false;
+                                            const liveSkus = [item.seller_sku1, item.seller_sku2, item.seller_sku3, item.seller_sku4];
+                                            for(const sku of liveSkus) {
+                                                if (!sku) continue;
+                                                const liveDet = item.live_prices?.[sku];
+                                                if (liveDet) {
+                                                    const activePrice = liveDet.special_price || liveDet.price;
+                                                    const diff = Math.abs(activePrice - item.market_price) / item.market_price;
+                                                    if (diff > 0.05) return true;
+                                                }
+                                            }
+                                            return false;
+                                        })();
+
+                                        return (
+                                        <tr key={item.product_id} className={`transition-colors group ${isHighlight ? 'bg-red-50 hover:bg-red-100 dark:bg-red-950/30 dark:hover:bg-red-900/40 border-l-4 border-l-red-500' : 'hover:bg-gray-50 dark:hover:bg-zinc-800'}`}>
+                                            <td className="text-center text-gray-500 p-4 align-middle sticky left-0 z-20 bg-white dark:bg-zinc-900 border-r dark:border-zinc-800">{((currentPage - 1) * itemsPerPage) + index + 1}</td>
+                                            <td className="text-center p-4 align-middle sticky left-[48px] z-20 bg-white dark:bg-zinc-900 border-r dark:border-zinc-800">
                                                 <div className="w-10 h-10 relative bg-gray-100 dark:bg-zinc-800 rounded overflow-hidden mx-auto">
                                                     {item.image_url ? (
                                                         <Image src={item.image_url} alt="img" fill className="object-cover" />
@@ -241,11 +337,11 @@ export default function DarazAverageSalesPricePage() {
                                                         </div>
                                                     )}
                                                 </div>
-                                            </TableCell>
-                                            <TableCell>
+                                            </td>
+                                            <td className="p-4 align-middle sticky left-[112px] z-20 bg-white dark:bg-zinc-900 hover:bg-gray-50 dark:hover:bg-zinc-800 border-r dark:border-zinc-800 group-hover:bg-gray-50 dark:group-hover:bg-zinc-800 shadow-[1px_0_0_0_#e5e7eb] dark:shadow-[1px_0_0_0_#27272a]">
                                                 <div className="font-medium text-gray-900 dark:text-gray-100 truncate w-60" title={item.product_name}>{item.product_name}</div>
-                                            </TableCell>
-                                            <TableCell>
+                                            </td>
+                                            <td className="p-4 align-middle">
                                                 <div className="text-xs text-gray-500 font-mono flex flex-col gap-1">
                                                     {item.seller_skus.length > 0 ? (
                                                         item.seller_skus.map((sku, i) => (
@@ -255,8 +351,8 @@ export default function DarazAverageSalesPricePage() {
                                                         <span className="text-gray-400 italic">No SKUs</span>
                                                     )}
                                                 </div>
-                                            </TableCell>
-                                            <TableCell className="text-right font-medium text-gray-700 dark:text-gray-300">
+                                            </td>
+                                            <td className="text-right font-medium text-gray-700 dark:text-gray-300 p-4 align-middle">
                                                 <div className="flex flex-col items-end">
                                                     <span>Rs. {item.purchasing_price.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
                                                     {item.purchasing_remark && (
@@ -265,8 +361,8 @@ export default function DarazAverageSalesPricePage() {
                                                         </span>
                                                     )}
                                                 </div>
-                                            </TableCell>
-                                            <TableCell className="text-right">
+                                            </td>
+                                            <td className="text-right p-4 align-middle">
                                                 {item.is_default_commission ? (
                                                     <span className="inline-flex items-center px-2 py-0.5 rounded bg-amber-50 text-amber-700 font-medium border border-amber-200 text-xs" title="Estimated Default Commission">
                                                         {item.commission_percent?.toFixed(2)}% (Default)
@@ -278,16 +374,64 @@ export default function DarazAverageSalesPricePage() {
                                                 ) : (
                                                     <span className="text-gray-400 text-xs italic">No orders</span>
                                                 )}
-                                            </TableCell>
-                                            <TableCell className="text-right font-bold text-orange-600 dark:text-orange-400 bg-orange-50/30 dark:bg-orange-950/20">
+                                            </td>
+                                            <td className="text-right font-bold text-orange-600 dark:text-orange-400 bg-orange-50/30 dark:bg-orange-950/20 p-4 align-middle">
                                                 Rs. {item.breakeven_price.toLocaleString(undefined, { maximumFractionDigits: 2 })}
-                                            </TableCell>
-                                            <TableCell className="text-right font-bold text-blue-600 dark:text-blue-400 bg-blue-50/30 dark:bg-blue-950/20">
-                                                Rs. {item.regular_sales_price.toLocaleString(undefined, { maximumFractionDigits: 2 })}
-                                            </TableCell>
+                                            </td>
                                             
-                                            {/* Editable Market Price with Profit */}
-                                            <TableCell className="text-right border-l border-gray-100 dark:border-zinc-800 align-top pt-3">
+                                            {/* 4 Fixed Live Price Cells */}
+                                            {[item.seller_sku1, item.seller_sku2, item.seller_sku3, item.seller_sku4].map((sku, idx) => {
+                                                const liveDetails = sku ? item.live_prices?.[sku] : null;
+                                                if (!liveDetails) {
+                                                    return <td key={idx} className="text-right border-l border-gray-100 dark:border-zinc-800 pt-3 bg-purple-50/10 dark:bg-purple-900/10 text-gray-300 dark:text-gray-600 p-4 align-middle">-</td>
+                                                }
+                                                const sellingPrice = liveDetails.special_price || liveDetails.price;
+                                                const regularPrice = liveDetails.special_price ? liveDetails.price : null;
+
+                                                return (
+                                                    <td key={idx} className="text-right border-l border-gray-100 dark:border-zinc-800 align-top pt-3 bg-purple-50/10 dark:bg-purple-900/10 p-4 align-middle">
+                                                        <div className="flex flex-col items-end gap-0.5">
+                                                            <span className="font-bold text-purple-900 dark:text-purple-100 whitespace-nowrap">
+                                                                Rs. {sellingPrice.toLocaleString()}
+                                                            </span>
+                                                            {regularPrice && (
+                                                                <span className="text-[10px] text-gray-500 line-through font-medium whitespace-nowrap">
+                                                                    Rs. {regularPrice.toLocaleString()}
+                                                                </span>
+                                                            )}
+                                                                
+    {(() => {
+        const storeAlias = {'Bagmati Online': 'Bagmati', 'Ram': 'Balaju', 'Lamichhane Suppliers': 'Cosmetics', 'Bagmati Traders': 'BTAS'}[liveDetails.store_name] || liveDetails.store_name;
+        const colorClass = {
+            'Bagmati': 'bg-teal-50 text-teal-700 border-teal-200 dark:bg-teal-950/40 dark:text-teal-400 dark:border-teal-800',
+            'Balaju': 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-blue-400 dark:border-blue-800',
+            'Cosmetics': 'bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200 dark:bg-fuchsia-950/40 dark:text-fuchsia-400 dark:border-fuchsia-800',
+            'BTAS': 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-400 dark:border-amber-800'
+        }[storeAlias] || 'bg-gray-50 text-gray-700 border-gray-200 dark:bg-zinc-800 dark:text-gray-400 dark:border-gray-700';
+        return (
+            <span className={`text-[9.5px] font-bold uppercase tracking-wider mt-1 border px-1.5 py-0.5 rounded shadow-sm ${colorClass}`} title={sku || ''}>
+                {storeAlias}
+            </span>
+        );
+    })()}
+    
+                                                            </div>
+                                                    </td>
+                                                )
+                                            })}
+
+                                            <td className="text-right font-bold text-blue-600 dark:text-blue-400 bg-blue-50/30 dark:bg-blue-950/20 p-4 align-middle">
+                                                {(() => {
+                                                    const commPct = item.commission_percent !== null ? item.commission_percent : 25
+                                                    const breakeven = item.purchasing_price / (1 - commPct / 100)
+                                                    const rawReg = breakeven * (1 + regularPct / 100)
+                                                    const reg = Math.ceil(rawReg / 5) * 5
+                                                    return `Rs. ${reg.toLocaleString(undefined, { maximumFractionDigits: 2 })}`
+                                                })()}
+                                            </td>
+                                            
+                                            {/* Editable Daraz Price with Profit */}
+                                            <td className="text-right border-l border-gray-100 dark:border-zinc-800 align-top pt-3 p-4 align-middle">
                                                 {editingId === item.product_id ? (
                                                     <input
                                                         type="number"
@@ -308,10 +452,10 @@ export default function DarazAverageSalesPricePage() {
                                                         )}
                                                     </div>
                                                 )}
-                                            </TableCell>
+                                            </td>
                                             
                                             {/* Editable Campaign Price with Profit */}
-                                            <TableCell className="text-right align-top pt-3 w-32">
+                                            <td className="text-right align-top pt-3 w-32 p-4 align-middle">
                                                 {editingId === item.product_id ? (
                                                     <input
                                                         type="number"
@@ -332,10 +476,10 @@ export default function DarazAverageSalesPricePage() {
                                                         )}
                                                     </div>
                                                 )}
-                                            </TableCell>
+                                            </td>
                                             
                                             {/* Actions */}
-                                            <TableCell className="text-center">
+                                            <td className="text-center p-4 align-middle">
                                                 {editingId === item.product_id ? (
                                                     <div className="flex items-center justify-center gap-1">
                                                         <button onClick={() => savePrices(item.product_id)} disabled={isSaving} className="p-1.5 text-green-600 hover:bg-green-50 rounded">
@@ -350,12 +494,13 @@ export default function DarazAverageSalesPricePage() {
                                                         <Edit2 size={16} />
                                                     </button>
                                                 )}
-                                            </TableCell>
-                                        </TableRow>
-                                    ))
+                                            </td>
+                                        </tr>
+                                        )
+                                    })
                                 )}
-                            </TableBody>
-                        </Table>
+                            </tbody>
+                        </table>
                     </div>
                 </Card>
             </div>

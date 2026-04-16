@@ -3,6 +3,15 @@
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { getGoogleSheetsClient } from '@/lib/google-sheets'
+import axios from 'axios'
+import crypto from 'crypto'
+
+const STORE_NAME_MAP: Record<string, string> = {
+    'lamichhaneram100@gmail.com': 'Balaju',
+    'shop.bagmati@gmail.com': 'BTAS',
+    'Bagmationline8@gmail.com': 'Bagmati',
+    'supplierslamichhane9@gmail.com': 'Cosmetics'
+}
 
 export interface DarazAvgPriceItem {
     product_id: string
@@ -24,6 +33,7 @@ export interface DarazAvgPriceItem {
     campaign_price: number | null
     campaign_price_profit: number | null
     updated_at: string | null
+    live_prices?: Record<string, { price: number, special_price: number | null, store_name: string }>
 }
 
 export async function getDarazAvgPrices() {
@@ -130,6 +140,44 @@ export async function getDarazAvgPrices() {
         console.warn('daraz_avg_prices fetch error (table might not exist yet):', pricesError.message)
     }
 
+    // 2b. Fetch Live Daraz Prices from our new cache table
+    const allDbLivePrices: any[] = []
+    let fetchPage = 0
+    let hasMoreLivePrices = true
+
+    while (hasMoreLivePrices) {
+        const { data: dbLivePricesChunk, error: livePricesError } = await supabase
+            .from('daraz_live_prices')
+            .select('*')
+            .range(fetchPage * 1000, (fetchPage + 1) * 1000 - 1)
+
+        if (livePricesError) {
+            console.error('daraz_live_prices fetch error:', livePricesError.message)
+            break
+        }
+        if (!dbLivePricesChunk || dbLivePricesChunk.length === 0) {
+            hasMoreLivePrices = false
+            break
+        }
+        allDbLivePrices.push(...dbLivePricesChunk)
+        if (dbLivePricesChunk.length < 1000) {
+            hasMoreLivePrices = false
+        } else {
+            fetchPage++
+        }
+    }
+
+    const livePricesMap = new Map<string, any[]>()
+    if (allDbLivePrices.length > 0) {
+        allDbLivePrices.forEach(lp => {
+            const sku = lp.seller_sku.toLowerCase().trim()
+            if (!livePricesMap.has(sku)) {
+                livePricesMap.set(sku, [])
+            }
+            livePricesMap.get(sku)!.push(lp)
+        })
+    }
+
     // 3. Fetch Delivered Daraz Orders with fees to find the LATEST commission per product
     const { data: ordersWithItems, error: ordersError } = await supabase
         .from('daraz_orders')
@@ -194,9 +242,11 @@ export async function getDarazAvgPrices() {
         const purchasingRemark = isCombo ? comboData.remark : baseData.remark
 
         // Latest Commission Percent
+        // Default is 25%; also treat any real commission below 15% as 25% (too low to be realistic)
         const actualCommission = latestCommissionMap.has(p.product_id) ? latestCommissionMap.get(p.product_id)! : null
-        const isDefaultCommission = actualCommission === null
-        const commissionPercent = isDefaultCommission ? 0.20 : actualCommission // 20% default
+        const isBelowMinimum = actualCommission !== null && actualCommission < 0.15
+        const isDefaultCommission = actualCommission === null || isBelowMinimum
+        const commissionPercent = isDefaultCommission ? 0.25 : actualCommission // 25% default
 
         // Calculations
         let breakevenPrice = 0
@@ -215,6 +265,22 @@ export async function getDarazAvgPrices() {
         
         const marketPriceProfit = marketPrice ? (marketPrice - (marketPrice * commissionPercent) - purchasingPrice) : null
         const campaignPriceProfit = campaignPrice ? (campaignPrice - (campaignPrice * commissionPercent) - purchasingPrice) : null
+
+        // Live Prices Mapping
+        const productLivePrices: Record<string, { price: number, special_price: number | null, store_name: string }> = {}
+        skus.forEach(sku => {
+            const lowerSku = sku.toLowerCase().trim()
+            const prices = livePricesMap.get(lowerSku)
+            if (prices && prices.length > 0) {
+                // If by rare chance multiple stores report the same SKU name, take the first matched price recorded
+                const sp = prices[0]
+                productLivePrices[sku] = { 
+                    price: Number(sp.price), 
+                    special_price: sp.special_price ? Number(sp.special_price) : null,
+                    store_name: sp.store_name
+                }
+            }
+        })
 
         return {
             product_id: p.product_id,
@@ -235,7 +301,8 @@ export async function getDarazAvgPrices() {
             market_price_profit: marketPriceProfit,
             campaign_price: campaignPrice,
             campaign_price_profit: campaignPriceProfit,
-            updated_at: editableStats?.updated_at || null
+            updated_at: editableStats?.updated_at || null,
+            live_prices: productLivePrices
         }
     })
 
@@ -381,7 +448,7 @@ export async function syncDarazAvgPricesGoogleSheets() {
                 item.seller_sku3 || '',
                 item.seller_sku4 || '',
                 item.purchasing_price.toFixed(2),
-                item.commission_percent !== null ? item.commission_percent.toFixed(2) + '%' : 'N/A',
+                (item.commission_percent !== null ? item.commission_percent : 25).toFixed(2) + '%',
                 item.breakeven_price.toFixed(2),
                 item.regular_sales_price.toFixed(2),
                 item.market_price !== null ? String(item.market_price) : '',
@@ -482,3 +549,99 @@ export async function pullDarazAvgPricesFromGoogleSheets() {
         return { success: false, message: error.message || 'Unknown error occurred during pull' }
     }
 }
+
+export async function syncLiveSellerPrices() {
+    try {
+        const supabase = await createClient()
+        const appKey = process.env.NEXT_PUBLIC_DARAZ_APP_KEY
+        const appSecret = process.env.DARAZ_APP_SECRET
+        const apiUrl = process.env.DARAZ_API_URL || 'https://api.daraz.com.np/rest'
+
+        if (!appKey || !appSecret) {
+            throw new Error('Missing Daraz API credentials')
+        }
+
+        const { data: tokens, error: tokensErr } = await supabase.from('daraz_api_tokens').select('*')
+        if (tokensErr || !tokens || tokens.length === 0) {
+            throw new Error('No connected seller stores found')
+        }
+
+        const allLivePricesToUpsert: any[] = []
+
+        for (const token of tokens) {
+            const storeName = STORE_NAME_MAP[token.account] || (token.account ? token.account.split('@')[0] : 'Unknown Store')
+            const limit = 50
+            let offset = 0
+            let hasMore = true
+
+            while (hasMore) {
+                const params: Record<string, any> = {
+                    app_key: appKey,
+                    access_token: token.access_token,
+                    timestamp: new Date().getTime(),
+                    sign_method: 'sha256',
+                    filter: 'live',
+                    limit: limit,
+                    offset: offset
+                }
+
+                const apiPath = '/products/get'
+                const keys = Object.keys(params).sort()
+                let str = apiPath
+                keys.forEach(k => { str += k + params[k] })
+                params.sign = crypto.createHmac('sha256', appSecret).update(str).digest('hex').toUpperCase()
+
+                try {
+                    const res = await axios.get(`${apiUrl}${apiPath}`, { params })
+                    const data = res.data?.data?.products || []
+
+                    for (const prod of data) {
+                        const skus = prod.skus || []
+                        for (const sku of skus) {
+                            if (sku.SellerSku) {
+                                allLivePricesToUpsert.push({
+                                    store_id: token.store_id,
+                                    store_name: storeName,
+                                    seller_sku: sku.SellerSku,
+                                    price: parseFloat(sku.price) || 0,
+                                    special_price: sku.special_price ? parseFloat(sku.special_price) : null,
+                                    updated_at: new Date().toISOString()
+                                })
+                            }
+                        }
+                    }
+
+                    if (data.length < limit) {
+                        hasMore = false
+                    } else {
+                        offset += limit
+                        await new Promise(r => setTimeout(r, 200)) // rate limit protection
+                        if (offset > 15000) hasMore = false // fail safe
+                    }
+                } catch (err: any) {
+                    console.error(`Failed to fetch live prices for ${storeName} at offset ${offset}:`, err.message)
+                    hasMore = false // break this store loop on error and continue to next
+                }
+            }
+        }
+
+        if (allLivePricesToUpsert.length > 0) {
+            // Upsert in batches of 500
+            for (let i = 0; i < allLivePricesToUpsert.length; i += 500) {
+                const batch = allLivePricesToUpsert.slice(i, i + 500)
+                const { error: upsertErr } = await supabase.from('daraz_live_prices').upsert(batch, { onConflict: 'store_id,seller_sku' })
+                if (upsertErr) {
+                    console.error('Failed to upsert daraz live prices batch:', upsertErr.message)
+                    throw new Error(`Failed to upsert daraz live prices batch: ${upsertErr.message}`)
+                }
+            }
+        }
+
+        revalidatePath('/dashboard/sales/daraz/average-sales-price')
+        return { success: true, count: allLivePricesToUpsert.length, message: `Successfully synced ${allLivePricesToUpsert.length} SKUs across stores` }
+    } catch (error: any) {
+        console.error('syncLiveSellerPrices Error:', error)
+        return { success: false, message: error.message || 'Unknown error occurred during live price sync' }
+    }
+}
+

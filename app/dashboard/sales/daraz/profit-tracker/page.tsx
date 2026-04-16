@@ -72,7 +72,7 @@ function ProfitTrackerContent({ isEmbedded = false }: { isEmbedded?: boolean }) 
         return searchParams.get('sellerAccount') || 'All'
     })
     const [activeSubTab, setActiveSubTab] = useState<'orders' | 'accounts' | 'daily' | 'monthly'>('orders')
-    
+
     const handleSubTabChange = (tab: 'orders' | 'accounts' | 'daily' | 'monthly') => {
         if (tab !== activeSubTab) {
             setSearch('')
@@ -378,7 +378,7 @@ function ProfitTrackerContent({ isEmbedded = false }: { isEmbedded?: boolean }) 
                     {activeSubTab === 'orders' && (
                         <div className="flex items-center gap-3 w-full md:w-auto overflow-x-auto no-scrollbar py-1 md:py-0">
                             <BulkSyncButton orderNumbers={visibleOrderNumbers} />
-                            
+
                             <div className="flex p-1 bg-gray-100 dark:bg-zinc-800 rounded-lg shrink-0">
                                 {(['all', 'synced', 'not_synced'] as const).map(status => (
                                     <button
@@ -406,225 +406,225 @@ function ProfitTrackerContent({ isEmbedded = false }: { isEmbedded?: boolean }) 
                     <>
                         {/* Table */}
                         <Card className="overflow-hidden border-none shadow-md bg-white dark:bg-zinc-900">
-                    <div className="overflow-x-auto">
-                        <Table className="min-w-[800px]">
-                            <TableHeader className="bg-gray-50 dark:bg-zinc-800">
-                                <TableRow>
-                                    <TableHead className="w-16">S.N</TableHead>
-                                    <TableHead className="w-[100px]">Sync Status</TableHead>
-                                    <TableHead>Delivered Date</TableHead>
-                                    <TableHead>Order Number</TableHead>
-                                    <TableHead>Seller Account</TableHead>
-                                    <TableHead>Product Name</TableHead>
-                                    <TableHead className="text-right">Product Price</TableHead>
-                                    <TableHead className="text-right">Purchase Cost</TableHead>
-                                    <TableHead className="text-right">Profit</TableHead>
-                                    <TableHead className="text-center w-[100px]">Action</TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                {isLoading ? (
-                                    <TableRow>
-                                        <TableCell colSpan={10} className="h-48 text-center text-gray-500">
-                                            Loading data...
-                                        </TableCell>
-                                    </TableRow>
-                                ) : orders.length === 0 ? (
-                                    <TableRow>
-                                        <TableCell colSpan={10} className="h-24 text-center text-gray-500">
-                                            No delivered orders found
-                                        </TableCell>
-                                    </TableRow>
-                                ) : (
-                                    sortedDateKeys.map((dateKey) => {
-                                        const group = groupedOrders[dateKey]
-                                        return (
-                                            <Fragment key={dateKey}>
-                                                {/* Group Header */}
-                                                <TableRow className="bg-gray-100 dark:bg-zinc-800/80 border-b border-gray-200 dark:border-zinc-700">
-                                                    {/* Date Cell */}
-                                                    <TableCell colSpan={2} className="py-3 pl-4 align-top border-r border-gray-200 dark:border-zinc-700/50">
-                                                        <span className="font-bold text-gray-700 dark:text-gray-200 text-sm whitespace-nowrap">
-                                                            {group.dateLabel}
-                                                        </span>
-                                                    </TableCell>
+                            <div className="overflow-x-auto">
+                                <Table className="min-w-[800px]">
+                                    <TableHeader className="bg-gray-50 dark:bg-zinc-800">
+                                        <TableRow>
+                                            <TableHead className="w-16">S.N</TableHead>
+                                            <TableHead className="w-[100px]">Sync Status</TableHead>
+                                            <TableHead>Delivered Date</TableHead>
+                                            <TableHead>Order Number</TableHead>
+                                            <TableHead>Seller Account</TableHead>
+                                            <TableHead>Product Name</TableHead>
+                                            <TableHead className="text-right">Product Price</TableHead>
+                                            <TableHead className="text-right">Purchase Cost</TableHead>
+                                            <TableHead className="text-right">Profit</TableHead>
+                                            <TableHead className="text-center w-[100px]">Action</TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {isLoading ? (
+                                            <TableRow>
+                                                <TableCell colSpan={10} className="h-48 text-center text-gray-500">
+                                                    Loading data...
+                                                </TableCell>
+                                            </TableRow>
+                                        ) : orders.length === 0 ? (
+                                            <TableRow>
+                                                <TableCell colSpan={10} className="h-24 text-center text-gray-500">
+                                                    No delivered orders found
+                                                </TableCell>
+                                            </TableRow>
+                                        ) : (
+                                            sortedDateKeys.map((dateKey) => {
+                                                const group = groupedOrders[dateKey]
+                                                return (
+                                                    <Fragment key={dateKey}>
+                                                        {/* Group Header */}
+                                                        <TableRow className="bg-gray-100 dark:bg-zinc-800/80 border-b border-gray-200 dark:border-zinc-700">
+                                                            {/* Date Cell */}
+                                                            <TableCell colSpan={2} className="py-3 pl-4 align-top border-r border-gray-200 dark:border-zinc-700/50">
+                                                                <span className="font-bold text-gray-700 dark:text-gray-200 text-sm whitespace-nowrap">
+                                                                    {group.dateLabel}
+                                                                </span>
+                                                            </TableCell>
 
-                                                    {/* Stats Cell */}
-                                                    <TableCell colSpan={6} className="py-3 px-4 align-top">
-                                                        <div className="flex flex-wrap gap-2">
-                                                            {Object.entries(group.statsBySeller).map(([seller, stats]: [string, any]) => (
-                                                                <div key={seller} className="flex items-center gap-3 text-xs bg-white dark:bg-zinc-900/50 px-2 py-1 rounded border border-gray-200 dark:border-zinc-700 w-fit shadow-sm">
-                                                                    <span className="font-semibold text-gray-700 dark:text-gray-300 max-w-[120px] truncate" title={seller}>
-                                                                        {seller}
-                                                                    </span>
-                                                                    <span className="text-gray-300 dark:text-zinc-700">|</span>
-                                                                    <span className="flex items-center gap-1">
-                                                                        <span className="text-gray-500">Profit:</span>
-                                                                        <span className={`font-medium ${(stats.profit || 0) > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                                                            Rs. {(stats.profit || 0).toLocaleString(undefined, { minimumFractionDigits: 0 })}
-                                                                        </span>
-                                                                    </span>
-                                                                    <span className="text-gray-300 dark:text-zinc-700">|</span>
-                                                                    <span className="flex items-center gap-1">
-                                                                        <span className="text-gray-500">Total:</span>
-                                                                        <span className="font-medium text-gray-700 dark:text-gray-300">
-                                                                            Rs. {(stats.revenue || 0).toLocaleString()}
-                                                                        </span>
-                                                                    </span>
-                                                                    <span className="text-gray-300 dark:text-zinc-700">|</span>
-                                                                    <span className="flex items-center gap-1">
-                                                                        <span className="text-gray-500">Cost:</span>
-                                                                        <span className="font-medium text-gray-700 dark:text-gray-300">
-                                                                            Rs. {(stats.cost || 0).toLocaleString()}
-                                                                        </span>
-                                                                    </span>
-                                                                    {stats.missing > 0 && (
-                                                                        <>
+                                                            {/* Stats Cell */}
+                                                            <TableCell colSpan={6} className="py-3 px-4 align-top">
+                                                                <div className="flex flex-wrap gap-2">
+                                                                    {Object.entries(group.statsBySeller).map(([seller, stats]: [string, any]) => (
+                                                                        <div key={seller} className="flex items-center gap-3 text-xs bg-white dark:bg-zinc-900/50 px-2 py-1 rounded border border-gray-200 dark:border-zinc-700 w-fit shadow-sm">
+                                                                            <span className="font-semibold text-gray-700 dark:text-gray-300 max-w-[120px] truncate" title={seller}>
+                                                                                {seller}
+                                                                            </span>
                                                                             <span className="text-gray-300 dark:text-zinc-700">|</span>
-                                                                            <span className="text-red-600 font-medium flex items-center gap-1">
-                                                                                <AlertTriangle className="w-3 h-3 text-red-500" /> {stats.missing} Missing
-                                                                            </span>
-                                                                        </>
-                                                                    )}
-                                                                </div>
-                                                            ))}
-                                                        </div>
-                                                    </TableCell>
-                                                    <TableCell colSpan={2} className="text-right font-bold py-3 pr-4 text-gray-900 dark:text-gray-100 align-top">
-                                                        <div className="flex items-center justify-end gap-2 h-full min-h-[28px]">
-                                                            <span className="text-xs text-gray-500 font-normal uppercase">TP :</span>
-                                                            <span className={`${(group.totalProfit || 0) > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                                                Rs. {(group.totalProfit || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                                            </span>
-                                                        </div>
-                                                    </TableCell>
-                                                </TableRow>
-
-                                                {/* Group Rows */}
-                                                {group.orders.map((order: any, i: number) => {
-                                                    // Reset S.N per group, but respect pagination offset for the FIRST group on the page
-                                                    const groupSNIndex = (dateKey === sortedDateKeys[0])
-                                                        ? (profitData?.firstItemOffset || 0) + i + 1
-                                                        : i + 1
-
-                                                    const isSynced = order.sync_status === 'synced'
-
-                                                    return (
-                                                        <TableRow key={order.order_primary_id} className="hover:bg-gray-50 dark:hover:bg-zinc-800/50">
-                                                            <TableCell className="text-gray-500 font-medium">
-                                                                {groupSNIndex}
-                                                            </TableCell>
-                                                            <TableCell>
-                                                                <div className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${isSynced
-                                                                    ? 'bg-green-100 text-green-700 border-green-200 dark:bg-green-900/30 dark:text-green-400 dark:border-green-800'
-                                                                    : 'bg-red-50 text-red-700 border-red-200 dark:bg-red-900/20 dark:text-red-400 dark:border-red-800'
-                                                                    }`}>
-                                                                    {isSynced ? 'Synced' : 'Not Synced'}
-                                                                </div>
-                                                            </TableCell>
-                                                            <TableCell>
-                                                                <div className="flex flex-col">
-                                                                    <span className={`font-medium text-gray-900 dark:text-gray-100 ${!order.delivered_by_daraz && order.delivered_at ? 'underline decoration-wavy decoration-2 decoration-amber-500 font-bold' : ''}`}
-                                                                        title={!order.delivered_by_daraz && order.delivered_at ? 'Using Sync Time (Official Time Missing)' : 'Official Delivery Time'}
-                                                                    >
-                                                                        {(order.delivered_by_daraz || order.delivered_at) ? format(new Date(order.delivered_by_daraz || order.delivered_at), 'MM/dd/yyyy') : '-'}
-                                                                    </span>
-                                                                    <span className="text-xs text-gray-400">
-                                                                        {(order.delivered_by_daraz || order.delivered_at) ? format(new Date(order.delivered_by_daraz || order.delivered_at), 'h:mm a') : ''}
-                                                                    </span>
-                                                                </div>
-                                                            </TableCell>
-                                                            <TableCell>
-                                                                <div className="flex flex-col gap-0.5">
-                                                                    <Link
-                                                                        href={`/dashboard/sales/daraz/profit-tracker/${order.order_primary_id}`}
-                                                                        className="font-mono text-blue-600 dark:text-blue-400 font-medium hover:underline"
-                                                                    >
-                                                                        {order.order_number}
-                                                                    </Link>
-                                                                    <span className="text-xs text-gray-500 dark:text-gray-400 font-mono">
-                                                                        {order.invoice_number || '-'}
-                                                                    </span>
-                                                                </div>
-                                                            </TableCell>
-                                                            <TableCell>
-                                                                <span className="px-2 py-1 rounded bg-gray-100 dark:bg-zinc-800 text-xs font-medium">
-                                                                    {order.seller_account || 'N/A'}
-                                                                </span>
-                                                            </TableCell>
-                                                            <TableCell children={
-                                                                <div
-                                                                    className="max-w-[300px] cursor-help"
-                                                                    title={order.products.length > 1 ? order.products.map((p: any) => `${p.product_name}: Rs. ${p.purchase_price?.toLocaleString() || '0'} (x${p.quantity})`).join('\n') : undefined}
-                                                                >
-                                                                    <div className="flex flex-col gap-0.5">
-                                                                        <span className="truncate block text-sm text-gray-900 dark:text-gray-100">
-                                                                            {order.products?.[0]?.product_name || 'Unknown Product'}
-                                                                        </span>
-                                                                        <span className="text-xs text-gray-500 font-mono">
-                                                                            ID: {order.products?.[0]?.product_id || 'N/A'}
-                                                                        </span>
-                                                                    </div>
-                                                                    {order.products && order.products.length > 1 && (
-                                                                        <span className="text-xs font-bold text-blue-600 dark:text-blue-400 mt-1 block">
-                                                                            (+{order.products.length - 1} more)
-                                                                        </span>
-                                                                    )}
-                                                                </div>
-                                                            } />
-                                                            <TableCell className="text-right">
-                                                                <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                                                                    Rs. {order.total_revenue?.toLocaleString() || '0'}
-                                                                </span>
-                                                            </TableCell>
-                                                            <TableCell className="text-right">
-                                                                {order.total_purchase_cost > 0 ? (
-                                                                    <span
-                                                                        className={`text-sm font-medium text-gray-900 dark:text-gray-100 ${order.products.length > 1 ? 'cursor-help border-b border-dotted border-gray-400' : ''}`}
-                                                                        title={order.products.length > 1 ? order.products.map((p: any) => `${p.product_name}: Rs. ${p.purchase_price?.toLocaleString() || '0'} (x${p.quantity})`).join('\n') : undefined}
-                                                                    >
-                                                                        Rs. {order.total_purchase_cost?.toLocaleString() || '0'}
-                                                                    </span>
-                                                                ) : (
-                                                                    <span className="text-red-400 text-sm font-medium">Missing</span>
-                                                                )}
-                                                            </TableCell>
-                                                            <TableCell className="text-right">
-                                                                <div className="flex flex-col items-end">
-                                                                    {order.sync_status === 'synced' ? (
-                                                                        <>
-                                                                            <span className={`text-sm font-semibold ${(order.profit || 0) > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                                                                Rs. {order.profit?.toLocaleString() || '0'}
-                                                                            </span>
-                                                                            {order.profit_percentage !== undefined && (
-                                                                                <span className={`text-xs ${(order.profit || 0) > 0 ? 'text-green-500' : 'text-red-500'}`}>
-                                                                                    ({order.profit_percentage?.toFixed(2) || '0.00'}%)
+                                                                            <span className="flex items-center gap-1">
+                                                                                <span className="text-gray-500">Profit:</span>
+                                                                                <span className={`font-medium ${(stats.profit || 0) > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                                                                    Rs. {(stats.profit || 0).toLocaleString(undefined, { minimumFractionDigits: 0 })}
                                                                                 </span>
+                                                                            </span>
+                                                                            <span className="text-gray-300 dark:text-zinc-700">|</span>
+                                                                            <span className="flex items-center gap-1">
+                                                                                <span className="text-gray-500">Total:</span>
+                                                                                <span className="font-medium text-gray-700 dark:text-gray-300">
+                                                                                    Rs. {(stats.revenue || 0).toLocaleString()}
+                                                                                </span>
+                                                                            </span>
+                                                                            <span className="text-gray-300 dark:text-zinc-700">|</span>
+                                                                            <span className="flex items-center gap-1">
+                                                                                <span className="text-gray-500">Cost:</span>
+                                                                                <span className="font-medium text-gray-700 dark:text-gray-300">
+                                                                                    Rs. {(stats.cost || 0).toLocaleString()}
+                                                                                </span>
+                                                                            </span>
+                                                                            {stats.missing > 0 && (
+                                                                                <>
+                                                                                    <span className="text-gray-300 dark:text-zinc-700">|</span>
+                                                                                    <span className="text-red-600 font-medium flex items-center gap-1">
+                                                                                        <AlertTriangle className="w-3 h-3 text-red-500" /> {stats.missing} Missing
+                                                                                    </span>
+                                                                                </>
                                                                             )}
-                                                                        </>
-                                                                    ) : (
-                                                                        <span className="text-red-400 text-sm font-medium">Not Synced</span>
-                                                                    )}
+                                                                        </div>
+                                                                    ))}
                                                                 </div>
                                                             </TableCell>
-                                                            <TableCell className="text-center">
-                                                                <Link href={`/dashboard/sales/daraz/profit-tracker/${order.order_primary_id}`}>
-                                                                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                                                                        <Eye className="h-4 w-4 text-blue-600" />
-                                                                    </Button>
-                                                                </Link>
+                                                            <TableCell colSpan={2} className="text-right font-bold py-3 pr-4 text-gray-900 dark:text-gray-100 align-top">
+                                                                <div className="flex items-center justify-end gap-2 h-full min-h-[28px]">
+                                                                    <span className="text-xs text-gray-500 font-normal uppercase">TP :</span>
+                                                                    <span className={`${(group.totalProfit || 0) > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                                                        Rs. {(group.totalProfit || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                                    </span>
+                                                                </div>
                                                             </TableCell>
                                                         </TableRow>
-                                                    )
-                                                })}
-                                            </Fragment>
-                                        )
-                                    })
-                                )}
-                            </TableBody>
-                        </Table>
-                    </div>
-                </Card>
+
+                                                        {/* Group Rows */}
+                                                        {group.orders.map((order: any, i: number) => {
+                                                            // Reset S.N per group, but respect pagination offset for the FIRST group on the page
+                                                            const groupSNIndex = (dateKey === sortedDateKeys[0])
+                                                                ? (profitData?.firstItemOffset || 0) + i + 1
+                                                                : i + 1
+
+                                                            const isSynced = order.sync_status === 'synced'
+
+                                                            return (
+                                                                <TableRow key={order.order_primary_id} className="hover:bg-gray-50 dark:hover:bg-zinc-800/50">
+                                                                    <TableCell className="text-gray-500 font-medium">
+                                                                        {groupSNIndex}
+                                                                    </TableCell>
+                                                                    <TableCell>
+                                                                        <div className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${isSynced
+                                                                            ? 'bg-green-100 text-green-700 border-green-200 dark:bg-green-900/30 dark:text-green-400 dark:border-green-800'
+                                                                            : 'bg-red-50 text-red-700 border-red-200 dark:bg-red-900/20 dark:text-red-400 dark:border-red-800'
+                                                                            }`}>
+                                                                            {isSynced ? 'Synced' : 'Not Synced'}
+                                                                        </div>
+                                                                    </TableCell>
+                                                                    <TableCell>
+                                                                        <div className="flex flex-col">
+                                                                            <span className={`font-medium text-gray-900 dark:text-gray-100 ${!order.delivered_by_daraz && order.delivered_at ? 'underline decoration-wavy decoration-2 decoration-amber-500 font-bold' : ''}`}
+                                                                                title={!order.delivered_by_daraz && order.delivered_at ? 'Using Sync Time (Official Time Missing)' : 'Official Delivery Time'}
+                                                                            >
+                                                                                {(order.delivered_by_daraz || order.delivered_at) ? format(new Date(order.delivered_by_daraz || order.delivered_at), 'MM/dd/yyyy') : '-'}
+                                                                            </span>
+                                                                            <span className="text-xs text-gray-400">
+                                                                                {(order.delivered_by_daraz || order.delivered_at) ? format(new Date(order.delivered_by_daraz || order.delivered_at), 'h:mm a') : ''}
+                                                                            </span>
+                                                                        </div>
+                                                                    </TableCell>
+                                                                    <TableCell>
+                                                                        <div className="flex flex-col gap-0.5">
+                                                                            <Link
+                                                                                href={`/dashboard/sales/daraz/profit-tracker/${order.order_primary_id}`}
+                                                                                className="font-mono text-blue-600 dark:text-blue-400 font-medium hover:underline"
+                                                                            >
+                                                                                {order.order_number}
+                                                                            </Link>
+                                                                            <span className="text-xs text-gray-500 dark:text-gray-400 font-mono">
+                                                                                {order.invoice_number || '-'}
+                                                                            </span>
+                                                                        </div>
+                                                                    </TableCell>
+                                                                    <TableCell>
+                                                                        <span className="px-2 py-1 rounded bg-gray-100 dark:bg-zinc-800 text-xs font-medium">
+                                                                            {order.seller_account || 'N/A'}
+                                                                        </span>
+                                                                    </TableCell>
+                                                                    <TableCell children={
+                                                                        <div
+                                                                            className="max-w-[300px] cursor-help"
+                                                                            title={order.products.length > 1 ? order.products.map((p: any) => `${p.product_name}: Rs. ${p.purchase_price?.toLocaleString() || '0'} (x${p.quantity})`).join('\n') : undefined}
+                                                                        >
+                                                                            <div className="flex flex-col gap-0.5">
+                                                                                <span className="truncate block text-sm text-gray-900 dark:text-gray-100">
+                                                                                    {order.products?.[0]?.product_name || 'Unknown Product'}
+                                                                                </span>
+                                                                                <span className="text-xs text-gray-500 font-mono">
+                                                                                    ID: {order.products?.[0]?.product_id || 'N/A'}
+                                                                                </span>
+                                                                            </div>
+                                                                            {order.products && order.products.length > 1 && (
+                                                                                <span className="text-xs font-bold text-blue-600 dark:text-blue-400 mt-1 block">
+                                                                                    (+{order.products.length - 1} more)
+                                                                                </span>
+                                                                            )}
+                                                                        </div>
+                                                                    } />
+                                                                    <TableCell className="text-right">
+                                                                        <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                                                                            Rs. {order.total_revenue?.toLocaleString() || '0'}
+                                                                        </span>
+                                                                    </TableCell>
+                                                                    <TableCell className="text-right">
+                                                                        {order.total_purchase_cost > 0 ? (
+                                                                            <span
+                                                                                className={`text-sm font-medium text-gray-900 dark:text-gray-100 ${order.products.length > 1 ? 'cursor-help border-b border-dotted border-gray-400' : ''}`}
+                                                                                title={order.products.length > 1 ? order.products.map((p: any) => `${p.product_name}: Rs. ${p.purchase_price?.toLocaleString() || '0'} (x${p.quantity})`).join('\n') : undefined}
+                                                                            >
+                                                                                Rs. {order.total_purchase_cost?.toLocaleString() || '0'}
+                                                                            </span>
+                                                                        ) : (
+                                                                            <span className="text-red-400 text-sm font-medium">Missing</span>
+                                                                        )}
+                                                                    </TableCell>
+                                                                    <TableCell className="text-right">
+                                                                        <div className="flex flex-col items-end">
+                                                                            {order.sync_status === 'synced' ? (
+                                                                                <>
+                                                                                    <span className={`text-sm font-semibold ${(order.profit || 0) > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                                                                        Rs. {order.profit?.toLocaleString() || '0'}
+                                                                                    </span>
+                                                                                    {order.profit_percentage !== undefined && (
+                                                                                        <span className={`text-xs ${(order.profit || 0) > 0 ? 'text-green-500' : 'text-red-500'}`}>
+                                                                                            ({order.profit_percentage?.toFixed(2) || '0.00'}%)
+                                                                                        </span>
+                                                                                    )}
+                                                                                </>
+                                                                            ) : (
+                                                                                <span className="text-red-400 text-sm font-medium">Not Synced</span>
+                                                                            )}
+                                                                        </div>
+                                                                    </TableCell>
+                                                                    <TableCell className="text-center">
+                                                                        <Link href={`/dashboard/sales/daraz/profit-tracker/${order.order_primary_id}`}>
+                                                                            <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                                                                                <Eye className="h-4 w-4 text-blue-600" />
+                                                                            </Button>
+                                                                        </Link>
+                                                                    </TableCell>
+                                                                </TableRow>
+                                                            )
+                                                        })}
+                                                    </Fragment>
+                                                )
+                                            })
+                                        )}
+                                    </TableBody>
+                                </Table>
+                            </div>
+                        </Card>
 
                     </>
                 )}
