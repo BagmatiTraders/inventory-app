@@ -14,6 +14,11 @@ export default function DarazAverageSalesPricePage() {
     const [isPulling, setIsPulling] = useState(false)
     const [isSyncingLive, setIsSyncingLive] = useState(false)
     const [pushingId, setPushingId] = useState<string | null>(null)
+    const [isUpdatingStock, setIsUpdatingStock] = useState(false)
+    const [showOnlyStockOut, setShowOnlyStockOut] = useState(false)
+    const [stockModalProduct, setStockModalProduct] = useState<DarazAvgPriceItem | null>(null)
+    const [stockEdits, setStockEdits] = useState<Record<string, number>>({}) // key: store_id:sku
+    const [showLivePriceColumns, setShowLivePriceColumns] = useState(true)
 
     // Drag to scroll
     const scrollContainerRef = useRef<HTMLDivElement>(null)
@@ -32,7 +37,7 @@ export default function DarazAverageSalesPricePage() {
         if (!isDragging || !scrollContainerRef.current) return
         e.preventDefault()
         const x = e.pageX - scrollContainerRef.current.offsetLeft
-        const walk = (x - startX) * 1.5
+        const walk = (x - startX)
         scrollContainerRef.current.scrollLeft = scrollLeft - walk
     }
 
@@ -141,6 +146,41 @@ export default function DarazAverageSalesPricePage() {
             setPushingId(null)
         }
     }
+    const openStockModal = (item: DarazAvgPriceItem) => {
+        setStockModalProduct(item)
+        setStockEdits({}) 
+    }
+
+    const handleUpdateStock = async (isOutOfStock: boolean) => {
+        if (!stockModalProduct) return
+        
+        const updates: Array<{ sku: string, quantity: number, store_id: string }> = []
+        
+        Object.keys(stockModalProduct.live_prices || {}).forEach(sku => {
+            const lp = stockModalProduct.live_prices![sku]
+            const quantity = isOutOfStock ? 0 : (stockEdits[sku] ?? lp.quantity ?? 0)
+            updates.push({ sku, quantity, store_id: lp.store_id })
+        })
+        
+        if (updates.length === 0) return
+        
+        setIsUpdatingStock(true)
+        try {
+            const { pushStockToDaraz } = await import('@/features/sales/actions/avg-price-actions')
+            const res = await pushStockToDaraz(stockModalProduct.product_id, updates)
+            if (res.success) {
+                alert(`✓ Stock updated!\n${res.message}`)
+                setStockModalProduct(null)
+                loadData() // Refresh to show new stock
+            } else {
+                alert(`✗ Update failed:\n${res.message}`)
+            }
+        } catch (err: any) {
+            alert(`Stock update failed: ${err.message}`)
+        } finally {
+            setIsUpdatingStock(false)
+        }
+    }
 
     const startEditing = (item: DarazAvgPriceItem) => {
         setEditingId(item.product_id)
@@ -190,9 +230,19 @@ export default function DarazAverageSalesPricePage() {
     }
 
     const filteredData = data.filter(item => {
-        if (!debouncedSearch) return true;
-        const s = debouncedSearch.toLowerCase()
-        return (item.product_name?.toLowerCase().includes(s) || item.seller_skus.some(sku => sku?.toLowerCase().includes(s)))
+        let matches = true;
+        if (debouncedSearch) {
+            const s = debouncedSearch.toLowerCase()
+            matches = (item.product_name?.toLowerCase().includes(s) || item.seller_skus.some(sku => sku?.toLowerCase().includes(s)))
+        }
+        
+        if (showOnlyStockOut && matches) {
+            // A product is "Stock Out" if ALL linked SKUs across all stores have 0 quantity
+            const totalStock = Object.values(item.live_prices || {}).reduce((sum, lp) => sum + (lp.quantity || 0), 0)
+            matches = totalStock === 0
+        }
+        
+        return matches;
     })
 
     const totalPages = Math.ceil(filteredData.length / itemsPerPage)
@@ -259,6 +309,15 @@ export default function DarazAverageSalesPricePage() {
                         {isSyncing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
                         <span>Sync with Sheets</span>
                     </Button>
+
+                    <Button
+                        onClick={() => setShowOnlyStockOut(!showOnlyStockOut)}
+                        className={`flex items-center gap-2 h-9 px-3 text-xs transition-all ${showOnlyStockOut ? 'bg-red-600 text-white hover:bg-red-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-zinc-800 dark:text-gray-300'}`}
+                        title={showOnlyStockOut ? "Show All Products" : "Show Only Out of Stock"}
+                    >
+                        <AlertTriangle size={14} className={showOnlyStockOut ? "animate-pulse" : ""} />
+                        <span className="hidden md:inline">{showOnlyStockOut ? "Showing Out of Stock" : "Filter Stock Out"}</span>
+                    </Button>
                 </div>
             </div>
 
@@ -284,8 +343,19 @@ export default function DarazAverageSalesPricePage() {
                                     <th className="text-right p-3 text-left font-medium align-middle sticky top-0 z-30 bg-gray-50 dark:bg-zinc-800 shadow-[0_1px_0_0_#e5e7eb] dark:shadow-[0_1px_0_0_#27272a]">Commission</th>
                                     <th className="text-right text-orange-600 p-3 text-left font-medium align-middle sticky top-0 z-30 bg-gray-50 dark:bg-zinc-800 shadow-[0_1px_0_0_#e5e7eb] dark:shadow-[0_1px_0_0_#27272a]">Breakeven</th>
 
+                                    {/* Toggle Live Prices Button */}
+                                    <th className="p-3 bg-gray-50 dark:bg-zinc-800 sticky top-0 z-30 align-middle w-10">
+                                        <button 
+                                            onClick={() => setShowLivePriceColumns(!showLivePriceColumns)}
+                                            className={`p-1.5 rounded-full transition-all ${showLivePriceColumns ? 'bg-purple-100 text-purple-600' : 'bg-gray-100 text-gray-400'}`}
+                                            title={showLivePriceColumns ? "Hide Store Prices" : "Show Store Prices"}
+                                        >
+                                            {showLivePriceColumns ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
+                                        </button>
+                                    </th>
+
                                     {/* 4 Fixed Live Price Columns */}
-                                    {[1, 2, 3, 4].map(idx => (
+                                    {showLivePriceColumns && [1, 2, 3, 4].map(idx => (
                                         <th key={idx} className="text-right text-purple-600 whitespace-nowrap min-w-[120px] border-l border-gray-200 dark:border-gray-700 bg-purple-50/50 dark:bg-purple-900/20 p-3 font-medium align-middle sticky top-0 z-30 bg-gray-50 dark:bg-zinc-800 shadow-sm border-b dark:border-zinc-800">
                                             Live Price {idx}
                                         </th>
@@ -357,7 +427,16 @@ export default function DarazAverageSalesPricePage() {
                                                     </div>
                                                 </td>
                                                 <td className="p-4 align-middle sticky left-[112px] z-20 bg-white dark:bg-zinc-900 hover:bg-gray-50 dark:hover:bg-zinc-800 border-r dark:border-zinc-800 group-hover:bg-gray-50 dark:group-hover:bg-zinc-800 shadow-[1px_0_0_0_#e5e7eb] dark:shadow-[1px_0_0_0_#27272a]">
-                                                    <div className="font-medium text-gray-900 dark:text-gray-100 truncate w-60" title={item.product_name}>{item.product_name}</div>
+                                                    {(() => {
+                                                        const totalStock = Object.values(item.live_prices || {}).reduce((sum, lp) => sum + (lp.quantity || 0), 0)
+                                                        const isOutOfStock = totalStock === 0 && Object.keys(item.live_prices || {}).length > 0;
+                                                        return (
+                                                            <div className={`font-medium truncate w-60 ${isOutOfStock ? 'text-red-800 dark:text-red-400 font-bold' : 'text-gray-900 dark:text-gray-100'}`} title={item.product_name}>
+                                                                {item.product_name}
+                                                                {isOutOfStock && <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300">OUT</span>}
+                                                            </div>
+                                                        )
+                                                    })()}
                                                 </td>
                                                 <td className="p-4 align-middle">
                                                     <div className="text-xs text-gray-500 font-mono flex flex-col gap-1">
@@ -397,8 +476,11 @@ export default function DarazAverageSalesPricePage() {
                                                     Rs. {item.breakeven_price.toLocaleString(undefined, { maximumFractionDigits: 2 })}
                                                 </td>
 
+                                                {/* Filler for Toggle Column */}
+                                                <td className="w-10 bg-white dark:bg-zinc-900 border-r dark:border-zinc-800"></td>
+
                                                 {/* 4 Fixed Live Price Cells */}
-                                                {[item.seller_sku1, item.seller_sku2, item.seller_sku3, item.seller_sku4].map((sku, idx) => {
+                                                {showLivePriceColumns && [item.seller_sku1, item.seller_sku2, item.seller_sku3, item.seller_sku4].map((sku, idx) => {
                                                     const liveDetails = sku ? item.live_prices?.[sku] : null;
                                                     if (!liveDetails) {
                                                         return <td key={idx} className="text-right border-l border-gray-100 dark:border-zinc-800 pt-3 bg-purple-50/10 dark:bg-purple-900/10 text-gray-300 dark:text-gray-600 p-4 align-middle">-</td>
@@ -520,6 +602,13 @@ export default function DarazAverageSalesPricePage() {
                                                             >
                                                                 {pushingId === item.product_id ? <Loader2 size={16} className="animate-spin text-green-600" /> : <RefreshCw size={16} />}
                                                             </button>
+                                                            <button
+                                                                onClick={() => openStockModal(item)}
+                                                                className="p-1.5 text-gray-400 group-hover:text-amber-600 hover:bg-amber-50 rounded transition-colors"
+                                                                title="Manage Stock"
+                                                            >
+                                                                <AlertTriangle size={16} />
+                                                            </button>
                                                         </div>
                                                     )}
                                                 </td>
@@ -556,6 +645,90 @@ export default function DarazAverageSalesPricePage() {
                             <ChevronRight size={16} />
                         </Button>
                     </div>
+                </div>
+            )}
+
+            {/* Stock Management Modal */}
+            {stockModalProduct && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+                    <Card className="w-full max-w-lg bg-white dark:bg-zinc-900 shadow-2xl border-none">
+                        <div className="p-6">
+                            <div className="flex items-center justify-between mb-4">
+                                <div>
+                                    <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                                        <AlertTriangle className="text-amber-500" size={24} />
+                                        Stock Management
+                                    </h2>
+                                    <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{stockModalProduct.product_name}</p>
+                                </div>
+                                <button onClick={() => setStockModalProduct(null)} className="p-2 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-full transition-colors">
+                                    <X size={20} />
+                                </button>
+                            </div>
+
+                            <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
+                                {Object.keys(stockModalProduct.live_prices || {}).length === 0 ? (
+                                    <div className="text-center py-8 text-gray-500 italic bg-gray-50 dark:bg-zinc-800/50 rounded-lg border border-dashed border-gray-200 dark:border-zinc-700">
+                                        No live SKUs found for this product. Sync live prices first.
+                                    </div>
+                                ) : (
+                                    Object.keys(stockModalProduct.live_prices!).map(sku => {
+                                        const lp = stockModalProduct.live_prices![sku];
+                                        return (
+                                            <div key={sku} className="flex items-center justify-between p-4 bg-gray-50 dark:bg-zinc-800/50 rounded-xl border border-gray-100 dark:border-zinc-800 group hover:border-blue-200 dark:hover:border-blue-900 transition-colors">
+                                                <div className="flex-1 min-w-0 pr-4">
+                                                    <div className="flex items-center gap-2 mb-1">
+                                                        <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">
+                                                            {lp.store_name}
+                                                        </span>
+                                                        <span className="text-xs font-mono text-gray-400 truncate" title={sku}>{sku}</span>
+                                                    </div>
+                                                    <div className="text-sm font-semibold text-gray-700 dark:text-gray-300">
+                                                        Current: <span className={lp.quantity === 0 ? "text-red-500" : "text-green-600"}>{lp.quantity || 0}</span>
+                                                    </div>
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                    <input
+                                                        type="number"
+                                                        value={stockEdits[sku] ?? (lp.quantity || 0)}
+                                                        onChange={(e) => setStockEdits(prev => ({ ...prev, [sku]: parseInt(e.target.value) || 0 }))}
+                                                        className="w-20 px-3 py-2 text-right bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-shadow"
+                                                        min="0"
+                                                    />
+                                                </div>
+                                            </div>
+                                        );
+                                    })
+                                )}
+                            </div>
+
+                            <div className="mt-8 flex flex-col gap-3">
+                                <div className="flex gap-3">
+                                    <Button
+                                        onClick={() => handleUpdateStock(true)}
+                                        disabled={isUpdatingStock || Object.keys(stockModalProduct.live_prices || {}).length === 0}
+                                        className="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold h-11"
+                                    >
+                                        {isUpdatingStock ? <Loader2 size={18} className="animate-spin" /> : "Out of Stock (Zero All)"}
+                                    </Button>
+                                    <Button
+                                        onClick={() => handleUpdateStock(false)}
+                                        disabled={isUpdatingStock || Object.keys(stockModalProduct.live_prices || {}).length === 0}
+                                        className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold h-11"
+                                    >
+                                        {isUpdatingStock ? <Loader2 size={18} className="animate-spin" /> : "Apply Stock"}
+                                    </Button>
+                                </div>
+                                <Button
+                                    variant="outline"
+                                    onClick={() => setStockModalProduct(null)}
+                                    className="w-full border-gray-200 dark:border-zinc-700 text-gray-500 hover:bg-gray-50 dark:hover:bg-zinc-800"
+                                >
+                                    Cancel
+                                </Button>
+                            </div>
+                        </div>
+                    </Card>
                 </div>
             )}
         </div>

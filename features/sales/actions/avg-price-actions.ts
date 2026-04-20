@@ -33,7 +33,7 @@ export interface DarazAvgPriceItem {
     campaign_price: number | null
     campaign_price_profit: number | null
     updated_at: string | null
-    live_prices?: Record<string, { price: number, special_price: number | null, store_name: string }>
+    live_prices?: Record<string, { price: number, special_price: number | null, store_name: string, quantity: number, store_id: string }>
 }
 
 export async function getDarazAvgPrices() {
@@ -52,7 +52,7 @@ export async function getDarazAvgPrices() {
     // 1b. Fetch SKUs from products table (since view might not have them)
     const { data: skusData, error: skuError } = await supabase
         .from('products')
-        .select('id, seller_sku1, seller_sku2, seller_sku3, seller_sku4')
+        .select('id, seller_sku1, seller_account1, seller_sku2, seller_account2, seller_sku3, seller_account3, seller_sku4, seller_account4')
 
     if (skuError) {
         console.error('Error fetching SKUs from products table:', skuError)
@@ -104,12 +104,12 @@ export async function getDarazAvgPrices() {
     productsData?.forEach((p: any) => {
         let price = p.last_price || p.est_price || 0
         let remark: string | null = null
-        
+
         if (price === 0 && bestWholesaleMap.has(p.product_id)) {
             price = bestWholesaleMap.get(p.product_id)!
             remark = '(Est Price)'
         }
-        
+
         basePricesMap[p.product_id] = { price, remark }
     })
 
@@ -122,9 +122,9 @@ export async function getDarazAvgPrices() {
             if (childData.remark === '(Est Price)') hasWholesaleFallback = true
             return sum + (childData.price * comp.quantity)
         }, 0)
-        calculatedComboPrices[parentId] = { 
-            price: parentPrice, 
-            remark: hasWholesaleFallback ? '(Est Price)' : null 
+        calculatedComboPrices[parentId] = {
+            price: parentPrice,
+            remark: hasWholesaleFallback ? '(Est Price)' : null
         }
     })
 
@@ -203,7 +203,7 @@ export async function getDarazAvgPrices() {
             const fees = Math.abs(order.daraz_fees || 0)
             if (fees > 0) {
                 const totalRevenue = (order.items || []).reduce((sum: number, item: any) => sum + ((item.amount || 0) * (item.quantity || 1)), 0)
-                
+
                 if (totalRevenue > 0) {
                     const feePercent = fees / totalRevenue
                     // Cap it realistically e.g. 0 to 99%
@@ -236,7 +236,7 @@ export async function getDarazAvgPrices() {
 
         const comboData = calculatedComboPrices[p.product_id]
         const baseData = basePricesMap[p.product_id] || { price: 0, remark: null }
-        
+
         const isCombo = !!comboData
         const purchasingPrice = isCombo ? comboData.price : baseData.price
         const purchasingRemark = isCombo ? comboData.remark : baseData.remark
@@ -262,7 +262,7 @@ export async function getDarazAvgPrices() {
         const editableStats = pricesMap.get(p.product_id)
         const marketPrice = editableStats?.market_price || null
         const campaignPrice = editableStats?.campaign_price || null
-        
+
         const marketPriceProfit = marketPrice ? (marketPrice - (marketPrice * commissionPercent) - purchasingPrice) : null
         const campaignPriceProfit = campaignPrice ? (campaignPrice - (campaignPrice * commissionPercent) - purchasingPrice) : null
 
@@ -274,10 +274,12 @@ export async function getDarazAvgPrices() {
             if (prices && prices.length > 0) {
                 // If by rare chance multiple stores report the same SKU name, take the first matched price recorded
                 const sp = prices[0]
-                productLivePrices[sku] = { 
-                    price: Number(sp.price), 
+                productLivePrices[sku] = {
+                    price: Number(sp.price),
                     special_price: sp.special_price ? Number(sp.special_price) : null,
-                    store_name: sp.store_name
+                    store_name: sp.store_name,
+                    quantity: Number(sp.quantity || 0),
+                    store_id: sp.store_id
                 }
             }
         })
@@ -388,7 +390,7 @@ export async function syncDarazAvgPricesGoogleSheets() {
                     if (productId) {
                         const marketVal = marketStr ? parseFloat(marketStr.replace(/[^0-9.]/g, '')) : null
                         const campaignVal = campaignStr ? parseFloat(campaignStr.replace(/[^0-9.]/g, '')) : null
-                        
+
                         sheetDataMap.set(productId, {
                             market_price: isNaN(marketVal as any) ? null : marketVal,
                             campaign_price: isNaN(campaignVal as any) ? null : campaignVal
@@ -434,7 +436,7 @@ export async function syncDarazAvgPricesGoogleSheets() {
         // 4. Overwrite Sheet with latest combined data (App -> Sheet)
         const headers = [
             'S.N', 'Product Name', 'Seller SKU 1', 'Seller SKU 2', 'Seller SKU 3', 'Seller SKU 4',
-            'Purchasing Price', 'Commission (%)', 'Breakeven Price', 'Regular Sales Price', 
+            'Purchasing Price', 'Commission (%)', 'Breakeven Price', 'Regular Sales Price',
             'Market Price', 'Market Price Profit', 'Campaign Price', 'Product ID (DO NOT EDIT)'
         ]
 
@@ -471,7 +473,7 @@ export async function syncDarazAvgPricesGoogleSheets() {
         await sheets.spreadsheets.values.clear({
             spreadsheetId: SHEET_ID,
             range: `Daraz Avg Price!A${writeValues.length + 1}:N1000` // Clear up to row 1000
-        }).catch(() => {})
+        }).catch(() => { })
 
         revalidatePath('/dashboard/sales/daraz/average-sales-price')
 
@@ -513,7 +515,7 @@ export async function pullDarazAvgPricesFromGoogleSheets() {
                     if (productId) {
                         const marketVal = marketStr ? parseFloat(marketStr.replace(/[^0-9.]/g, '')) : null
                         const campaignVal = campaignStr ? parseFloat(campaignStr.replace(/[^0-9.]/g, '')) : null
-                        
+
                         sheetDataMap.set(productId, {
                             market_price: isNaN(marketVal as any) ? null : marketVal,
                             campaign_price: isNaN(campaignVal as any) ? null : campaignVal
@@ -606,6 +608,7 @@ export async function syncLiveSellerPrices() {
                                     sku_id: sku.SkuId ? String(sku.SkuId) : null,
                                     price: parseFloat(sku.price) || 0,
                                     special_price: sku.special_price ? parseFloat(sku.special_price) : null,
+                                    quantity: parseInt(sku.quantity) || 0,
                                     updated_at: new Date().toISOString()
                                 })
                             }
@@ -688,14 +691,14 @@ export async function pushPriceToDaraz(productId: string) {
             .select('seller_sku, store_id, price, sku_id')
             .in('seller_sku', productSkus)
 
-        const storeSkuMap = new Map<string, Array<{sku: string, skuId: string | null, currentPrice: number}>>()
+        const storeSkuMap = new Map<string, Array<{ sku: string, skuId: string | null, currentPrice: number }>>()
         if (livePrices && livePrices.length > 0) {
             for (const lp of livePrices) {
                 if (!storeSkuMap.has(lp.store_id)) storeSkuMap.set(lp.store_id, [])
-                storeSkuMap.get(lp.store_id)!.push({ 
-                    sku: lp.seller_sku, 
+                storeSkuMap.get(lp.store_id)!.push({
+                    sku: lp.seller_sku,
                     skuId: lp.sku_id || null,
-                    currentPrice: lp.price || 0 
+                    currentPrice: lp.price || 0
                 })
             }
         } else {
@@ -706,7 +709,7 @@ export async function pushPriceToDaraz(productId: string) {
 
         const now = new Date()
         const pad = (n: number) => String(n).padStart(2, '0')
-        const fmt = (d: Date) => d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate())
+        const fmt = (d: Date) => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate())
         const startDate = fmt(now)
         const endDate = fmt(new Date(now.getFullYear() + 4, now.getMonth(), now.getDate()))
 
@@ -728,12 +731,12 @@ export async function pushPriceToDaraz(productId: string) {
                     ? '<SkuId>' + skuId + '</SkuId>'
                     : '<SellerSku><![CDATA[' + sku + ']]></SellerSku>'
                 return '<Sku>' +
-                identifierXml +
-                '<Price>' + regularPrice.toFixed(2) + '</Price>' +
-                '<SalePrice>' + marketPrice.toFixed(2) + '</SalePrice>' +
-                '<SaleStartDate>' + startDate + '</SaleStartDate>' +
-                '<SaleEndDate>' + endDate + '</SaleEndDate>' +
-                '</Sku>'
+                    identifierXml +
+                    '<Price>' + regularPrice.toFixed(2) + '</Price>' +
+                    '<SalePrice>' + marketPrice.toFixed(2) + '</SalePrice>' +
+                    '<SaleStartDate>' + startDate + '</SaleStartDate>' +
+                    '<SaleEndDate>' + endDate + '</SaleEndDate>' +
+                    '</Sku>'
             }).join('')
 
             const xmlPayload = '<Request><Product><Skus>' + skuXml + '</Skus></Product></Request>'
@@ -776,3 +779,110 @@ export async function pushPriceToDaraz(productId: string) {
     }
 }
 
+
+/**
+ * Push stock quantity for one or more SKUs to Daraz.
+ * updates can be an array of { sku: string, quantity: number, store_id: string }
+ */
+export async function pushStockToDaraz(
+    productId: string | Array<{ sku: string, quantity: number, store_id: string }>, 
+    updates?: Array<{ sku: string, quantity: number, store_id: string }>,
+    supabaseClient?: any
+) {
+    try {
+        const upds = Array.isArray(productId) ? productId : updates || []
+        const supabase = supabaseClient || await createClient()
+        const appKey = process.env.NEXT_PUBLIC_DARAZ_APP_KEY
+        const appSecret = process.env.DARAZ_APP_SECRET
+        const apiUrl = process.env.DARAZ_API_URL || 'https://api.daraz.com.np/rest'
+
+        if (!appKey || !appSecret) throw new Error('Missing Daraz API credentials')
+
+        const { data: tokens, error: tokensErr } = await supabase.from('daraz_api_tokens').select('*')
+        if (tokensErr || !tokens || tokens.length === 0) throw new Error('No connected seller stores found')
+
+        // Get SKU IDs from live prices cache to use for updates
+        const { data: livePrices } = await supabase
+            .from('daraz_live_prices')
+            .select('seller_sku, store_id, sku_id')
+            .in('seller_sku', upds.map(u => u.sku))
+
+        const skuIdMap = new Map<string, string>() // key: store_id:seller_sku
+        livePrices?.forEach(lp => {
+            if (lp.sku_id) skuIdMap.set(`${lp.store_id}:${lp.seller_sku}`, lp.sku_id)
+        })
+
+        const storeUpdates = new Map<string, typeof upds>()
+        upds.forEach(u => {
+            if (!storeUpdates.has(u.store_id)) storeUpdates.set(u.store_id, [])
+            storeUpdates.get(u.store_id)!.push(u)
+        })
+
+        const results: { store: string; skus: string[]; success: boolean; message: string }[] = []
+
+        for (const token of tokens) {
+            const upds = storeUpdates.get(token.store_id)
+            if (!upds || upds.length === 0) continue
+
+            const storeName = STORE_NAME_MAP[token.account] || token.account
+
+            const skuXml = upds.map(({ sku, quantity }) => {
+                const skuId = skuIdMap.get(`${token.store_id}:${sku}`)
+                const identifierXml = skuId
+                    ? '<SkuId>' + skuId + '</SkuId>'
+                    : '<SellerSku><![CDATA[' + sku + ']]></SellerSku>'
+                return '<Sku>' + identifierXml + '<Quantity>' + quantity + '</Quantity></Sku>'
+            }).join('')
+
+            const xmlPayload = '<Request><Product><Skus>' + skuXml + '</Skus></Product></Request>'
+
+            const apiPath = '/product/price_quantity/update'
+            const callParams: Record<string, any> = {
+                app_key: appKey,
+                access_token: token.access_token,
+                timestamp: String(new Date().getTime()),
+                sign_method: 'sha256',
+                payload: xmlPayload
+            }
+            const sortedKeys = Object.keys(callParams).sort()
+            let signStr = apiPath
+            sortedKeys.forEach(k => { signStr += k + callParams[k] })
+            callParams.sign = crypto.createHmac('sha256', appSecret).update(signStr).digest('hex').toUpperCase()
+
+            try {
+                const res = await axios.post(apiUrl + apiPath, null, { params: callParams })
+                const code = String(res.data?.code)
+                if (code === '0') {
+                    results.push({ store: storeName, skus: upds.map(s => s.sku), success: true, message: 'Stock updated' })
+
+                    // Optimistically update local cache
+                    for (const u of upds) {
+                        await supabase
+                            .from('daraz_live_prices')
+                            .update({ quantity: u.quantity })
+                            .eq('store_id', u.store_id)
+                            .eq('seller_sku', u.sku)
+                    }
+                } else {
+                    const detail = res.data?.detail ? JSON.stringify(res.data.detail) : ''
+                    results.push({ store: storeName, skus: upds.map(s => s.sku), success: false, message: `${res.data?.message || 'API error code ' + code} ${detail}` })
+                }
+            } catch (err: any) {
+                results.push({ store: storeName, skus: upds.map(s => s.sku), success: false, message: err?.response?.data?.message || err.message })
+            }
+        }
+
+        const anySuccess = results.some(r => r.success)
+        revalidatePath('/dashboard/sales/daraz/average-sales-price')
+
+        return {
+            success: anySuccess,
+            message: results.map(r => r.store + ': ' + r.message).join(' | '),
+            results
+        }
+
+    } catch (error: any) {
+        console.error('pushStockToDaraz Error:', error)
+        return { success: false, message: error.message || 'Unknown error' }
+    }
+}
