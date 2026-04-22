@@ -267,7 +267,7 @@ export async function getDarazAvgPrices() {
         const campaignPriceProfit = campaignPrice ? (campaignPrice - (campaignPrice * commissionPercent) - purchasingPrice) : null
 
         // Live Prices Mapping
-        const productLivePrices: Record<string, { price: number, special_price: number | null, store_name: string }> = {}
+        const productLivePrices: Record<string, { price: number, special_price: number | null, store_name: string, quantity: number, store_id: string }> = {}
         skus.forEach(sku => {
             const lowerSku = sku.toLowerCase().trim()
             const prices = livePricesMap.get(lowerSku)
