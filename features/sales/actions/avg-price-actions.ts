@@ -13,6 +13,14 @@ const STORE_NAME_MAP: Record<string, string> = {
     'supplierslamichhane9@gmail.com': 'Cosmetics'
 }
 
+export interface LivePriceDetail {
+    price: number
+    special_price: number | null
+    store_name: string
+    quantity: number
+    store_id: string
+}
+
 export interface DarazAvgPriceItem {
     product_id: string
     product_name: string
@@ -33,7 +41,7 @@ export interface DarazAvgPriceItem {
     campaign_price: number | null
     campaign_price_profit: number | null
     updated_at: string | null
-    live_prices?: Record<string, { price: number, special_price: number | null, store_name: string, quantity?: number, store_id?: string }>
+    live_prices?: Record<string, LivePriceDetail>
 }
 
 export async function getDarazAvgPrices() {
@@ -267,7 +275,7 @@ export async function getDarazAvgPrices() {
         const campaignPriceProfit = campaignPrice ? (campaignPrice - (campaignPrice * commissionPercent) - purchasingPrice) : null
 
         // Live Prices Mapping
-        const productLivePrices: Record<string, { price: number, special_price: number | null, store_name: string, quantity?: number, store_id?: string }> = {}
+        const productLivePrices: Record<string, LivePriceDetail> = {}
         skus.forEach(sku => {
             const lowerSku = sku.toLowerCase().trim()
             const prices = livePricesMap.get(lowerSku)
@@ -275,11 +283,11 @@ export async function getDarazAvgPrices() {
                 // If by rare chance multiple stores report the same SKU name, take the first matched price recorded
                 const sp = prices[0]
                 productLivePrices[sku] = {
-                    price: Number(sp.price),
+                    price: Number(sp.price || 0),
                     special_price: sp.special_price ? Number(sp.special_price) : null,
-                    store_name: sp.store_name,
+                    store_name: String(sp.store_name || 'Unknown'),
                     quantity: Number(sp.quantity || 0),
-                    store_id: sp.store_id
+                    store_id: String(sp.store_id || '')
                 }
             }
         })

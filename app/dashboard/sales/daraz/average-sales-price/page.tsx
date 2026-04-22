@@ -157,9 +157,11 @@ export default function DarazAverageSalesPricePage() {
         const updates: Array<{ sku: string, quantity: number, store_id: string }> = []
         
         Object.keys(stockModalProduct.live_prices || {}).forEach(sku => {
-            const lp = stockModalProduct.live_prices![sku]
+            const lp = stockModalProduct.live_prices?.[sku]
+            if (!lp) return
+            
             const quantity = isOutOfStock ? 0 : (stockEdits[sku] ?? lp.quantity ?? 0)
-            updates.push({ sku, quantity, store_id: lp.store_id })
+            updates.push({ sku, quantity, store_id: lp.store_id || '' })
         })
         
         if (updates.length === 0) return
