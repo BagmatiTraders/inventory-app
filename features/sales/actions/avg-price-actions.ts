@@ -33,7 +33,7 @@ export interface DarazAvgPriceItem {
     campaign_price: number | null
     campaign_price_profit: number | null
     updated_at: string | null
-    live_prices?: Record<string, { price: number, special_price: number | null, store_name: string, quantity: number, store_id: string }>
+    live_prices?: Record<string, { price: number, special_price: number | null, store_name: string, quantity?: number, store_id?: string }>
 }
 
 export async function getDarazAvgPrices() {
@@ -267,7 +267,7 @@ export async function getDarazAvgPrices() {
         const campaignPriceProfit = campaignPrice ? (campaignPrice - (campaignPrice * commissionPercent) - purchasingPrice) : null
 
         // Live Prices Mapping
-        const productLivePrices: Record<string, { price: number, special_price: number | null, store_name: string, quantity: number, store_id: string }> = {}
+        const productLivePrices: Record<string, { price: number, special_price: number | null, store_name: string, quantity?: number, store_id?: string }> = {}
         skus.forEach(sku => {
             const lowerSku = sku.toLowerCase().trim()
             const prices = livePricesMap.get(lowerSku)
@@ -790,7 +790,8 @@ export async function pushStockToDaraz(
     supabaseClient?: any
 ) {
     try {
-        const upds = Array.isArray(productId) ? productId : updates || []
+        const upds: Array<{ sku: string; quantity: number; store_id: string }> = 
+            Array.isArray(productId) ? productId : (updates || []);
         const supabase = supabaseClient || await createClient()
         const appKey = process.env.NEXT_PUBLIC_DARAZ_APP_KEY
         const appSecret = process.env.DARAZ_APP_SECRET
@@ -808,11 +809,15 @@ export async function pushStockToDaraz(
             .in('seller_sku', upds.map(u => u.sku))
 
         const skuIdMap = new Map<string, string>() // key: store_id:seller_sku
-        livePrices?.forEach(lp => {
-            if (lp.sku_id) skuIdMap.set(`${lp.store_id}:${lp.seller_sku}`, lp.sku_id)
-        })
+        if (livePrices) {
+            (livePrices as any[]).forEach((lp: any) => {
+                if (lp.sku_id && lp.store_id && lp.seller_sku) {
+                    skuIdMap.set(`${lp.store_id}:${lp.seller_sku}`, String(lp.sku_id))
+                }
+            })
+        }
 
-        const storeUpdates = new Map<string, typeof upds>()
+        const storeUpdates = new Map<string, Array<{ sku: string; quantity: number; store_id: string }>>()
         upds.forEach(u => {
             if (!storeUpdates.has(u.store_id)) storeUpdates.set(u.store_id, [])
             storeUpdates.get(u.store_id)!.push(u)
