@@ -77,22 +77,22 @@ export function AuditTrailHover({ children, order }: AuditTrailHoverProps) {
             color: 'text-red-600'
         },
         {
-            status: 'Returning To Seller',
+            status: 'Returning to Seller',
             date: order.returning_to_seller_at,
             user: formatUser(order.returning_to_seller_by_name, order.returning_to_seller_by_email, null),
             color: 'text-orange-600'
         },
         {
-            status: 'Customer Return',
-            date: order.customer_return_at,
-            user: formatUser(order.customer_return_by_name, order.customer_return_by_email, null),
-            color: 'text-orange-600'
-        },
-        {
-            status: 'Returned Delivered',
+            status: 'Customer Return Delivered',
             date: order.customer_return_delivered_at,
             user: formatUser(order.customer_return_delivered_by_name, order.customer_return_delivered_by_email, null),
             color: 'text-orange-800'
+        },
+        {
+            status: 'Returned Delivered',
+            date: order.returned_delivered_at,
+            user: formatUser(order.returned_delivered_by_name, order.returned_delivered_by_email, null),
+            color: 'text-green-700'
         },
         {
             status: 'Cancelled',

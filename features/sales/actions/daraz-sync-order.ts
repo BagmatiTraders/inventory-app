@@ -181,6 +181,17 @@ export async function syncSingleDarazOrderAction(orderId: string, storeId: strin
             const eventTime = order.updated_at ? new Date(order.updated_at).toISOString() : new Date().toISOString()
             upsertPayload.delivered_by_daraz = eventTime
             upsertPayload.delivered_at = eventTime
+            upsertPayload.delivered_by_name = 'Daraz sync'
+        }
+
+        if (newStatus === 'Returned Delivered') {
+            const eventTime = order.updated_at ? new Date(order.updated_at).toISOString() : new Date().toISOString()
+            upsertPayload.returned_delivered_at = eventTime
+            upsertPayload.returned_delivered_by_name = 'Daraz sync'
+        }
+
+        if (newStatus === 'Shipped') {
+            upsertPayload.shipped_by_name = 'Daraz sync'
         }
 
         const { data: initialSavedOrder, error: saveError } = await supabase

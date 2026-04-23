@@ -238,6 +238,8 @@ export function ViewDarazOrderModal({ orderId, isOpen, onClose }: ViewDarazOrder
                                             <option value="Pending">Pending</option>
                                             <option value="Shipped">Shipped</option>
                                             <option value="Delivered">Delivered</option>
+                                            <option value="Returned Delivered">Returned Delivered</option>
+                                            <option value="Returning to Seller">Returning to Seller</option>
                                             <option value="Failed Delivered">Failed Delivered</option>
                                             <option value="Customer Return">Customer Return</option>
                                             <option value="Cancel">Cancel</option>
@@ -379,13 +381,13 @@ export function ViewDarazOrderModal({ orderId, isOpen, onClose }: ViewDarazOrder
                                         </div>
                                     )}
 
-                                    {order.failed_delivered_at && (
+                                    {order.returning_to_seller_at && (
                                         <div className="flex items-start gap-2">
-                                            <Calendar size={12} className="md:hidden mt-0.5 text-red-400" />
-                                            <Calendar size={14} className="hidden md:block mt-0.5 text-red-400" />
+                                            <Calendar size={12} className="md:hidden mt-0.5 text-orange-400" />
+                                            <Calendar size={14} className="hidden md:block mt-0.5 text-orange-400" />
                                             <div>
-                                                <span className="font-medium text-red-600">Failed Delivered: </span>
-                                                {formatTimestamp(order.failed_delivered_at, order.failed_delivered_by_name, order.failed_delivered_by_email)}
+                                                <span className="font-medium text-orange-600">Returning to Seller: </span>
+                                                {formatTimestamp(order.returning_to_seller_at, order.returning_to_seller_by_name, order.returning_to_seller_by_email)}
                                             </div>
                                         </div>
                                     )}
@@ -400,6 +402,40 @@ export function ViewDarazOrderModal({ orderId, isOpen, onClose }: ViewDarazOrder
                                             </div>
                                         </div>
                                     )}
+
+                                    {order.customer_return_delivered_at && (
+                                        <div className="flex items-start gap-2">
+                                            <Calendar size={12} className="md:hidden mt-0.5 text-orange-600" />
+                                            <Calendar size={14} className="hidden md:block mt-0.5 text-orange-600" />
+                                            <div>
+                                                <span className="font-medium text-orange-700">Customer Return Delivered: </span>
+                                                {formatTimestamp(order.customer_return_delivered_at, order.customer_return_delivered_by_name, order.customer_return_delivered_by_email)}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {order.returned_delivered_at && (
+                                        <div className="flex items-start gap-2">
+                                            <Calendar size={12} className="md:hidden mt-0.5 text-green-500" />
+                                            <Calendar size={14} className="hidden md:block mt-0.5 text-green-500" />
+                                            <div>
+                                                <span className="font-medium text-green-700">Returned Delivered: </span>
+                                                {formatTimestamp(order.returned_delivered_at, order.returned_delivered_by_name, order.returned_delivered_by_email)}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {order.failed_delivered_at && (
+                                        <div className="flex items-start gap-2">
+                                            <Calendar size={12} className="md:hidden mt-0.5 text-red-400" />
+                                            <Calendar size={14} className="hidden md:block mt-0.5 text-red-400" />
+                                            <div>
+                                                <span className="font-medium text-red-600">Failed Delivered: </span>
+                                                {formatTimestamp(order.failed_delivered_at, order.failed_delivered_by_name, order.failed_delivered_by_email)}
+                                            </div>
+                                        </div>
+                                    )}
+
                                 </div>
                             </div>
                         </div>

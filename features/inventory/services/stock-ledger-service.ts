@@ -134,6 +134,14 @@ export async function getProductStockDetails(productId: string): Promise<StockLe
     }
 
     // 2. Fetch Direct Data (Parallel)
+    // First, find all parents if this is a child in any combos
+    const { data: parentCombos } = await supabase
+        .from('product_combos')
+        .select('parent_product_id, quantity')
+        .eq('child_product_id', productId)
+
+    const parentIds = parentCombos?.map(c => c.parent_product_id) || []
+
     const [
         openingStats,
         manualStats,
@@ -165,43 +173,20 @@ export async function getProductStockDetails(productId: string): Promise<StockLe
             .eq('product_id', productId),
 
         // Auto Adjust Queries: Find sales of PARENT combos where this product is a child
-        supabase.from('daraz_order_items')
-            .select(`
-                quantity,
-                order:daraz_orders!inner(order_status),
-                product:products!inner(
-                    product_combos!product_combos_parent_product_id_fkey(
-                        child_product_id,
-                        quantity
-                    )
-                )
-            `)
-            .eq('product.product_combos.child_product_id', productId),
+        parentIds.length > 0 ?
+            supabase.from('daraz_order_items')
+                .select(`quantity, order:daraz_orders!inner(order_status), product_id`)
+                .in('product_id', parentIds) : Promise.resolve({ data: [] }),
 
-        supabase.from('marketplace_order_items')
-            .select(`
-                quantity,
-                order:marketplace_orders!inner(order_status),
-                product:products!inner(
-                    product_combos!product_combos_parent_product_id_fkey(
-                        child_product_id,
-                        quantity
-                    )
-                )
-            `)
-            .eq('product.product_combos.child_product_id', productId),
+        parentIds.length > 0 ?
+            supabase.from('marketplace_order_items')
+                .select(`quantity, order:marketplace_orders!inner(order_status), product_id`)
+                .in('product_id', parentIds) : Promise.resolve({ data: [] }),
 
-        supabase.from('store_sales_items')
-            .select(`
-                qty,
-                product:products!inner(
-                    product_combos!product_combos_parent_product_id_fkey(
-                        child_product_id,
-                        quantity
-                    )
-                )
-            `)
-            .eq('product.product_combos.child_product_id', productId)
+        parentIds.length > 0 ?
+            supabase.from('store_sales_items')
+                .select(`qty, product_id`)
+                .in('product_id', parentIds) : Promise.resolve({ data: [] })
     ])
 
     // 3. Aggregate Basic Metrics
@@ -230,13 +215,13 @@ export async function getProductStockDetails(productId: string): Promise<StockLe
         else if (status === 'delivered') {
             darazDelivered += qty
         }
-        else if (['returning to seller', 'returning_to_seller'].includes(status)) {
+        else if (['returning to seller', 'returning_to_seller', 'shipped_back', 'failed_delivery', 'delivery_failed'].includes(status)) {
             darazReturning += qty
         }
         else if (['customer return', 'customer_return'].includes(status)) {
             darazCustomerReturn += qty
         }
-        else if (['returned delivered', 'returned_delivered', 'customer return delivered', 'customer_return_delivered', 'return delivered', 'returned', 'fail delivered', 'delivery failed'].includes(status)) {
+        else if (['returned delivered', 'returned_delivered', 'customer return delivered', 'customer_return_delivered', 'return delivered', 'returned', 'fail delivered', 'delivery failed', 'shipped_back_success', 'customer_return_delivered'].includes(status)) {
             darazReturnedDelivered += qty // Bucket "Returned Delivered" for display totals
         }
     })
@@ -260,12 +245,12 @@ export async function getProductStockDetails(productId: string): Promise<StockLe
 
     const processAutoAdjust = (items: any[], qtyKey: string, hasOrder: boolean) => {
         items?.forEach((item: any) => {
-            const parentSoldQty = item[qtyKey] || 0
+            const parentSoldQty = item.quantity || item.qty || 0
             const sRaw = item.order?.order_status
             const status = sRaw ? sRaw.toString().trim().toLowerCase() : ''
 
-            // The query returns product_combos array. Find the entry for THIS child product.
-            const comboEntry = item.product?.product_combos?.find((c: any) => c.child_product_id === productId)
+            // Use the parentCombos array we fetched earlier
+            const comboEntry = parentCombos?.find((c: any) => c.parent_product_id === item.product_id)
             const quantityInCombo = comboEntry?.quantity || 0
             const totalStockChange = parentSoldQty * quantityInCombo
 
@@ -275,9 +260,6 @@ export async function getProductStockDetails(productId: string): Promise<StockLe
             } else if (['shipped', 'delivered', 'returning to seller', 'returning_to_seller'].includes(status)) {
                 // Sales: reduce stock
                 autoAdjust -= totalStockChange
-            } else if (['fail delivered', 'delivery failed', 'returned delivered', 'returned_delivered', 'customer return', 'customer_return', 'customer return delivered', 'customer_return_delivered', 'return delivered', 'returned'].includes(status)) {
-                // Returns: increase stock
-                autoAdjust += totalStockChange
             }
         })
     }

@@ -29,8 +29,8 @@ WITH
   daraz_sales AS (
     SELECT 
       doi.product_id,
-      SUM(CASE WHEN TRIM(LOWER(COALESCE(doi.item_status, d.order_status))) IN ('shipped', 'delivered', 'returning to seller', 'returning_to_seller', 'customer return', 'customer_return', 'returned', 'returned delivered', 'returned_delivered', 'customer return delivered', 'customer_return_delivered', 'return delivered', 'fail delivered', 'delivery failed') THEN doi.quantity ELSE 0 END) as sales,
-      SUM(CASE WHEN TRIM(LOWER(COALESCE(doi.item_status, d.order_status))) IN ('returned delivered', 'returned_delivered', 'customer return delivered', 'customer_return_delivered', 'return delivered', 'returned', 'fail delivered', 'delivery failed') THEN doi.quantity ELSE 0 END) as returns
+      SUM(CASE WHEN TRIM(LOWER(COALESCE(doi.item_status, d.order_status))) IN ('shipped', 'delivered', 'returning to seller', 'returning_to_seller', 'shipped_back', 'failed_delivery', 'delivery_failed', 'customer return', 'customer_return', 'returned', 'returned delivered', 'returned_delivered', 'shipped_back_success', 'customer return delivered', 'customer_return_delivered', 'return delivered', 'fail delivered', 'delivery failed') THEN doi.quantity ELSE 0 END) as sales,
+      SUM(CASE WHEN TRIM(LOWER(COALESCE(doi.item_status, d.order_status))) IN ('returned delivered', 'returned_delivered', 'shipped_back_success', 'customer return delivered', 'customer_return_delivered', 'return delivered', 'returned', 'fail delivered', 'delivery failed') THEN doi.quantity ELSE 0 END) as returns
     FROM public.daraz_order_items doi
     JOIN public.daraz_orders d ON doi.order_id = d.id
     GROUP BY doi.product_id
@@ -70,8 +70,7 @@ WITH
       pc.child_product_id as product_id,
       SUM(
         CASE 
-          WHEN (platform = 'store') OR (status IN ('Shipped', 'Delivered', 'Returning to Seller')) THEN -(cs.quantity * pc.quantity)
-          WHEN status IN ('Fail Delivered', 'Returned Delivered', 'Customer Return', 'Customer Return Delivered') THEN (cs.quantity * pc.quantity)
+          WHEN (platform = 'store') OR (TRIM(LOWER(status)) IN ('shipped', 'delivered', 'returning to seller', 'returning_to_seller')) THEN -(cs.quantity * pc.quantity)
           ELSE 0
         END
       ) as qty

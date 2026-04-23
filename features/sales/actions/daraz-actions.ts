@@ -452,22 +452,64 @@ export async function updateDarazOrder(orderId: string, data: Partial<CreateDara
     if (!user) throw new Error('Not authenticated')
 
     try {
+        // Fetch user details for audit logging
+        const { data: userData } = await supabase
+            .from('profiles')
+            .select('first_name, last_name, email')
+            .eq('id', user.id)
+            .single()
+
+        const userName = userData ? `${userData.first_name || ''} ${userData.last_name || ''}`.trim() : user.user_metadata?.full_name || 'Admin'
+        const userEmail = userData?.email || user.email
+        const now = new Date().toISOString()
+
+        // Prepare base update payload
+        const updates: any = {
+            order_number: data.order_number,
+            tracking_number: data.tracking_number,
+            customer_name: data.customer_name,
+            order_date: data.order_date,
+            order_status: data.order_status,
+            remarks: data.remarks,
+            edit_by: user.id,
+            edited_by_name: userName,
+            edited_by_email: userEmail,
+            edited_at: now
+        }
+
+        // Add status-specific audit columns if status is changed manually
+        if (data.order_status === 'Delivered') {
+            updates.delivered_by = user.id
+            updates.delivered_at = now
+        } else if (data.order_status === 'Returned Delivered') {
+            updates.returned_delivered_by = user.id
+            updates.returned_delivered_by_name = userName
+            updates.returned_delivered_by_email = userEmail
+            updates.returned_delivered_at = now
+        } else if (data.order_status === 'Shipped') {
+            updates.shipped_by = user.id
+            updates.shipped_at = now
+        } else if (data.order_status === 'Returning to Seller') {
+            updates.returning_to_seller_by = user.id
+            updates.returning_to_seller_by_name = userName
+            updates.returning_to_seller_by_email = userEmail
+            updates.returning_to_seller_at = now
+        } else if (data.order_status === 'Cancel' || data.order_status === 'Cancelled') {
+            updates.cancelled_by = user.id
+            updates.cancelled_by_name = userName
+            updates.cancelled_by_email = userEmail
+            updates.cancelled_at = now
+        }
+
         // Update order
         const { error: orderError } = await supabase
             .from('daraz_orders')
-            .update({
-                order_number: data.order_number,
-                tracking_number: data.tracking_number,
-                customer_name: data.customer_name,
-                order_date: data.order_date,
-                order_status: data.order_status,
-                remarks: data.remarks,
-                edit_by: user.id,
-                edited_at: new Date().toISOString()
-            })
+            .update(updates)
             .eq('id', orderId)
 
-        if (orderError) throw orderError
+        if (orderError) {
+            throw orderError
+        }
 
         // Update items if provided
         if (data.items) {
@@ -552,11 +594,17 @@ export async function updateDarazOrderStatus(orderIds: string[], newStatus: stri
         updates.customer_return_by_email = userEmail
         updates.customer_return_at = now
     }
-    else if (newStatus === 'Customer Return Delivered' || newStatus === 'Returned Delivered') {
+    else if (newStatus === 'Customer Return Delivered') {
         updates.customer_return_delivered_by = user.id
         updates.customer_return_delivered_by_name = userName
         updates.customer_return_delivered_by_email = userEmail
         updates.customer_return_delivered_at = now
+    }
+    else if (newStatus === 'Returned Delivered') {
+        updates.returned_delivered_by = user.id
+        updates.returned_delivered_by_name = userName
+        updates.returned_delivered_by_email = userEmail
+        updates.returned_delivered_at = now
     }
     else if (newStatus === 'Cancel' || newStatus === 'Cancelled') {
         updates.cancelled_by = user.id

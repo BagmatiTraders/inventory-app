@@ -59,6 +59,7 @@ export function DarazOrderList({ isEmbedded = false }: DarazOrderListProps) {
     const [endDate, setEndDate] = useState('')
     const [selectedFiscalYear, setSelectedFiscalYear] = useState<string>('')
     const [timestampField, setTimestampField] = useState<string>('order_date')
+    const [displayStatus, setDisplayStatus] = useState<string>('order_date')
     const [sellerAccount, setSellerAccount] = useState<string>('all')
     const [userRole, setUserRole] = useState<'admin' | 'user' | null>(null)
     const [deletionModal, setDeletionModal] = useState<{ isOpen: boolean, order: any | null }>({ isOpen: false, order: null })
@@ -384,36 +385,32 @@ export function DarazOrderList({ isEmbedded = false }: DarazOrderListProps) {
                 {/* Row 2: Status & Account (Grid) */}
                 <div className="grid grid-cols-2 gap-2">
                     <select
-                        value={timestampField}
+                        value={displayStatus}
                         onChange={(e) => {
                             const selectedField = e.target.value
-                            setTimestampField(selectedField)
+                            setDisplayStatus(selectedField)
                             // Auto-set status logic (duplicated from desktop)
                             const statusMap: Record<string, { status: string, timestampField: string }> = {
                                 'order_date': { status: 'all', timestampField: 'order_date' },
-                                'unpaid': { status: 'Unpaid', timestampField: 'order_date' },
                                 'pending': { status: 'Pending', timestampField: 'order_date' },
                                 'packed': { status: 'Packed', timestampField: 'order_date' },
                                 'ready_to_ship': { status: 'Ready to Ship', timestampField: 'order_date' },
                                 'shipped_at': { status: 'Shipped', timestampField: 'shipped_at' },
                                 'delivered_at': { status: 'Delivered', timestampField: 'delivered_at' },
                                 'returning_to_seller': { status: 'Returning to Seller', timestampField: 'order_date' },
-                                'returned_delivered': { status: 'Returned Delivered', timestampField: 'order_date' },
+                                'returned_delivered': { status: 'Returned Delivered', timestampField: 'returned_delivered_at' },
                                 'customer_return_at': { status: 'Customer Return', timestampField: 'customer_return_at' },
                                 'customer_return_delivered_at': { status: 'Customer Return Delivered', timestampField: 'customer_return_delivered_at' },
                                 'cancelled_at': { status: 'Cancel', timestampField: 'cancelled_at' }
                             }
                             const mapping = statusMap[selectedField] || { status: 'all', timestampField: 'order_date' }
                             setStatusFilter(mapping.status)
-                            if (selectedField !== mapping.timestampField) {
-                                setTimestampField(mapping.timestampField)
-                            }
+                            setTimestampField(mapping.timestampField)
                             setPage(1)
                         }}
                         className="w-full px-2 py-2 text-sm border dark:border-zinc-700 rounded-lg focus:ring-1 focus:ring-blue-500 dark:bg-zinc-800 dark:text-gray-50 bg-gray-50"
                     >
                         <option value="order_date">All Status</option>
-                        <option value="unpaid">Unpaid</option>
                         <option value="pending">Pending</option>
                         <option value="packed">Packed</option>
                         <option value="ready_to_ship">Ready to Ship</option>
@@ -462,6 +459,7 @@ export function DarazOrderList({ isEmbedded = false }: DarazOrderListProps) {
                         <button
                             onClick={() => {
                                 setTimestampField('order_date')
+                                setDisplayStatus('order_date')
                                 setStartDate('')
                                 setEndDate('')
                                 setStatusFilter('all')
@@ -536,22 +534,21 @@ export function DarazOrderList({ isEmbedded = false }: DarazOrderListProps) {
 
                     {/* Comprehensive Status Filter */}
                     <select
-                        value={timestampField}
+                        value={displayStatus}
                         onChange={(e) => {
                             const selectedField = e.target.value
-                            setTimestampField(selectedField)
+                            setDisplayStatus(selectedField)
 
                             // Auto-set status filter and ensure proper timestamp field mapping
                             const statusMap: Record<string, { status: string, timestampField: string }> = {
                                 'order_date': { status: 'all', timestampField: 'order_date' },
-                                'unpaid': { status: 'Unpaid', timestampField: 'order_date' },
                                 'pending': { status: 'Pending', timestampField: 'order_date' },
                                 'packed': { status: 'Packed', timestampField: 'order_date' },
                                 'ready_to_ship': { status: 'Ready to Ship', timestampField: 'order_date' },
                                 'shipped_at': { status: 'Shipped', timestampField: 'shipped_at' },
                                 'delivered_at': { status: 'Delivered', timestampField: 'delivered_at' },
                                 'returning_to_seller': { status: 'Returning to Seller', timestampField: 'order_date' },
-                                'returned_delivered': { status: 'Returned Delivered', timestampField: 'order_date' },
+                                'returned_delivered': { status: 'Returned Delivered', timestampField: 'returned_delivered_at' },
                                 'customer_return_at': { status: 'Customer Return', timestampField: 'customer_return_at' },
                                 'customer_return_delivered_at': { status: 'Customer Return Delivered', timestampField: 'customer_return_delivered_at' },
                                 'cancelled_at': { status: 'Cancel', timestampField: 'cancelled_at' }
@@ -559,17 +556,13 @@ export function DarazOrderList({ isEmbedded = false }: DarazOrderListProps) {
 
                             const mapping = statusMap[selectedField] || { status: 'all', timestampField: 'order_date' }
                             setStatusFilter(mapping.status)
-                            // Update timestampField if it's different from selection (for status-only filters)
-                            if (selectedField !== mapping.timestampField) {
-                                setTimestampField(mapping.timestampField)
-                            }
+                            setTimestampField(mapping.timestampField)
                             setPage(1)
                         }}
-                        className="px-2 py-1.5 text-sm border dark:border-zinc-700 rounded focus:ring-1 focus:ring-blue-500 dark:bg-zinc-800 dark:text-gray-50"
+                        className="px-2 py-1.5 text-sm border dark:border-zinc-700 rounded focus:ring-1 focus:ring-blue-500 dark:bg-zinc-800 dark:text-gray-50 font-medium"
                         title="Select status to filter"
                     >
-                        <option value="order_date">All</option>
-                        <option value="unpaid">Unpaid</option>
+                        <option value="order_date">All Status</option>
                         <option value="pending">Pending</option>
                         <option value="packed">Packed</option>
                         <option value="ready_to_ship">Ready to Ship</option>
@@ -651,6 +644,7 @@ export function DarazOrderList({ isEmbedded = false }: DarazOrderListProps) {
                     <button
                         onClick={() => {
                             setTimestampField('order_date')
+                            setDisplayStatus('order_date')
                             setStartDate('')
                             setEndDate('')
                             setStatusFilter('all')
