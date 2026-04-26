@@ -5,7 +5,9 @@ import { ArrowLeft } from 'lucide-react'
 
 import { useEffect, useState } from 'react'
 import { getStatementDetails } from '@/features/account/actions/daraz-account-actions'
+import { syncDarazFinances } from '@/features/sales/actions/daraz-finance-service'
 import { toast } from 'sonner'
+import { RefreshCw } from 'lucide-react'
 
 interface StatementDetailViewProps {
     period: string
@@ -33,41 +35,60 @@ export function StatementDetailView({ period, storeId, onBack }: StatementDetail
         darazCoinsReversal: 0,
         freeShippingNaxReversal: 0,
         commissionFeeRefunded: 0
-    })
+     })
     const [isLoading, setIsLoading] = useState(false)
+    const [isSyncing, setIsSyncing] = useState(false)
+
+    const parsePeriod = () => {
+        const [startStr, endStr] = period.split(' - ')
+        const startDateObj = new Date(startStr)
+        const endDateObj = new Date(endStr)
+        
+        const startDate = startDateObj.toISOString()
+        endDateObj.setHours(23, 59, 59, 999)
+        const endDate = endDateObj.toISOString()
+
+        // For API sync, we need YYYY-MM-DD
+        const startSyncDate = startDateObj.toISOString().split('T')[0]
+        const endSyncDate = endDateObj.toISOString().split('T')[0]
+
+        return { startDate, endDate, startSyncDate, endSyncDate }
+    }
+
+    const fetchData = async () => {
+        setIsLoading(true)
+        try {
+            const { startDate, endDate } = parsePeriod()
+            // @ts-ignore
+            const res = await getStatementDetails(storeId, startDate, endDate)
+            setData(res)
+        } catch (error) {
+            console.error(error)
+            toast.error('Failed to load statement details')
+        } finally {
+            setIsLoading(false)
+        }
+    }
 
     useEffect(() => {
-        const fetchData = async () => {
-            setIsLoading(true)
-            try {
-                // Parse period string "Jan 13, 2026 - Jan 19, 2026"
-                // This is a bit fragile, ideally pass raw dates. 
-                // But let's parse standard format we generated.
-                const [startStr, endStr] = period.split(' - ')
-
-                // Convert to YYYY-MM-DD for DB
-                // Assumption: Parsing 'Jan 13, 2026' works in JS Date
-                const startDate = new Date(startStr).toISOString()
-                // For End Date, we want end of day? 
-                // The DB filter is lte('delivered_at', endDate). 
-                // If 'Jan 19', Date() gives 'Jan 19 00:00'. We need 'Jan 19 23:59:59' 
-                // OR add 1 day and use lt.
-                const endDateObj = new Date(endStr)
-                endDateObj.setHours(23, 59, 59, 999)
-                const endDate = endDateObj.toISOString()
-
-                // @ts-ignore
-                const res = await getStatementDetails(storeId, startDate, endDate)
-                setData(res)
-            } catch (error) {
-                console.error(error)
-                toast.error('Failed to load statement details')
-            } finally {
-                setIsLoading(false)
-            }
-        }
         fetchData()
     }, [period, storeId])
+
+    const handleSync = async () => {
+        setIsSyncing(true)
+        try {
+            const { startSyncDate, endSyncDate } = parsePeriod()
+            const result = await syncDarazFinances(storeId, startSyncDate, endSyncDate)
+            toast.success(result.message)
+            // Re-fetch data after sync
+            await fetchData()
+        } catch (error: any) {
+            console.error(error)
+            toast.error(error.message || 'Sync failed')
+        } finally {
+            setIsSyncing(false)
+        }
+    }
 
     const formatCurrency = (val: number) => {
         return `NPR ${val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
@@ -89,6 +110,16 @@ export function StatementDetailView({ period, storeId, onBack }: StatementDetail
                 <div>
                     <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">Statement Details</h2>
                     <p className="text-sm text-gray-500">{period}</p>
+                </div>
+                <div className="ml-auto">
+                    <button
+                        onClick={handleSync}
+                        disabled={isSyncing || isLoading}
+                        className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors disabled:opacity-50"
+                    >
+                        <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
+                        {isSyncing ? 'Syncing...' : 'Sync Data'}
+                    </button>
                 </div>
             </div>
 

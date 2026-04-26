@@ -128,7 +128,7 @@ export async function getStatementDetails(storeId: string, startDate: string, en
     const supabase = await createClient()
 
     // 1. Fetch Delivered Orders in this period
-    const { data: orders, error: orderError } = await supabase
+    const { data: deliveredOrders, error: deliveredError } = await supabase
         .from('daraz_orders')
         .select(`
             order_number,
@@ -140,16 +140,30 @@ export async function getStatementDetails(storeId: string, startDate: string, en
         .gte('delivered_at', startDate)
         .lte('delivered_at', endDate)
 
-    if (orderError) {
-        console.error('Error fetching statement orders:', orderError)
-        throw new Error('Failed to fetch statement orders')
+    if (deliveredError) {
+        console.error('Error fetching delivered orders:', deliveredError)
+        throw new Error('Failed to fetch delivered orders')
     }
 
-    // 2. Calculate "Product Price Paid by Buyer" (Revenue) from Orders
+    // 2. Fetch Returned Orders in this period
+    // Based on 'Customer Return Delivered' status and its specific date field
+    const { data: returnedOrders, error: returnedError } = await supabase
+        .from('daraz_orders')
+        .select('price, customer_return_delivered_at')
+        .eq('store_id', storeId)
+        .eq('order_status', 'Customer Return Delivered')
+        .gte('customer_return_delivered_at', startDate)
+        .lte('customer_return_delivered_at', endDate)
+
+    if (returnedError) {
+        console.error('Error fetching returned orders:', returnedError)
+    }
+
+    // 3. Calculate "Product Price Paid by Buyer" (Revenue) from Delivered Orders
     let productPricePaidByBuyer = 0
     const orderNumbers: string[] = []
 
-    orders?.forEach((order: any) => {
+    deliveredOrders?.forEach((order: any) => {
         orderNumbers.push(order.order_number)
         const orderRevenue = order.items?.reduce((sum: number, item: any) => {
             return sum + ((item.amount || 0) * (item.quantity || 1))
@@ -157,7 +171,10 @@ export async function getStatementDetails(storeId: string, startDate: string, en
         productPricePaidByBuyer += orderRevenue
     })
 
-    // 3. Fetch Finance Transactions and breakdown
+    // 4. Calculate "Product Price Refunded to Buyer" from Returned Orders
+    const productPriceRefunded = returnedOrders?.reduce((sum, o) => sum + (Number(o.price) || 0), 0) || 0
+
+    // 5. Fetch Finance Transactions and breakdown for Delivered Orders
     let fees = {
         coFundedVoucherMax: 0,
         shippingFeePaidByBuyer: 0,
@@ -170,9 +187,8 @@ export async function getStatementDetails(storeId: string, startDate: string, en
         shippingFee: 0,
         shippingFeeDiscount: 0,
 
-        // Returned Orders
+        // Returned Orders Reversals (Not purely product price)
         coFundedVoucherMaxReversal: 0,
-        productPriceRefunded: 0,
 
         // Withholding
         gstWithholding: 0,
@@ -181,7 +197,7 @@ export async function getStatementDetails(storeId: string, startDate: string, en
         handlingFeeReturn: 0,
         handlingFee: 0,
 
-        // Refunds/Reversals
+        // Refunds/Reversals of Fees
         paymentFeeRefunded: 0,
         darazCoinsReversal: 0,
         freeShippingNaxReversal: 0,
@@ -200,31 +216,23 @@ export async function getStatementDetails(storeId: string, startDate: string, en
             transactions?.forEach((t: any) => {
                 const name = (t.fee_name || '').toLowerCase()
                 const type = (t.transaction_type || '').toLowerCase()
+                // Fees are negative in Daraz Finance API. We want to show them as positive costs in the breakdown usually,
+                // but let's see how StatementDetailView handles it. 
+                // StatementDetailView just adds them up. So we keep them negative to reflect deductions.
                 const amt = Number(t.amount || 0)
 
-                // Broaden matching helpers
-                const isVoucher = name.includes('voucher') || name.includes('promotional')
-                const isCoFunded = name.includes('co-funded') || name.includes('cofunded') || name.includes('co_funded')
                 const isReversal = name.includes('reversal') || name.includes('refund') || type === 'refund'
 
                 // --- Delivered Orders Section ---
-                // "Co-funded Voucher Max" - USER REQUESTED: Fixed at 2% of Product Price.
-                // We will calculate this AFTER the loop using `productPricePaidByBuyer`.
-                // So here we only capture specific OTHER fees or overrides if needed.
-                // Actually, let's IGNORE the DB 'co-funded voucher max' amounts for the charge side
-                // to follow the user's rule strictly.
-                if (isVoucher && isCoFunded && !isReversal) {
-                    // NO-OP: User wants calculated value.
-                }
-                else if ((name.includes('shipping fee') && name.includes('buyer') && !isReversal)) {
+                if (name.includes('shipping fee') && name.includes('buyer') && !isReversal) {
                     fees.shippingFeePaidByBuyer += amt
                 }
 
-                // --- Transaction Fees Section ---
+                // --- Transaction Fees Section (Profit Tracker Keywords) ---
                 else if (name.includes('payment fee') && !isReversal) {
                     fees.paymentFee += amt
                 }
-                else if (name.includes('coins') && !isReversal) {
+                else if ((name.includes('coin') || name.includes('coins')) && !isReversal) {
                     fees.darazCoinsDiscount += amt
                 }
                 else if (name.includes('free shipping') && name.includes('max') && !isReversal) {
@@ -238,14 +246,6 @@ export async function getStatementDetails(storeId: string, startDate: string, en
                 }
                 else if (name.includes('shipping fee discount') && !isReversal) {
                     fees.shippingFeeDiscount += amt
-                }
-
-                // --- Returned Orders ---
-                else if (isVoucher && isCoFunded && isReversal) {
-                    fees.coFundedVoucherMaxReversal += amt
-                }
-                else if (type === 'refund' && (name.includes('product price') || name.includes('item price'))) {
-                    fees.productPriceRefunded += amt
                 }
 
                 // --- Withholding ---
@@ -265,7 +265,7 @@ export async function getStatementDetails(storeId: string, startDate: string, en
                 else if (name.includes('payment fee') && isReversal) {
                     fees.paymentFeeRefunded += amt
                 }
-                else if (name.includes('coins') && isReversal) {
+                else if (name.includes('coin') && isReversal) {
                     fees.darazCoinsReversal += amt
                 }
                 else if (name.includes('free shipping') && name.includes('max') && isReversal) {
@@ -278,12 +278,13 @@ export async function getStatementDetails(storeId: string, startDate: string, en
         }
     }
 
-    // Apply User Rule: Co-funded Voucher Max = Product Price Paid by Buyer * 2%
+    // Apply rule: Co-funded Voucher Max = Product Price Paid by Buyer * 2%
     // Fee is negative deduction.
     fees.coFundedVoucherMax = -(productPricePaidByBuyer * 0.02)
 
     return {
         productPricePaidByBuyer,
+        productPriceRefunded: -productPriceRefunded, // Show as negative deduction
         ...fees
     }
 }
