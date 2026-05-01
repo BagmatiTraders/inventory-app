@@ -8,7 +8,7 @@ import { useQueryClient } from '@tanstack/react-query'
 interface DeleteProductButtonProps {
     productId: string
     productName: string
-    userRole: 'admin' | 'user'
+    userRole: 'admin' | 'editor' | 'user' | 'new_user'
     isPending?: boolean
 }
 
@@ -16,13 +16,16 @@ export function DeleteProductButton({ productId, productName, userRole, isPendin
     const [isDeleting, setIsDeleting] = useState(false)
     const queryClient = useQueryClient()
 
+    // User and New User roles cannot delete products — hide the button entirely
+    if (userRole === 'user' || userRole === 'new_user') {
+        return null
+    }
+
     const handleDelete = async () => {
         if (isPending) {
-            // Already pending approval, do nothing
             return
         }
 
-        // Confirmation message based on role
         const confirmMessage = userRole === 'admin'
             ? `Are you sure you want to delete "${productName}"? This will move it to Restore Backup.`
             : `Delete Product! Need Admin Approval\n\nProduct: ${productName}\n\nYour delete request will be sent to Admin for approval.`
@@ -34,8 +37,6 @@ export function DeleteProductButton({ productId, productName, userRole, isPendin
         setIsDeleting(true)
         try {
             const result = await deleteProduct(productId)
-
-            // Refresh product list
             queryClient.invalidateQueries({ queryKey: ['products'] })
 
             if (result.status === 'deleted') {
@@ -43,8 +44,8 @@ export function DeleteProductButton({ productId, productName, userRole, isPendin
             } else if (result.status === 'pending') {
                 alert('Delete request sent for admin approval')
             }
-        } catch (error: any) {
-            alert(`Error: ${error.message}`)
+        } catch (error: unknown) {
+            alert(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`)
         } finally {
             setIsDeleting(false)
         }
@@ -68,8 +69,9 @@ export function DeleteProductButton({ productId, productName, userRole, isPendin
         <button
             onClick={handleDelete}
             disabled={isDeleting}
-            className="px-3 py-1 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-3 py-1 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
         >
+            <Trash2 size={13} />
             {isDeleting ? 'Deleting...' : 'Delete'}
         </button>
     )

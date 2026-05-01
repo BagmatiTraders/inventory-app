@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 
 import { useState, useEffect, Fragment } from 'react'
 import { useQuery } from '@tanstack/react-query'
@@ -15,15 +15,34 @@ import { OrderSyncPageContent } from '../order-sync/page'
 import ProfitTrackerPage from '../profit-tracker/page'
 import { DarazOrderList } from '@/features/sales/components/DarazOrderList'
 import { DarazSalesReport } from '@/features/sales/components/DarazSalesReport'
+import { usePermissions } from '@/lib/permissions/PermissionContext'
+import { Forbidden403 } from '@/components/permissions/Forbidden403'
 
 import { Suspense } from 'react'
 
 type ReportTab = 'daily' | 'summary' | 'status-sync' | 'order-sync' | 'profit-tracker' | 'order-list' | 'sales-report'
 
 function DashboardContent() {
+    const { hasPermission } = usePermissions()
     const [activeTab, setActiveTab] = useState<ReportTab>('order-list')
-    const [userRole, setUserRole] = useState<'admin' | 'user' | null>(null)
-    const [isCheckingRole, setIsCheckingRole] = useState(true)
+    
+    // Auto-select first available tab if current is not permitted
+    useEffect(() => {
+        const availableTabs = [
+            { id: 'order-list', has: hasPermission('Daraz', 'Order List') },
+            { id: 'daily', has: hasPermission('Daraz', 'Daily Sales Report') },
+            { id: 'summary', has: hasPermission('Daraz', 'Account Summary') },
+            { id: 'status-sync', has: hasPermission('Daraz', 'Order Status Sync') },
+            { id: 'order-sync', has: hasPermission('Daraz', 'Order Sync') },
+            { id: 'profit-tracker', has: hasPermission('Daraz', 'Profit Tracker') },
+            { id: 'sales-report', has: hasPermission('Daraz', 'Sales Report') }
+        ].filter(t => t.has)
+
+        if (availableTabs.length > 0 && !availableTabs.find(t => t.id === activeTab)) {
+            setActiveTab(availableTabs[0].id as ReportTab)
+        }
+    }, [hasPermission, activeTab])
+
     const searchParams = useSearchParams()
     const fromPage = searchParams.get('from')
 
@@ -52,27 +71,11 @@ function DashboardContent() {
         return () => setHeaderTitle(null)
     }, [activeTab, setHeaderTitle])
 
-    // Check user role
-    useEffect(() => {
-        async function checkRole() {
-            try {
-                const role = await getUserRole()
-                setUserRole(role)
-            } catch (error) {
-                console.error('Failed to check role:', error)
-                setUserRole('user')
-            } finally {
-                setIsCheckingRole(false)
-            }
-        }
-        checkRole()
-    }, [])
-
     // Fetch daily sales report
     const { data: dailyReport, isLoading } = useQuery({
         queryKey: ['daily-sales-report'],
         queryFn: getDailySalesReport,
-        enabled: userRole === 'admin' && activeTab === 'daily',
+        enabled: activeTab === 'daily',
         staleTime: 60 * 1000
     })
 
@@ -80,7 +83,7 @@ function DashboardContent() {
     const { data: summaryReport, isLoading: isSummaryLoading } = useQuery({
         queryKey: ['order-summary-report'],
         queryFn: getOrderSummaryReport,
-        enabled: userRole === 'admin' && activeTab === 'summary',
+        enabled: activeTab === 'summary',
         staleTime: 60 * 1000
     })
 
@@ -88,7 +91,7 @@ function DashboardContent() {
     const { data: statusSummary, isLoading: isStatusSummaryLoading } = useQuery({
         queryKey: ['order-status-summary'],
         queryFn: getOrderStatusSummary,
-        enabled: userRole === 'admin' && activeTab === 'summary',
+        enabled: activeTab === 'status-sync',
         staleTime: 0 // Always fetch fresh data to avoid inconsistency
     })
 
@@ -143,20 +146,18 @@ function DashboardContent() {
         remain_qty: 0
     })
 
-    // Loading state
-    if (isCheckingRole) {
-        return (
-            <div className="flex items-center justify-center h-screen">
-                <div className="text-center">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
-                    <p className="text-[15px] text-gray-500">Checking permissions...</p>
-                </div>
-            </div>
-        )
-    }
+    // Check if user has any tabs available
+    const hasAnyTab = [
+        hasPermission('Daraz', 'Order List'),
+        hasPermission('Daraz', 'Daily Sales Report'),
+        hasPermission('Daraz', 'Account Summary'),
+        hasPermission('Daraz', 'Order Status Sync'),
+        hasPermission('Daraz', 'Order Sync'),
+        hasPermission('Daraz', 'Profit Tracker'),
+        hasPermission('Daraz', 'Sales Report')
+    ].some(Boolean)
 
-    // Admin-only access
-    if (userRole !== 'admin') {
+    if (!hasAnyTab) {
         return (
             <div className="flex flex-col h-full bg-gray-50 dark:bg-zinc-900">
                 <div className="hidden md:flex sticky top-0 z-10 bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 px-3 py-1.5 items-center justify-between shadow-sm">
@@ -172,16 +173,8 @@ function DashboardContent() {
                         {backLink.label}
                     </Link>
                 </div>
-                <div className="flex-1 flex items-center justify-center p-8">
-                    <div className="text-center">
-                        <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-red-100 dark:bg-red-900/30 mb-4">
-                            <AlertCircle className="w-8 h-8 text-red-600 dark:text-red-400" />
-                        </div>
-                        <h2 className="text-2xl font-semibold mb-2">Admin Access Required</h2>
-                        <p className="text-gray-600 dark:text-gray-400 max-w-md mx-auto text-[17px]">
-                            Only administrators can view the Sales Dashboard. Please contact your administrator for access.
-                        </p>
-                    </div>
+                <div className="flex-1">
+                    <Forbidden403 />
                 </div>
             </div>
         )
@@ -212,76 +205,90 @@ function DashboardContent() {
             {/* Tab Bar - Hidden on mobile, visible on desktop */}
             <div className="hidden md:block sticky top-[44px] z-10 bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 px-3 py-1.5 shadow-sm overflow-x-auto">
                 <div className="flex items-center gap-1.5 min-w-max">
-                    <button
-                        onClick={() => setActiveTab('order-list')}
-                        className={`flex items-center gap-1 px-2 py-1 text-sm rounded transition-colors ${activeTab === 'order-list'
-                            ? 'bg-blue-600 text-white'
-                            : 'bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700'
-                            }`}
-                    >
-                        <List size={12} />
-                        Order List
-                    </button>
-                    <button
-                        onClick={() => setActiveTab('daily')}
-                        className={`flex items-center gap-1 px-2 py-1 text-sm rounded transition-colors ${activeTab === 'daily'
-                            ? 'bg-blue-600 text-white'
-                            : 'bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700'
-                            }`}
-                    >
-                        <BarChart2 size={12} />
-                        Daily Sales Report
-                    </button>
-                    <button
-                        onClick={() => setActiveTab('summary')}
-                        className={`flex items-center gap-1 px-2 py-1 text-sm rounded transition-colors ${activeTab === 'summary'
-                            ? 'bg-blue-600 text-white'
-                            : 'bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700'
-                            }`}
-                    >
-                        <PieChart size={12} />
-                        Account Summary
-                    </button>
-                    <button
-                        onClick={() => setActiveTab('status-sync')}
-                        className={`flex items-center gap-1 px-2 py-1 text-sm rounded transition-colors ${activeTab === 'status-sync'
-                            ? 'bg-blue-600 text-white'
-                            : 'bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700'
-                            }`}
-                    >
-                        <RefreshCw size={12} />
-                        Order Status Sync
-                    </button>
-                    <button
-                        onClick={() => setActiveTab('order-sync')}
-                        className={`flex items-center gap-1 px-2 py-1 text-sm rounded transition-colors ${activeTab === 'order-sync'
-                            ? 'bg-blue-600 text-white'
-                            : 'bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700'
-                            }`}
-                    >
-                        <Download size={12} />
-                        Order Sync
-                    </button>
-                    <button
-                        onClick={() => setActiveTab('profit-tracker')}
-                        className={`flex items-center gap-1 px-2 py-1 text-sm rounded transition-colors ${activeTab === 'profit-tracker'
-                            ? 'bg-blue-600 text-white'
-                            : 'bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700'
-                            }`}
-                    >
-                        <BarChart2 size={12} />
-                        Profit Tracker
-                    </button>
-                    <button
-                        onClick={() => setActiveTab('sales-report')}
-                        className={`flex items-center gap-1 px-2 py-1 text-sm rounded transition-colors ${activeTab === 'sales-report'
-                            ? 'bg-blue-600 text-white'
-                            : 'bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700'
-                            }`}
-                    >
-                        <FileText size={12} />
-                        Sales Report
-                    </button>
+                    {hasPermission('Daraz', 'Order List') && (
+                        <button
+                            onClick={() => setActiveTab('order-list')}
+                            className={`flex items-center gap-1 px-2 py-1 text-sm rounded transition-colors ${activeTab === 'order-list'
+                                ? 'bg-blue-600 text-white'
+                                : 'bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700'
+                                }`}
+                        >
+                            <List size={12} />
+                            Order List
+                        </button>
+                    )}
+                    {hasPermission('Daraz', 'Daily Sales Report') && (
+                        <button
+                            onClick={() => setActiveTab('daily')}
+                            className={`flex items-center gap-1 px-2 py-1 text-sm rounded transition-colors ${activeTab === 'daily'
+                                ? 'bg-blue-600 text-white'
+                                : 'bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700'
+                                }`}
+                        >
+                            <BarChart2 size={12} />
+                            Daily Sales Report
+                        </button>
+                    )}
+                    {hasPermission('Daraz', 'Account Summary') && (
+                        <button
+                            onClick={() => setActiveTab('summary')}
+                            className={`flex items-center gap-1 px-2 py-1 text-sm rounded transition-colors ${activeTab === 'summary'
+                                ? 'bg-blue-600 text-white'
+                                : 'bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700'
+                                }`}
+                        >
+                            <PieChart size={12} />
+                            Account Summary
+                        </button>
+                    )}
+                    {hasPermission('Daraz', 'Order Status Sync') && (
+                        <button
+                            onClick={() => setActiveTab('status-sync')}
+                            className={`flex items-center gap-1 px-2 py-1 text-sm rounded transition-colors ${activeTab === 'status-sync'
+                                ? 'bg-blue-600 text-white'
+                                : 'bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700'
+                                }`}
+                        >
+                            <RefreshCw size={12} />
+                            Order Status Sync
+                        </button>
+                    )}
+                    {hasPermission('Daraz', 'Order Sync') && (
+                        <button
+                            onClick={() => setActiveTab('order-sync')}
+                            className={`flex items-center gap-1 px-2 py-1 text-sm rounded transition-colors ${activeTab === 'order-sync'
+                                ? 'bg-blue-600 text-white'
+                                : 'bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700'
+                                }`}
+                        >
+                            <Download size={12} />
+                            Order Sync
+                        </button>
+                    )}
+                    {hasPermission('Daraz', 'Profit Tracker') && (
+                        <button
+                            onClick={() => setActiveTab('profit-tracker')}
+                            className={`flex items-center gap-1 px-2 py-1 text-sm rounded transition-colors ${activeTab === 'profit-tracker'
+                                ? 'bg-blue-600 text-white'
+                                : 'bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700'
+                                }`}
+                        >
+                            <BarChart2 size={12} />
+                            Profit Tracker
+                        </button>
+                    )}
+                    {hasPermission('Daraz', 'Sales Report') && (
+                        <button
+                            onClick={() => setActiveTab('sales-report')}
+                            className={`flex items-center gap-1 px-2 py-1 text-sm rounded transition-colors ${activeTab === 'sales-report'
+                                ? 'bg-blue-600 text-white'
+                                : 'bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700'
+                                }`}
+                        >
+                            <FileText size={12} />
+                            Sales Report
+                        </button>
+                    )}
                 </div>
             </div>
 

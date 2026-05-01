@@ -7,7 +7,7 @@ export interface UserProfile {
     id: string
     full_name: string | null
     email: string
-    role: 'admin' | 'user'
+    role: 'admin' | 'editor' | 'user' | 'new_user'
     status: 'pending' | 'active' | 'disable'
     created_at: string
     updated_at: string
@@ -125,7 +125,7 @@ export async function updateUserStatus(userId: string, status: 'pending' | 'acti
 }
 
 // Update user role (admin only)
-export async function updateUserRole(userId: string, role: 'admin' | 'user') {
+export async function updateUserRole(userId: string, role: 'admin' | 'editor' | 'user' | 'new_user') {
     const supabase = await createClient()
 
     const { data: { user } } = await supabase.auth.getUser()
@@ -318,6 +318,59 @@ export async function removeUserPermission(permissionId: string) {
     revalidatePath('/dashboard/staff-management')
 }
 
+// Bulk update user permissions
+export async function bulkUpdateUserPermissions(userId: string, permissions: Array<{ main_page_role: string, sub_page_role: string | null, permission_type: 'view' | 'edit' | 'all' }>) {
+    const supabase = await createClient()
+
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) throw new Error('Not authenticated')
+
+    // Check if requester is admin
+    const { data: adminCheck } = await supabase
+        .from('user_profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single()
+
+    if (adminCheck?.role !== 'admin') {
+        throw new Error('Only admins can update user permissions')
+    }
+
+    // Start a transaction-like sequence
+    // First, delete all existing permissions for this user
+    const { error: deleteError } = await supabase
+        .from('user_permissions')
+        .delete()
+        .eq('user_id', userId)
+
+    if (deleteError) throw new Error(`Failed to clear existing permissions: ${deleteError.message}`)
+
+    // If there are new permissions, insert them
+    if (permissions.length > 0) {
+        const insertData = permissions.map(p => ({
+            user_id: userId,
+            main_page_role: p.main_page_role,
+            sub_page_role: p.sub_page_role,
+            permission_type: p.permission_type,
+            updated_at: new Date().toISOString()
+        }))
+
+        const { error: insertError } = await supabase
+            .from('user_permissions')
+            .insert(insertData)
+
+        if (insertError) throw new Error(`Failed to insert new permissions: ${insertError.message}`)
+    }
+    
+    // Attempt to touch the user profile to force a refresh on the client if listening to user_profiles
+    await supabase
+        .from('user_profiles')
+        .update({ updated_at: new Date().toISOString() })
+        .eq('id', userId)
+
+    revalidatePath('/dashboard/staff-management')
+}
+
 // Get user's permissions (used for access control)
 export async function getUserPermissions(userId?: string) {
     const supabase = await createClient()
@@ -460,4 +513,54 @@ export async function checkUserStatus(email: string) {
         exists: true,
         status: profile.status as 'pending' | 'active' | 'disable',
     }
+}
+
+// Permanently delete a user (admin only, only if status is 'disable')
+export async function deleteUser(userId: string) {
+    const supabase = await createClient()
+
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) throw new Error('Not authenticated')
+
+    // Prevent self-deletion
+    if (user.id === userId) {
+        throw new Error('You cannot delete your own account')
+    }
+
+    // Check if requester is admin
+    const { data: adminCheck } = await supabase
+        .from('user_profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single()
+
+    if (adminCheck?.role !== 'admin') {
+        throw new Error('Only admins can delete users')
+    }
+
+    // Check the target user's status — must be 'disable' to delete
+    const { data: targetProfile, error: profileError } = await supabase
+        .from('user_profiles')
+        .select('status, role')
+        .eq('id', userId)
+        .single()
+
+    if (profileError) throw new Error(`User not found: ${profileError.message}`)
+
+    if (targetProfile.status === 'active') {
+        throw new Error('Cannot delete an active user. Please disable the user first.')
+    }
+
+    // Clean up related data first (in case FK constraints don't cascade)
+    await supabase.from('user_permissions').delete().eq('user_id', userId)
+    await supabase.from('user_locations').delete().eq('user_id', userId)
+    await supabase.from('user_activity_logs').delete().eq('user_id', userId)
+    await supabase.from('user_profiles').delete().eq('id', userId)
+
+    // Finally delete from Supabase Auth (permanent, user can re-signup)
+    const adminClient = await createAdminClient()
+    const { error: deleteError } = await adminClient.auth.admin.deleteUser(userId)
+    if (deleteError) throw new Error(`Failed to delete auth user: ${deleteError.message}`)
+
+    revalidatePath('/dashboard/staff-management')
 }

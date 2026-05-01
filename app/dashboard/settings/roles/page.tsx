@@ -1,30 +1,24 @@
 'use client'
 
-import { useState } from 'react'
 import { Card, CardContent } from '@/components/ui-shim'
 import { SettingsPageHeader } from "@/components/settings/SettingsPageHeader"
-import { Plus } from 'lucide-react'
 import RoleList from '@/features/settings/components/RoleList'
-import AddEditRoleDialog from '@/features/settings/components/AddEditRoleDialog'
+import { Shield } from 'lucide-react'
 
 export default function RolesPage() {
-    const [isAddOpen, setIsAddOpen] = useState(false)
-
     return (
         <div className="space-y-6">
             <SettingsPageHeader
-                title="Role Page"
-                subtitle="Manage page roles and permissions"
+                title="Page Roles Reference"
+                subtitle="View all available page roles and sub-roles in the system"
             />
 
-            <div className="flex justify-end gap-3">
-                <button
-                    onClick={() => setIsAddOpen(true)}
-                    className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 shadow-sm"
-                >
-                    <Plus size={16} />
-                    Add New Role
-                </button>
+            <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 rounded-lg p-4 flex gap-3">
+                <Shield className="text-blue-600 dark:text-blue-400 shrink-0" size={20} />
+                <div className="text-sm text-blue-800 dark:text-blue-300">
+                    <p className="font-medium mb-1">System Roles Reference</p>
+                    <p>This table displays all predefined page roles available for assignment. To assign these roles to users, navigate to the Staff Management page.</p>
+                </div>
             </div>
 
             <Card>
@@ -32,11 +26,6 @@ export default function RolesPage() {
                     <RoleList />
                 </CardContent>
             </Card>
-
-            <AddEditRoleDialog
-                isOpen={isAddOpen}
-                onClose={() => setIsAddOpen(false)}
-            />
         </div>
     )
 }

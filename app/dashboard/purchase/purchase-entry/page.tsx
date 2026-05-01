@@ -9,12 +9,17 @@ import Link from 'next/link'
 import PurchaseForm from '@/features/purchase/components/PurchaseForm'
 import { Card } from '@/components/ui-shim'
 import DailyPurchaseDetailView from '@/features/purchase/components/DailyPurchaseDetailView'
+import { PermissionGuard } from '@/components/permissions/PermissionGuard'
+import { usePermissions } from '@/lib/permissions/PermissionContext'
 
 export default function PurchaseEntryPage() {
     const [isAddModalOpen, setIsAddModalOpen] = useState(false)
     const [editingPurchase, setEditingPurchase] = useState<Purchase | null>(null)
     const [viewingPurchase, setViewingPurchase] = useState<Purchase | null>(null)
     const [search, setSearch] = useState('')
+    const { userRole } = usePermissions()
+    const isNewUser = userRole === 'new_user'
+    const isRestricted = userRole === 'user' || userRole === 'new_user'
 
     // View Mode State
     const [viewMode, setViewMode] = useState<'entry' | 'transactions'>('entry')
@@ -47,7 +52,8 @@ export default function PurchaseEntryPage() {
     ) || []
 
     return (
-        <div className="flex flex-col h-full bg-gray-50 dark:bg-zinc-900">
+        <PermissionGuard mainRole="Purchase" subRole="Purchase Entry">
+            <div className="flex flex-col h-full bg-gray-50 dark:bg-zinc-900">
             {/* Header - Hidden on mobile */}
             <div className="hidden md:flex sticky top-0 z-10 bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 px-3 py-1.5 items-center justify-between shadow-sm">
                 <div>
@@ -77,15 +83,17 @@ export default function PurchaseEntryPage() {
                     >
                         Purchase Entry
                     </button>
-                    <button
-                        onClick={() => setViewMode('transactions')}
-                        className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${viewMode === 'transactions'
-                            ? 'bg-white dark:bg-zinc-700 text-gray-900 dark:text-gray-100 shadow-sm'
-                            : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
-                            }`}
-                    >
-                        Transaction Details
-                    </button>
+                    {!isRestricted && (
+                        <button
+                            onClick={() => setViewMode('transactions')}
+                            className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${viewMode === 'transactions'
+                                ? 'bg-white dark:bg-zinc-700 text-gray-900 dark:text-gray-100 shadow-sm'
+                                : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+                                }`}
+                        >
+                            Transaction Details
+                        </button>
+                    )}
                 </div>
 
                 {/* Left: Search (Only in Entry Mode) */}
@@ -106,7 +114,7 @@ export default function PurchaseEntryPage() {
                 {/* Right: Buttons */}
                 <div className="flex items-center gap-2 w-full md:w-auto justify-end ml-auto">
                     {/* Add Button - Hidden on mobile (Only in Entry Mode) */}
-                    {viewMode === 'entry' && (
+                    {viewMode === 'entry' && !isNewUser && (
                         <button
                             onClick={() => setIsAddModalOpen(true)}
                             className="hidden md:flex items-center gap-1 px-3 py-1.5 text-sm bg-blue-600 text-white hover:bg-blue-700 rounded transition-colors whitespace-nowrap"
@@ -116,13 +124,15 @@ export default function PurchaseEntryPage() {
                         </button>
                     )}
 
-                    <Link
-                        href="/dashboard/purchase/dashboard"
-                        className="hidden md:flex items-center gap-1 px-3 py-1.5 text-sm bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 hover:bg-purple-200 dark:hover:bg-purple-900/50 rounded transition-colors whitespace-nowrap"
-                    >
-                        <LayoutDashboard size={16} />
-                        Purchase Summary
-                    </Link>
+                    {!isNewUser && (
+                        <Link
+                            href="/dashboard/purchase/dashboard"
+                            className="hidden md:flex items-center gap-1 px-3 py-1.5 text-sm bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 hover:bg-purple-200 dark:hover:bg-purple-900/50 rounded transition-colors whitespace-nowrap"
+                        >
+                            <LayoutDashboard size={16} />
+                            Purchase Summary
+                        </Link>
+                    )}
                 </div>
             </div>
 
@@ -139,13 +149,13 @@ export default function PurchaseEntryPage() {
                                         <tr>
                                             <th className="px-3 py-2 text-xs font-bold uppercase text-gray-600 dark:text-gray-400">Date</th>
                                             <th className="px-3 py-2 text-xs font-bold uppercase text-gray-600 dark:text-gray-400">Product</th>
-                                            <th className="px-3 py-2 text-xs font-bold uppercase text-gray-600 dark:text-gray-400">Supplier</th>
+                                            {!isNewUser && <th className="px-3 py-2 text-xs font-bold uppercase text-gray-600 dark:text-gray-400">Supplier</th>}
                                             <th className="px-3 py-2 text-xs font-bold uppercase text-gray-600 dark:text-gray-400 text-right">Qty</th>
-                                            <th className="px-3 py-2 text-xs font-bold uppercase text-gray-600 dark:text-gray-400 text-right">Rate</th>
-                                            <th className="px-3 py-2 text-xs font-bold uppercase text-gray-600 dark:text-gray-400 text-right">Total</th>
-                                            <th className="px-3 py-2 text-xs font-bold uppercase text-gray-600 dark:text-gray-400">Type</th>
+                                            {!isRestricted && <th className="px-3 py-2 text-xs font-bold uppercase text-gray-600 dark:text-gray-400 text-right">Rate</th>}
+                                            {!isRestricted && <th className="px-3 py-2 text-xs font-bold uppercase text-gray-600 dark:text-gray-400 text-right">Total</th>}
+                                            {!isNewUser && <th className="px-3 py-2 text-xs font-bold uppercase text-gray-600 dark:text-gray-400">Type</th>}
                                             <th className="px-3 py-2 text-xs font-bold uppercase text-gray-600 dark:text-gray-400">Remarks</th>
-                                            <th className="px-3 py-2 text-xs font-bold uppercase text-gray-600 dark:text-gray-400 text-center">Actions</th>
+                                            {!isNewUser && <th className="px-3 py-2 text-xs font-bold uppercase text-gray-600 dark:text-gray-400 text-center">Actions</th>}
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-gray-100 dark:divide-zinc-800">
@@ -159,35 +169,41 @@ export default function PurchaseEntryPage() {
                                                     <td className="px-3 py-2 text-sm">{purchase.purchase_date}</td>
                                                     <td className="px-3 py-2 text-sm font-medium">
                                                         <div>{purchase.product?.product_name}</div>
-                                                        <div className="flex justify-center mt-1">
-                                                            <span className={`px-2 py-0.5 rounded-full text-[10px] uppercase font-bold tracking-wide ${(purchase.purchase_type === 'Sell')
-                                                                ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400'
-                                                                : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
-                                                                }`}>
-                                                                {purchase.purchase_type || 'Buy'}
-                                                            </span>
-                                                        </div>
+                                                        {!isNewUser && (
+                                                            <div className="flex justify-center mt-1">
+                                                                <span className={`px-2 py-0.5 rounded-full text-[10px] uppercase font-bold tracking-wide ${(purchase.purchase_type === 'Sell')
+                                                                    ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400'
+                                                                    : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+                                                                    }`}>
+                                                                    {purchase.purchase_type || 'Buy'}
+                                                                </span>
+                                                            </div>
+                                                        )}
                                                     </td>
-                                                    <td className="px-3 py-2 text-sm">{purchase.supplier?.supplier_name}</td>
+                                                    {!isNewUser && <td className="px-3 py-2 text-sm">{purchase.supplier?.supplier_name}</td>}
                                                     <td className="px-3 py-2 text-sm text-right">{purchase.quantity}</td>
-                                                    <td className="px-3 py-2 text-sm text-right">{purchase.unit_amount.toLocaleString()}</td>
-                                                    <td className="px-3 py-2 text-sm text-right font-medium text-green-600">Rs {purchase.total_amount.toLocaleString()}</td>
-                                                    <td className="px-3 py-2 text-sm">
-                                                        <span className={`px-2 py-0.5 rounded textxs font-medium ${purchase.payment_type === 'Due' ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'
-                                                            }`}>
-                                                            {purchase.payment_type}
-                                                        </span>
-                                                    </td>
+                                                    {!isRestricted && <td className="px-3 py-2 text-sm text-right">{purchase.unit_amount.toLocaleString()}</td>}
+                                                    {!isRestricted && <td className="px-3 py-2 text-sm text-right font-medium text-green-600">Rs {purchase.total_amount.toLocaleString()}</td>}
+                                                    {!isNewUser && (
+                                                        <td className="px-3 py-2 text-sm">
+                                                            <span className={`px-2 py-0.5 rounded textxs font-medium ${purchase.payment_type === 'Due' ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'
+                                                                }`}>
+                                                                {purchase.payment_type}
+                                                            </span>
+                                                        </td>
+                                                    )}
                                                     <td className="px-3 py-2 text-sm text-gray-500 truncate max-w-[200px]" title={purchase.remarks}>{purchase.remarks}</td>
-                                                    <td className="px-3 py-2 text-center">
-                                                        <button
-                                                            onClick={() => setEditingPurchase(purchase)}
-                                                            className="p-1.5 text-blue-600 hover:bg-blue-50 dark:hover:bg-zinc-800 rounded transition-colors"
-                                                            title="Edit Purchase"
-                                                        >
-                                                            <Edit2 size={16} />
-                                                        </button>
-                                                    </td>
+                                                    {!isNewUser && (
+                                                        <td className="px-3 py-2 text-center">
+                                                            <button
+                                                                onClick={() => setEditingPurchase(purchase)}
+                                                                className="p-1.5 text-blue-600 hover:bg-blue-50 dark:hover:bg-zinc-800 rounded transition-colors"
+                                                                title="Edit Purchase"
+                                                            >
+                                                                <Edit2 size={16} />
+                                                            </button>
+                                                        </td>
+                                                    )}
                                                 </tr>
                                             ))
                                         )}
@@ -229,22 +245,26 @@ export default function PurchaseEntryPage() {
                                     </div>
 
                                     {/* Row 3: Supplier | Payment Type */}
-                                    <div className="flex justify-between items-center text-xs">
-                                        <div className="text-gray-600 dark:text-gray-300 truncate max-w-[60%]">{purchase.supplier?.supplier_name}</div>
-                                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${purchase.payment_type === 'Due' ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
-                                            {purchase.payment_type}
-                                        </span>
-                                    </div>
+                                    {!isNewUser && (
+                                        <div className="flex justify-between items-center text-xs">
+                                            <div className="text-gray-600 dark:text-gray-300 truncate max-w-[60%]">{purchase.supplier?.supplier_name}</div>
+                                            <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${purchase.payment_type === 'Due' ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
+                                                {purchase.payment_type}
+                                            </span>
+                                        </div>
+                                    )}
 
                                     {/* Row 4: Amounts (Rate top, Total bottom) */}
-                                    <div className="flex justify-between items-end border-t border-dashed pt-2 mt-1">
-                                        <div className="text-xs text-gray-500">
-                                            Rate: {purchase.unit_amount.toLocaleString()}
+                                    {!isRestricted && (
+                                        <div className="flex justify-between items-end border-t border-dashed pt-2 mt-1">
+                                            <div className="text-xs text-gray-500">
+                                                Rate: {purchase.unit_amount.toLocaleString()}
+                                            </div>
+                                            <div className="font-bold text-green-600 dark:text-green-400">
+                                                Rs {purchase.total_amount.toLocaleString()}
+                                            </div>
                                         </div>
-                                        <div className="font-bold text-green-600 dark:text-green-400">
-                                            Rs {purchase.total_amount.toLocaleString()}
-                                        </div>
-                                    </div>
+                                    )}
                                 </div>
                             ))
                         )}
@@ -390,15 +410,18 @@ export default function PurchaseEntryPage() {
                 )
             }
             {/* Mobile Footer Navigation */}
-            <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-zinc-900 border-t dark:border-zinc-800 p-2 grid grid-cols-1 gap-2 z-40">
-                <Link
-                    href="/dashboard/purchase/dashboard"
-                    className="flex flex-col items-center justify-center p-2 rounded-lg bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 active:scale-95 transition-transform"
-                >
-                    <LayoutDashboard size={20} className="mb-1" />
-                    <span className="text-[10px] font-medium text-center leading-tight">Purchase<br />Summary</span>
-                </Link>
-            </div>
+            {!isNewUser && (
+                <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-zinc-900 border-t dark:border-zinc-800 p-2 grid grid-cols-1 gap-2 z-40">
+                    <Link
+                        href="/dashboard/purchase/dashboard"
+                        className="flex flex-col items-center justify-center p-2 rounded-lg bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 active:scale-95 transition-transform"
+                    >
+                        <LayoutDashboard size={20} className="mb-1" />
+                        <span className="text-[10px] font-medium text-center leading-tight">Purchase<br />Summary</span>
+                    </Link>
+                </div>
+            )}
         </div >
+        </PermissionGuard>
     )
 }

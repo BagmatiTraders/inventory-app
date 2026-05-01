@@ -12,6 +12,7 @@ import { ViewProductModal } from '@/features/inventory/components/ViewProductMod
 import { EditProductModal } from '@/features/inventory/components/EditProductModal'
 import { DeleteProductButton } from '@/features/inventory/components/DeleteProductButton'
 import { ImportCSVModal } from '@/features/inventory/components/ImportCSVModal'
+import { usePermissions } from '@/lib/permissions/PermissionContext'
 
 export default function ProductListPage() {
     const [page, setPage] = useState(1)
@@ -21,7 +22,9 @@ export default function ProductListPage() {
     const [isImportModalOpen, setIsImportModalOpen] = useState(false)
     const [viewProductId, setViewProductId] = useState<string | null>(null)
     const [editProductId, setEditProductId] = useState<string | null>(null)
-    const [userRole, setUserRole] = useState<'admin' | 'user'>('admin') // TODO: Get from auth
+
+    // Get real user role from permission context
+    const { userRole } = usePermissions()
 
     // Fetch products with pagination and search
     const { data, isLoading, error } = useQuery({
@@ -310,7 +313,7 @@ export default function ProductListPage() {
                                                             <DeleteProductButton
                                                                 productId={product.id}
                                                                 productName={product.product_name}
-                                                                userRole={userRole}
+                                                                userRole={userRole ?? 'user'}
                                                             />
                                                         </div>
                                                     </div>

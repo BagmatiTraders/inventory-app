@@ -1,10 +1,12 @@
 'use client'
 
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { Card, CardHeader, CardTitle, CardContent, Label, Input, Button } from '@/components/ui-shim'
 import { verifyAndChangePassword } from '../actions/profile-actions'
 
 export function SecuritySettings() {
+    const router = useRouter()
     const [loading, setLoading] = useState(false)
     const [passwords, setPasswords] = useState({
         current: '',
@@ -22,8 +24,11 @@ export function SecuritySettings() {
         setLoading(true)
         try {
             await verifyAndChangePassword(passwords.current, passwords.new)
-            alert('Password changed successfully')
-            setPasswords({ current: '', new: '', confirm: '' })
+            alert('Password changed successfully. You will be logged out.')
+            // Small delay to allow alert to be seen
+            setTimeout(() => {
+                window.location.href = '/login'
+            }, 1000)
         } catch (error: any) {
             alert(error.message)
         } finally {

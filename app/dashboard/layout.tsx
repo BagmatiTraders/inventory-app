@@ -38,11 +38,16 @@ export function useDashboard() {
     return context
 }
 
+import { PermissionProvider } from '@/lib/permissions/PermissionContext'
+import { PermissionFilteredNav } from '@/components/permissions/PermissionFilteredNav'
+
 export default function DashboardLayoutWrapper(props: any) {
     return (
-        <MobileModeProvider>
-            <DashboardLayout {...props} />
-        </MobileModeProvider>
+        <PermissionProvider>
+            <MobileModeProvider>
+                <DashboardLayout {...props} />
+            </MobileModeProvider>
+        </PermissionProvider>
     )
 }
 
@@ -149,51 +154,65 @@ function DashboardLayout({
                                     </NavItem>
                                 </div>
 
-
-
                                 {/* Inventory with Sub-menu */}
-                                <div onClick={closeMobileMenu}>
-                                    <NavItem href="/dashboard/inventory" icon={<Calculator size={20} />} isCollapsed={isCollapsed}>
-                                        Inventory Management
-                                    </NavItem>
-                                </div>
+                                <PermissionFilteredNav mainRole="Inventory">
+                                    <div onClick={closeMobileMenu}>
+                                        <NavItem href="/dashboard/inventory" icon={<Calculator size={20} />} isCollapsed={isCollapsed}>
+                                            Inventory Management
+                                        </NavItem>
+                                    </div>
+                                </PermissionFilteredNav>
 
-                                <div onClick={closeMobileMenu}>
-                                    <NavItem href="/dashboard/sales" icon={<ShoppingCart size={20} />} isCollapsed={isCollapsed}>
-                                        Sales & Orders
-                                    </NavItem>
-                                </div>
+                                <PermissionFilteredNav mainRole="Daraz">
+                                    <div onClick={closeMobileMenu}>
+                                        <NavItem href="/dashboard/sales" icon={<ShoppingCart size={20} />} isCollapsed={isCollapsed}>
+                                            Sales & Orders
+                                        </NavItem>
+                                    </div>
+                                </PermissionFilteredNav>
 
-                                <div onClick={closeMobileMenu}>
-                                    <NavItem
-                                        href="/dashboard/purchase"
-                                        icon={<ShoppingBag size={20} />}
-                                        isCollapsed={isCollapsed}
-                                    >
-                                        Purchasing
-                                    </NavItem>
-                                </div>
-                                <div onClick={closeMobileMenu}>
-                                    <NavItem href="/dashboard/suppliers" icon={<Package size={20} />} isCollapsed={isCollapsed}>
-                                        Suppliers
-                                    </NavItem>
-                                </div>
-                                <div onClick={closeMobileMenu}>
-                                    <NavItem href="/dashboard/account" icon={<Wallet size={20} />} isCollapsed={isCollapsed}>
-                                        Finance & Accounts
-                                    </NavItem>
-                                </div>
+                                <PermissionFilteredNav mainRole="Purchase">
+                                    <div onClick={closeMobileMenu}>
+                                        <NavItem
+                                            href="/dashboard/purchase"
+                                            icon={<ShoppingBag size={20} />}
+                                            isCollapsed={isCollapsed}
+                                        >
+                                            Purchasing
+                                        </NavItem>
+                                    </div>
+                                </PermissionFilteredNav>
+
+                                <PermissionFilteredNav mainRole="Suppliers">
+                                    <div onClick={closeMobileMenu}>
+                                        <NavItem href="/dashboard/suppliers" icon={<Package size={20} />} isCollapsed={isCollapsed}>
+                                            Suppliers
+                                        </NavItem>
+                                    </div>
+                                </PermissionFilteredNav>
+
+                                <PermissionFilteredNav mainRole="Accounts">
+                                    <div onClick={closeMobileMenu}>
+                                        <NavItem href="/dashboard/account" icon={<Wallet size={20} />} isCollapsed={isCollapsed}>
+                                            Finance & Accounts
+                                        </NavItem>
+                                    </div>
+                                </PermissionFilteredNav>
+
                                 <div onClick={closeMobileMenu}>
                                     <NavItem href="/dashboard/profile" icon={<User size={20} />} isCollapsed={isCollapsed}>
                                         My Profile
                                     </NavItem>
                                 </div>
 
-                                <div onClick={closeMobileMenu}>
-                                    <NavItem href="/dashboard/settings" icon={<Settings size={20} />} isCollapsed={isCollapsed}>
-                                        Settings
-                                    </NavItem>
-                                </div>
+                                {/* Settings should ideally be Admin-only, but users might have permissions for staff/roles later? Actually only Admin can do settings, so we can require 'Settings' mainRole or let the pages themselves guard it. For now let's just let it be accessible, or we can add a guard. The user spec says Staff Management is admin/editor maybe? We'll leave it unguarded here but guard the pages. */}
+                                <PermissionFilteredNav mainRole="Settings">
+                                    <div onClick={closeMobileMenu}>
+                                        <NavItem href="/dashboard/settings" icon={<Settings size={20} />} isCollapsed={isCollapsed}>
+                                            Settings
+                                        </NavItem>
+                                    </div>
+                                </PermissionFilteredNav>
                             </nav>
 
                             <div className="p-4 border-t space-y-2 shrink-0">

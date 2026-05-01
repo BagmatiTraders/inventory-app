@@ -12,6 +12,7 @@ import { EditDarazOrderModal } from '@/features/sales/components/EditDarazOrderM
 import { PartialReturnModal } from '@/features/sales/components/PartialReturnModal'
 import { DeletionReasonModal } from '@/features/sales/components/DeletionReasonModal'
 import { useDashboard } from '@/app/dashboard/layout'
+import { usePermissions } from '@/lib/permissions/PermissionContext'
 // DarazInvoice removed
 
 
@@ -22,7 +23,7 @@ export default function DarazOrderViewPage() {
     const [isEditModalOpen, setIsEditModalOpen] = useState(false)
     const [isPartialReturnOpen, setIsPartialReturnOpen] = useState(false)
     const [isDeletionModalOpen, setIsDeletionModalOpen] = useState(false)
-    const [userRole, setUserRole] = useState<'admin' | 'user' | null>(null)
+    const { userRole } = usePermissions()
     const { setHeaderTitle } = useDashboard()
 
 
@@ -34,11 +35,7 @@ export default function DarazOrderViewPage() {
         gcTime: 5 * 60 * 1000
     })
 
-    // Check user role on mount and set header
-    useEffect(() => {
-        getUserRole().then(role => setUserRole(role))
-    }, [])
-
+    // Set header
     useEffect(() => {
         if (order && setHeaderTitle) {
             setHeaderTitle(
@@ -99,13 +96,15 @@ export default function DarazOrderViewPage() {
                         </div>
                     </div>
                     <div className="flex items-center gap-2">
-                        <button
-                            onClick={() => setIsEditModalOpen(true)}
-                            className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors"
-                        >
-                            <Edit size={16} />
-                            Edit Order
-                        </button>
+                        {(userRole === 'admin' || userRole === 'editor') && (
+                            <button
+                                onClick={() => setIsEditModalOpen(true)}
+                                className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors"
+                            >
+                                <Edit size={16} />
+                                Edit Order
+                            </button>
+                        )}
 
                         {/* Delete button - only for admins */}
                         {userRole === 'admin' && (

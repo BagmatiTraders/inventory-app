@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { getDarazOrderById, updateDarazOrder } from '@/features/sales/actions/daraz-actions'
 import { useState, useEffect } from 'react'
 import { toast } from 'sonner'
+import { usePermissions } from '@/lib/permissions/PermissionContext'
 
 interface ViewDarazOrderModalProps {
     orderId: string
@@ -14,6 +15,7 @@ interface ViewDarazOrderModalProps {
 
 export function ViewDarazOrderModal({ orderId, isOpen, onClose }: ViewDarazOrderModalProps) {
     const queryClient = useQueryClient()
+    const { userRole } = usePermissions()
     const [isEditing, setIsEditing] = useState(false)
     const [isSaving, setIsSaving] = useState(false)
 
@@ -124,7 +126,8 @@ export function ViewDarazOrderModal({ orderId, isOpen, onClose }: ViewDarazOrder
                 <div className="flex items-center justify-between px-3 py-2 md:p-4 border-b dark:border-zinc-700 flex-shrink-0">
                     <h2 className="text-sm md:text-lg font-bold">Order Details</h2>
                     <div className="flex items-center gap-2">
-                        {!isEditing ? (
+                        {/* Only Admin and Editor can see the Edit button */}
+                        {!isEditing && (userRole === 'admin' || userRole === 'editor') && (
                             <button
                                 onClick={() => setIsEditing(true)}
                                 className="flex items-center gap-1 px-2 py-1 text-[10px] md:text-xs bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors"
@@ -132,7 +135,9 @@ export function ViewDarazOrderModal({ orderId, isOpen, onClose }: ViewDarazOrder
                                 <Edit size={12} />
                                 <span className="hidden sm:inline">Edit</span>
                             </button>
-                        ) : (
+                        )}
+                        
+                        {isEditing && (
                             <>
                                 <button
                                     onClick={handleCancelEdit}

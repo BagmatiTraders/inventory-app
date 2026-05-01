@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 
 import { useState, useMemo, useEffect } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -22,8 +22,14 @@ import { QuickPlanButton } from '@/features/sales/components/QuickPlanButton'
 // DarazInvoice removed
 
 import { toast } from 'sonner'
+import { PermissionGuard } from '@/components/permissions/PermissionGuard'
+import { usePermissions } from '@/lib/permissions/PermissionContext'
 
 export default function DarazSalesEntryPage() {
+    const { canEdit, hasPermission } = usePermissions()
+    const canEditOrderEntry = canEdit('Daraz', 'Order Entry')
+    const canViewSalesDashboard = hasPermission('Daraz', 'Order List')
+
     const router = useRouter()
     const [isAddModalOpen, setIsAddModalOpen] = useState(false)
     const [isImportModalOpen, setIsImportModalOpen] = useState(false)
@@ -713,7 +719,8 @@ export default function DarazSalesEntryPage() {
     }
 
     return (
-        <div className="flex flex-col h-full bg-gray-50 dark:bg-zinc-900">
+        <PermissionGuard mainRole="Daraz" subRole="Order Entry">
+            <div className="flex flex-col h-full bg-gray-50 dark:bg-zinc-900">
             {/* Compact Header */}
             <div className="z-10 bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 px-3 py-1.5 shadow-sm">
                 <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -743,17 +750,21 @@ export default function DarazSalesEntryPage() {
 
                     {/* Right: Actions Group (Import/Export + Back) */}
                     <div className="flex items-center gap-2">
-                        <button
-                            onClick={() => setIsImportModalOpen(true)}
-                            className="flex items-center gap-2 px-3 py-1 text-[15px] border dark:border-zinc-700 hover:bg-gray-50 dark:hover:bg-zinc-800 rounded transition-colors dark:text-gray-50 whitespace-nowrap hidden md:flex"
-                        >
-                            <Upload size={11} />
-                            Import
-                        </button>
-                        <button className="flex items-center gap-2 px-3 py-1 text-[15px] border dark:border-zinc-700 hover:bg-gray-50 dark:hover:bg-zinc-800 rounded transition-colors dark:text-gray-50 whitespace-nowrap hidden md:flex">
-                            <Download size={11} />
-                            Export
-                        </button>
+                        {canEditOrderEntry && (
+                            <>
+                                <button
+                                    onClick={() => setIsImportModalOpen(true)}
+                                    className="flex items-center gap-2 px-3 py-1 text-[15px] border dark:border-zinc-700 hover:bg-gray-50 dark:hover:bg-zinc-800 rounded transition-colors dark:text-gray-50 whitespace-nowrap hidden md:flex"
+                                >
+                                    <Upload size={11} />
+                                    Import
+                                </button>
+                                <button className="flex items-center gap-2 px-3 py-1 text-[15px] border dark:border-zinc-700 hover:bg-gray-50 dark:hover:bg-zinc-800 rounded transition-colors dark:text-gray-50 whitespace-nowrap hidden md:flex">
+                                    <Download size={11} />
+                                    Export
+                                </button>
+                            </>
+                        )}
 
                         <Link
                             href="/dashboard/sales/daraz"
@@ -844,13 +855,15 @@ export default function DarazSalesEntryPage() {
                     </div>
 
                     {/* Action Buttons */}
-                    <button
-                        onClick={() => setIsAddModalOpen(true)}
-                        className="flex items-center gap-1 px-2 py-1 text-[15px] bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors whitespace-nowrap"
-                    >
-                        <Plus size={11} />
-                        Add
-                    </button>
+                    {canEditOrderEntry && (
+                        <button
+                            onClick={() => setIsAddModalOpen(true)}
+                            className="flex items-center gap-1 px-2 py-1 text-[15px] bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors whitespace-nowrap"
+                        >
+                            <Plus size={11} />
+                            Add
+                        </button>
+                    )}
 
 
                     {/* Clear Filters Button */}
@@ -872,13 +885,15 @@ export default function DarazSalesEntryPage() {
 
                     {/* Right Aligned Navigation Group */}
                     <div className="ml-auto flex items-center gap-2">
-                        <Link
-                            href="/dashboard/sales/daraz/dashboard?from=sales-entry"
-                            className="hidden md:flex items-center gap-1 px-2 py-1 text-[15px] bg-purple-600 hover:bg-purple-700 text-white rounded transition-colors whitespace-nowrap"
-                        >
-                            <List size={11} />
-                            Sales Dashboard
-                        </Link>
+                        {canViewSalesDashboard && (
+                            <Link
+                                href="/dashboard/sales/daraz/dashboard?from=sales-entry"
+                                className="hidden md:flex items-center gap-1 px-2 py-1 text-[15px] bg-purple-600 hover:bg-purple-700 text-white rounded transition-colors whitespace-nowrap"
+                            >
+                                <List size={11} />
+                                Sales Dashboard
+                            </Link>
+                        )}
 
 
 
@@ -1215,6 +1230,7 @@ export default function DarazSalesEntryPage() {
             />
 
         </div >
+        </PermissionGuard>
     )
 }
 

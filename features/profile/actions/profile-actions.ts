@@ -1,6 +1,6 @@
 'use server'
 
-import { createClient, createAdminClient } from '@/lib/supabase/server'
+import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 
 export interface UserTask {
@@ -125,18 +125,15 @@ export async function verifyAndChangePassword(currentPass: string, newPass: stri
 
     // 4. Logout from all devices
     try {
-        const admin = await createAdminClient()
-        const { error: signOutError } = await admin.auth.admin.signOut(user.id)
+        const { error: signOutError } = await supabase.auth.signOut({ scope: 'global' })
 
         if (signOutError) {
             console.error('Global sign out error:', signOutError)
         }
     } catch (err) {
-        // Ignore admin logout errors to ensure password change success isn't blocked
+        // Ignore logout errors to ensure password change success isn't blocked
         console.error('Global sign out exception:', err)
     }
-
-    return { success: true }
 
     return { success: true }
 }
