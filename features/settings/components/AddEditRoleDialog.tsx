@@ -56,11 +56,13 @@ export default function AddEditRoleDialog({ isOpen, onClose, editRole, onUpdate 
                 await updatePageRole(editRole.id, {
                     main_role: data.main_role,
                     sub_role: data.sub_role || null,
+                    page_url: editRole.page_url,
                 })
             } else {
                 await createPageRole({
                     main_role: data.main_role,
                     sub_role: data.sub_role || null,
+                    page_url: null,
                 })
             }
 
