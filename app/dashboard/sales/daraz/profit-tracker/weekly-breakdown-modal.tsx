@@ -107,10 +107,10 @@ export function WeeklyBreakdownModal({ isOpen, onClose, startDate, endDate }: We
 
     const totals = useMemo(() => {
         return {
-            sales: uniqueOrders.reduce((sum, o) => sum + (o.total_revenue || 0), 0),
-            purchase: uniqueOrders.reduce((sum, o) => sum + (o.total_purchase_cost || 0), 0),
-            fees: uniqueOrders.reduce((sum, o) => sum + (o.daraz_fee || o.daraz_fees || 0), 0),
-            profit: uniqueOrders.reduce((sum, o) => sum + (o.profit || 0), 0)
+            sales: uniqueOrders.reduce((sum, o: any) => sum + (o.total_revenue || 0), 0),
+            purchase: uniqueOrders.reduce((sum, o: any) => sum + (o.total_purchase_cost || 0), 0),
+            fees: uniqueOrders.reduce((sum, o: any) => sum + (o.daraz_fee || o.daraz_fees || 0), 0),
+            profit: uniqueOrders.reduce((sum, o: any) => sum + (o.profit || 0), 0)
         }
     }, [uniqueOrders])
 
