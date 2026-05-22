@@ -312,17 +312,18 @@ export async function getProfitTrackerData(params: GetOrderReportParams) {
     }
 
     if (startDate) {
-        query = query.gte('delivered_at', startDate)
+        query = query.gte('delivery_date', startDate)
     }
     if (endDate) {
-        query = query.lte('delivered_at', endDate)
+        // Ensure endDate includes the full day
+        const endDateTime = endDate.includes('T') ? endDate : `${endDate}T23:59:59.999Z`
+        query = query.lte('delivery_date', endDateTime)
     }
 
     query = query.range(from, to);
 
     query = query
-        .order('delivered_by_daraz', { ascending: false, nullsFirst: false })
-        .order('delivered_at', { ascending: false, nullsFirst: false })
+        .order('delivery_date', { ascending: false, nullsFirst: false })
         .order('created_at', { ascending: false, nullsFirst: false });
 
     const { data, count, error } = await query;
@@ -703,113 +704,47 @@ export async function syncSpecificOrders(orderNumbers: string[]) {
 // Function to get complete stats by date for all matching orders (ignoring pagination)
 export async function getCompleteDateStats(params: GetOrderReportParams) {
     try {
-        const { createAdminClient } = await import('@/lib/supabase/server')
         const supabase = await createAdminClient()
 
-        // 1. Fetch ALL data using a while loop to bypass pagination limits
-        let allData: any[] = [];
-        let from = 0;
-        const LIMIT = 1000;
-        let hasMore = true;
+        // Use the optimized RPC function to get aggregated stats directly from the database
+        // This avoids statement timeouts caused by fetching thousands of rows and grouping in JS
+        const { data, error } = await supabase.rpc('get_daily_profit_stats', {
+            search_term_param: params.search || '',
+            sync_status_param: params.syncStatus || 'all',
+            start_date_param: params.startDate || null,
+            end_date_param: params.endDate || null,
+            seller_account_param: params.sellerAccount || 'All'
+        });
 
-        while (hasMore) {
-            let pagedQuery = supabase
-                .from('daraz_order_report_view')
-                .select('*')
-
-            // Search by order number or invoice number
-            if (params.search && params.search.trim()) {
-                pagedQuery = pagedQuery.or(`order_number.ilike.%${params.search.trim()}%,invoice_number.ilike.%${params.search.trim()}%`)
-            }
-
-            // Filter by Seller Account
-            if (params.sellerAccount && params.sellerAccount !== 'All') {
-                pagedQuery = pagedQuery.eq('seller_account', params.sellerAccount)
-            }
-
-            // Apply sync status filter at database level
-            if (params.syncStatus === 'synced') {
-                pagedQuery = pagedQuery.gt('daraz_fees', 0).gt('total_purchase_cost', 0)
-            } else if (params.syncStatus === 'not_synced') {
-                pagedQuery = pagedQuery.or('daraz_fees.is.null,daraz_fees.lte.0,total_purchase_cost.lte.0')
-            }
-
-            // Date Filtering
-            if (params.startDate) {
-                pagedQuery = pagedQuery.gte('delivered_at', params.startDate)
-            }
-            if (params.endDate) {
-                pagedQuery = pagedQuery.lte('delivered_at', params.endDate)
-            }
-
-            // Sort and Range
-            pagedQuery = pagedQuery
-                .order('delivered_by_daraz', { ascending: false, nullsFirst: false })
-                .order('delivered_at', { ascending: false, nullsFirst: false })
-                .order('created_at', { ascending: false, nullsFirst: false })
-                .range(from, from + LIMIT - 1);
-
-            const { data: pageData, error } = await pagedQuery;
-
-            if (error) {
-                console.error('[SERVER ACTION] Complete Date Stats Query Error at range:', from, error);
-                throw new Error(`Failed to fetch complete date stats: ${error.message}`);
-            }
-
-            if (pageData && pageData.length > 0) {
-                allData = [...allData, ...pageData];
-                from += LIMIT;
-                if (pageData.length < LIMIT) hasMore = false;
-            } else {
-                hasMore = false;
-            }
+        if (error) {
+            console.error('[SERVER ACTION] getCompleteDateStats RPC Error:', error);
+            throw new Error(`Failed to fetch complete date stats: ${error.message}`);
         }
 
-        const data = allData;
+        // Process the data to match the expected format
+        const dateStats: Record<string, { statsBySeller: Record<string, { profit: number, missing: number, revenue: number, cost: number, count: number }>, totalProfit: number, totalRevenue: number, orderNumbers: string[] }> = {};
 
-
-
-        // Process the data to group by date and calculate stats
-        const dateStats: Record<string, { statsBySeller: Record<string, { profit: number, missing: number, revenue: number, cost: number }>, totalProfit: number, totalRevenue: number, orderNumbers: string[] }> = {};
-
-        (data || []).forEach((order: any) => {
-            if (!order.delivered_by_daraz && !order.delivered_at) return
-
-            const dateRaw = order.delivered_by_daraz || order.delivered_at
-            const dateKey = format(new Date(dateRaw), 'yyyy-MM-dd') // Local Time Grouping
-
+        (data || []).forEach((row: any) => {
+            const dateKey = row.date;
             if (!dateStats[dateKey]) {
                 dateStats[dateKey] = { statsBySeller: {}, totalProfit: 0, totalRevenue: 0, orderNumbers: [] }
             }
 
-            // Collect order number for bulk sync
-            if (order.order_number) {
-                dateStats[dateKey].orderNumbers.push(order.order_number)
-            }
+            const seller = row.seller || 'Unknown';
+            dateStats[dateKey].statsBySeller[seller] = {
+                profit: parseFloat(row.profit) || 0,
+                missing: parseInt(row.missing) || 0,
+                revenue: parseFloat(row.revenue) || 0,
+                cost: parseFloat(row.cost) || 0,
+                count: parseInt(row.order_count) || 0
+            };
 
-            const seller = order.seller_account || 'Unknown'
-            if (!dateStats[dateKey].statsBySeller[seller]) {
-                dateStats[dateKey].statsBySeller[seller] = { profit: 0, missing: 0, revenue: 0, cost: 0 }
-            }
-
-            const orderProfit = order.estimated_profit || 0
-            const orderRevenue = order.total_revenue || 0
-            const orderCost = order.total_purchase_cost || 0
-            const hasDarazFees = order.daraz_fees !== null && order.daraz_fees !== undefined;
-            const hasValidPurchaseCost = order.total_purchase_cost !== null && order.total_purchase_cost > 0;
-
-            // Determine if this order should be considered synced for stats purposes
-            // An order is synced when both purchase cost is valid AND daraz fees are available
-            const isSyncedForStats = hasValidPurchaseCost && hasDarazFees;
-            const isMissing = !hasValidPurchaseCost; // If cost is missing, mark as missing
-
-            dateStats[dateKey].totalProfit += orderProfit
-            dateStats[dateKey].totalRevenue += orderRevenue
-            dateStats[dateKey].statsBySeller[seller].profit += orderProfit
-            dateStats[dateKey].statsBySeller[seller].revenue += orderRevenue
-            dateStats[dateKey].statsBySeller[seller].cost += orderCost
-            if (isMissing) {
-                dateStats[dateKey].statsBySeller[seller].missing += 1
+            dateStats[dateKey].totalProfit += parseFloat(row.profit) || 0;
+            dateStats[dateKey].totalRevenue += parseFloat(row.revenue) || 0;
+            
+            // Collect all order numbers for this date
+            if (row.order_numbers && Array.isArray(row.order_numbers)) {
+                dateStats[dateKey].orderNumbers = [...dateStats[dateKey].orderNumbers, ...row.order_numbers];
             }
         });
 
@@ -819,3 +754,4 @@ export async function getCompleteDateStats(params: GetOrderReportParams) {
         throw error;
     }
 }
+

@@ -4,9 +4,7 @@
 -- These indexes will help with the inventory_price_reports_view performance
 CREATE INDEX IF NOT EXISTS idx_products_created_at ON products(created_at);
 CREATE INDEX IF NOT EXISTS idx_products_product_name ON products(product_name);
-CREATE INDEX IF NOT EXISTS idx_products_category ON products(category);
-CREATE INDEX IF NOT EXISTS idx_products_supplier_id ON products(supplier_id);
-CREATE INDEX IF NOT EXISTS idx_products_seller_sku ON products(seller_sku);
+CREATE INDEX IF NOT EXISTS idx_products_seller_sku ON products(seller_sku1);
 CREATE INDEX IF NOT EXISTS idx_products_product_type ON products(product_type);
 
 -- If there's an inventory_price_reports_view, let's optimize it
@@ -18,9 +16,7 @@ CREATE OR REPLACE VIEW inventory_price_reports_view AS
 SELECT 
     p.id as product_id,
     p.product_name,
-    p.seller_sku,
-    p.category,
-    p.supplier_id,
+    p.seller_sku1 as seller_sku,
     
     -- Get latest purchase price for this product
     (SELECT pp.unit_price 

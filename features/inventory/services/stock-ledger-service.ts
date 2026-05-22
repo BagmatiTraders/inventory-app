@@ -12,6 +12,7 @@ export interface StockLedgerItem {
     purchase: number
     sales: number
     sales_return: number
+    ecommerce_sales?: number
     total_stock: number
 }
 
@@ -72,6 +73,7 @@ export async function getStockLedger(page = 1, limit = 100, search = ''): Promis
         purchase: Number(item.purchase),
         sales: Number(item.sales),
         sales_return: Number(item.sales_return),
+        ecommerce_sales: Number(item.ecommerce_sales || 0),
         total_stock: Number(item.total_stock)
     }))
 
@@ -116,6 +118,9 @@ export interface StockLedgerDetail {
     marketplace_delivered: number
     marketplace_fail_delivered: number
     store_sales: number
+    website_shipped: number
+    website_delivered: number
+    website_returned_delivered: number
     total_stock: number
 }
 
@@ -150,10 +155,12 @@ export async function getProductStockDetails(productId: string): Promise<StockLe
         darazItems,
         marketplaceItems,
         storeItems,
+        websiteItems,
         // Auto Adjust: Combo Sales where THIS product is a component
         darazComboSales,
         marketplaceComboSales,
-        storeComboSales
+        storeComboSales,
+        websiteComboSales
     ] = await Promise.all([
         // Direct Adjustments
         supabase.from('opening_stocks').select('quantity').eq('product_id', productId),
@@ -171,6 +178,9 @@ export async function getProductStockDetails(productId: string): Promise<StockLe
         supabase.from('store_sales_items')
             .select('qty')
             .eq('product_id', productId),
+        supabase.from('website_order_items')
+            .select('quantity, order:website_orders!inner(order_status)')
+            .eq('product_id', productId),
 
         // Auto Adjust Queries: Find sales of PARENT combos where this product is a child
         parentIds.length > 0 ?
@@ -186,6 +196,11 @@ export async function getProductStockDetails(productId: string): Promise<StockLe
         parentIds.length > 0 ?
             supabase.from('store_sales_items')
                 .select(`qty, product_id`)
+                .in('product_id', parentIds) : Promise.resolve({ data: [] }),
+                
+        parentIds.length > 0 ?
+            supabase.from('website_order_items')
+                .select(`quantity, order:website_orders!inner(order_status), product_id`)
                 .in('product_id', parentIds) : Promise.resolve({ data: [] })
     ])
 
@@ -239,6 +254,20 @@ export async function getProductStockDetails(productId: string): Promise<StockLe
         else if (status === 'delivered') marketplaceDelivered += qty
         else if (['fail delivered', 'delivery failed', 'returned to seller'].includes(status)) marketplaceFailDelivered += qty
     })
+    
+    let websiteShipped = 0
+    let websiteDelivered = 0
+    let websiteReturnedDelivered = 0
+
+    websiteItems.data?.forEach((item: any) => {
+        const qty = item.quantity || 0
+        const sRaw = item.order?.order_status
+        const status = sRaw ? sRaw.toString().trim().toLowerCase() : ''
+
+        if (status === 'delivered') websiteDelivered += qty
+        else if (['returned delivered', 'returned_delivered', 'shipped_back_success', 'customer return delivered', 'customer_return_delivered', 'return delivered', 'returned', 'fail delivered', 'delivery failed'].includes(status)) websiteReturnedDelivered += qty
+        else if (!['cancelled', 'canceled'].includes(status)) websiteShipped += qty
+    })
 
     // 5. Calculate Auto Adjust
     let autoAdjust = 0
@@ -267,6 +296,7 @@ export async function getProductStockDetails(productId: string): Promise<StockLe
     processAutoAdjust(darazComboSales.data || [], 'quantity', true)
     processAutoAdjust(marketplaceComboSales.data || [], 'quantity', true)
     processAutoAdjust(storeComboSales.data || [], 'qty', false)
+    processAutoAdjust(websiteComboSales.data || [], 'quantity', true)
 
     // 6. Calculate Total Stock
     // Rule: Combo/Variation products always show 0
@@ -275,10 +305,11 @@ export async function getProductStockDetails(productId: string): Promise<StockLe
     // Sales Sum (Green items) for formula: Sales
     // Must include Shipped, Delivered, ALL Returning (Transit), AND Returned items (to offset the Return Add-back)
     const totalSalesForFormula = datSum(darazShipped, darazDelivered, darazReturning, darazCustomerReturn, darazReturnedDelivered) +
-        datSum(marketplaceShipped, marketplaceDelivered, marketplaceFailDelivered) + storeSales
+        datSum(marketplaceShipped, marketplaceDelivered, marketplaceFailDelivered) + 
+        datSum(websiteShipped, websiteDelivered, websiteReturnedDelivered) + storeSales
 
     // Sales Return Sum (Red items) for formula: Sales Return
-    const totalReturnsForFormula = datSum(darazReturnedDelivered) + marketplaceFailDelivered
+    const totalReturnsForFormula = datSum(darazReturnedDelivered) + marketplaceFailDelivered + websiteReturnedDelivered
 
     const storeStock = openingStock + manualAdjustment
 
@@ -309,6 +340,9 @@ export async function getProductStockDetails(productId: string): Promise<StockLe
         marketplace_delivered: marketplaceDelivered,
         marketplace_fail_delivered: marketplaceFailDelivered,
         store_sales: storeSales,
+        website_shipped: websiteShipped,
+        website_delivered: websiteDelivered,
+        website_returned_delivered: websiteReturnedDelivered,
         total_stock: totalStock
     }
 }

@@ -34,6 +34,15 @@ const ALL_SALES_MODULES = [
             hasPermission('Marketplace', 'Marketplace Sales'),
     },
     {
+        name: 'Website Sales & Orders',
+        icon: Store, // You can change the icon later
+        href: '/dashboard/sales/website-orders',
+        color: 'bg-indigo-500',
+        label: 'WEBSITE',
+        check: (hasPermission: (m: string, s?: string) => boolean) =>
+            hasPermission('Website', 'Website Orders'),
+    },
+    {
         name: 'Physical Outlets Sales & Orders',
         icon: Store,
         href: '/dashboard/sales/store-sales',

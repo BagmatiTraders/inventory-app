@@ -16,7 +16,7 @@ CREATE INDEX IF NOT EXISTS idx_daraz_order_items_purchase_cost ON daraz_order_it
 
 -- Indexes for inventory_price_reports_view (based on underlying products table)
 CREATE INDEX IF NOT EXISTS idx_products_product_id ON products(id);
-CREATE INDEX IF NOT EXISTS idx_products_sku ON products(seller_sku);
+CREATE INDEX IF NOT EXISTS idx_products_sku ON products(seller_sku1);
 
 -- 2. Create optimized function for calculating order profit
 CREATE OR REPLACE FUNCTION calculate_order_profit(order_id_param UUID)
@@ -163,6 +163,7 @@ SELECT
     o.order_status,
     o.delivered_at,
     o.delivered_by_daraz,
+    COALESCE(o.delivered_by_daraz, o.delivered_at) as delivery_date,
     o.created_at,
     o.daraz_fees,
     

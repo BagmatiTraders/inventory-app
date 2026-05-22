@@ -20,9 +20,8 @@ CREATE INDEX IF NOT EXISTS idx_daraz_orders_created_at_status ON daraz_orders(cr
 CREATE INDEX IF NOT EXISTS idx_daraz_orders_order_date_status ON daraz_orders(order_date, order_status);
 
 -- Indexes for products table to improve inventory view performance
-CREATE INDEX IF NOT EXISTS idx_products_category_supplier ON products(category, supplier_id);
-CREATE INDEX IF NOT EXISTS idx_products_seller_sku_category ON products(seller_sku, category);
-CREATE INDEX IF NOT EXISTS idx_products_product_name_category ON products(product_name, category);
+CREATE INDEX IF NOT EXISTS idx_products_seller_sku_main ON products(seller_sku1);
+CREATE INDEX IF NOT EXISTS idx_products_product_name_main ON products(product_name);
 
 -- Indexes for purchase_products to improve cost lookup performance
 CREATE INDEX IF NOT EXISTS idx_purchase_products_product_id_unit_price ON purchase_products(product_id, unit_price);

@@ -71,6 +71,7 @@ export default function StockLedgerTable({ initialData, initialTotal, initialPag
                                 <th className="px-4 py-3 text-right whitespace-nowrap">Damage Stock</th>
                                 <th className="px-4 py-3 text-right whitespace-nowrap">Purchase</th>
                                 <th className="px-4 py-3 text-right whitespace-nowrap text-green-600 dark:text-green-400">Sales</th>
+                                <th className="px-4 py-3 text-right whitespace-nowrap text-blue-600 dark:text-blue-400">Ecommerce Sales</th>
                                 <th className="px-4 py-3 text-right whitespace-nowrap text-red-600 dark:text-red-400">Sales Return</th>
                                 <th className="px-4 py-3 text-right whitespace-nowrap font-bold text-blue-700 dark:text-blue-300">Total Stock</th>
                             </tr>
@@ -121,6 +122,9 @@ export default function StockLedgerTable({ initialData, initialTotal, initialPag
                                         </td>
                                         <td className="px-4 py-3 text-right font-mono font-bold text-green-600 dark:text-green-400 whitespace-nowrap">
                                             {item.sales}
+                                        </td>
+                                        <td className="px-4 py-3 text-right font-mono font-bold text-blue-600 dark:text-blue-400 whitespace-nowrap">
+                                            {item.ecommerce_sales || 0}
                                         </td>
                                         <td className="px-4 py-3 text-right font-mono font-bold text-red-600 dark:text-red-400 whitespace-nowrap">
                                             {item.sales_return}

@@ -16,14 +16,15 @@ import {
     DialogTitle,
     DialogTrigger,
 } from '@/components/ui-shim'
-import { Search, Eye, AlertTriangle, ClipboardList, LayoutGrid, Calendar, BarChart3 } from 'lucide-react'
+import { Search, Eye, AlertTriangle, ClipboardList, LayoutGrid, Calendar, BarChart3, List } from 'lucide-react'
 import Link from 'next/link'
 import { getProfitTrackerData, getDailyProfitStats, getSellerAccounts, getCompleteDateStats } from '@/features/sales/actions/report-actions'
-import { format } from 'date-fns'
+import { format, startOfWeek, endOfWeek } from 'date-fns'
 import { BulkSyncButton } from './bulk-sync-button'
 import { MobileHeaderAction } from '@/components/MobileHeaderAction'
 import { useQuery, keepPreviousData } from '@tanstack/react-query'
 import { useSearchParams, useRouter, usePathname } from 'next/navigation'
+import { WeeklyBreakdownModal } from './weekly-breakdown-modal'
 
 // Helper component for Limit Selector using props
 function LimitSelector({ currentLimit, onLimitChange }: { currentLimit: number, onLimitChange: (limit: number) => void }) {
@@ -71,9 +72,9 @@ function ProfitTrackerContent({ isEmbedded = false }: { isEmbedded?: boolean }) 
         if (typeof window === 'undefined') return 'All'
         return searchParams.get('sellerAccount') || 'All'
     })
-    const [activeSubTab, setActiveSubTab] = useState<'orders' | 'accounts' | 'daily' | 'monthly'>('orders')
+    const [activeSubTab, setActiveSubTab] = useState<'orders' | 'accounts' | 'daily' | 'weekly' | 'monthly'>('orders')
 
-    const handleSubTabChange = (tab: 'orders' | 'accounts' | 'daily' | 'monthly') => {
+    const handleSubTabChange = (tab: 'orders' | 'accounts' | 'daily' | 'weekly' | 'monthly') => {
         if (tab !== activeSubTab) {
             setSearch('')
             setPage(1)
@@ -81,6 +82,8 @@ function ProfitTrackerContent({ isEmbedded = false }: { isEmbedded?: boolean }) 
         }
     }
     const [selectedBreakdownDate, setSelectedBreakdownDate] = useState<string | null>(null)
+    const [isWeeklyDetailOpen, setIsWeeklyDetailOpen] = useState(false)
+    const [weeklyDetailInterval, setWeeklyDetailInterval] = useState<{ start: Date, end: Date } | null>(null)
     const [availableSellers, setAvailableSellers] = useState<string[]>([])
 
     // Sync only seller accounts on mount
@@ -281,6 +284,60 @@ function ProfitTrackerContent({ isEmbedded = false }: { isEmbedded?: boolean }) 
         return groups
     }, {})
 
+    // Weekly Grouping Logic
+    const weeklyMap: Record<string, { 
+        start: Date, 
+        end: Date, 
+        totalProfit: number, 
+        totalRevenue: number, 
+        totalCost: number,
+        orderCount: number,
+        statsBySeller: Record<string, { profit: number, revenue: number, cost: number, count: number }> 
+    }> = {};
+
+    Object.keys(stats).forEach(date => {
+        const d = new Date(date);
+        const start = startOfWeek(d, { weekStartsOn: 1 }); // Monday
+        const end = endOfWeek(d, { weekStartsOn: 1 }); // Sunday
+        const weekKey = `${format(start, 'yyyy-MM-dd')}_${format(end, 'yyyy-MM-dd')}`;
+
+        const day = stats[date];
+
+        if (!weeklyMap[weekKey]) {
+            weeklyMap[weekKey] = { 
+                start, 
+                end, 
+                totalProfit: 0, 
+                totalRevenue: 0, 
+                totalCost: 0,
+                orderCount: 0,
+                statsBySeller: {} 
+            };
+        }
+
+        weeklyMap[weekKey].totalProfit += (day.totalProfit || 0);
+        weeklyMap[weekKey].totalRevenue += (day.totalRevenue || 0);
+        
+        // Summing cost and order count requires iterating through sellers for the day
+        Object.entries(day.statsBySeller).forEach(([seller, s]: [string, any]) => {
+            if (!weeklyMap[weekKey].statsBySeller[seller]) {
+                weeklyMap[weekKey].statsBySeller[seller] = { profit: 0, revenue: 0, cost: 0, count: 0 };
+            }
+            weeklyMap[weekKey].statsBySeller[seller].profit += (s.profit || 0);
+            weeklyMap[weekKey].statsBySeller[seller].revenue += (s.revenue || 0);
+            weeklyMap[weekKey].statsBySeller[seller].cost += (s.cost || 0);
+            weeklyMap[weekKey].statsBySeller[seller].count += (s.count || 0);
+            
+            weeklyMap[weekKey].totalCost += (s.cost || 0);
+            weeklyMap[weekKey].orderCount += (s.count || 0);
+        });
+    });
+
+    const sortedWeekKeys = Object.keys(weeklyMap).sort((a, b) => b.localeCompare(a));
+
+    // Re-check getCompleteDateStats to see if it provides order count per seller
+    // (I'll check this in the next step, for now I'll continue with the grouping)
+
 
 
     const sortedDateKeys = Object.keys(groupedOrders).sort((a, b) => {
@@ -344,6 +401,17 @@ function ProfitTrackerContent({ isEmbedded = false }: { isEmbedded?: boolean }) 
                                 <Calendar className="h-4 w-4" />
                                 <span className="hidden sm:inline">Daily Details</span>
                                 <span className="sm:hidden">Daily</span>
+                            </button>
+                            <button
+                                onClick={() => handleSubTabChange('weekly')}
+                                className={`flex items-center gap-2 px-3 py-1.5 text-sm font-medium rounded-md transition-all whitespace-nowrap ${activeSubTab === 'weekly'
+                                    ? 'bg-white dark:bg-zinc-900 text-gray-900 dark:text-gray-100 shadow-sm'
+                                    : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+                                    }`}
+                            >
+                                <List className="h-4 w-4" />
+                                <span className="hidden sm:inline">Weekly Details</span>
+                                <span className="sm:hidden">Weekly</span>
                             </button>
                             <button
                                 onClick={() => handleSubTabChange('monthly')}
@@ -803,6 +871,95 @@ function ProfitTrackerContent({ isEmbedded = false }: { isEmbedded?: boolean }) 
                             </Table>
                         </div>
                     </Card>
+                )}
+
+                {activeSubTab === 'weekly' && (
+                    <Card className="overflow-hidden border-none shadow-md bg-white dark:bg-zinc-900 p-6">
+                        <div className="space-y-4">
+                            <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Weekly Profit Summary</h2>
+                            <Table>
+                                <TableHeader className="bg-gray-50 dark:bg-zinc-800">
+                                    <TableRow>
+                                        <TableHead>Week Range</TableHead>
+                                        <TableHead className="text-right">Orders</TableHead>
+                                        <TableHead className="text-right">Revenue</TableHead>
+                                        <TableHead className="text-right">Purchase Cost</TableHead>
+                                        <TableHead className="text-right">Profit</TableHead>
+                                        <TableHead className="text-center">Action</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {sortedWeekKeys.length === 0 ? (
+                                        <TableRow>
+                                            <TableCell colSpan={6} className="h-24 text-center text-gray-500">
+                                                No weekly data available
+                                            </TableCell>
+                                        </TableRow>
+                                    ) : (
+                                        sortedWeekKeys.map(weekKey => {
+                                            const week = weeklyMap[weekKey];
+                                            return (
+                                                <Fragment key={weekKey}>
+                                                    <TableRow className="bg-gray-50 dark:bg-zinc-800/50">
+                                                        <TableCell className="font-bold py-4">
+                                                            <div className="flex flex-col">
+                                                                <span>{format(week.start, 'MMM d')} - {format(week.end, 'MMM d, yyyy')}</span>
+                                                                <span className="text-xs text-gray-500 font-normal">Week {format(week.start, 'w')}</span>
+                                                            </div>
+                                                        </TableCell>
+                                                        <TableCell className="text-right font-medium">{week.orderCount}</TableCell>
+                                                        <TableCell className="text-right font-medium">Rs. {week.totalRevenue.toLocaleString()}</TableCell>
+                                                        <TableCell className="text-right font-medium text-gray-600 dark:text-gray-400">Rs. {week.totalCost.toLocaleString()}</TableCell>
+                                                        <TableCell className={`text-right font-bold ${week.totalProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                                            Rs. {week.totalProfit.toLocaleString()}
+                                                        </TableCell>
+                                                        <TableCell className="text-center">
+                                                            <Button 
+                                                                variant="outline" 
+                                                                size="sm"
+                                                                onClick={() => {
+                                                                    setWeeklyDetailInterval({ start: week.start, end: week.end });
+                                                                    setIsWeeklyDetailOpen(true);
+                                                                }}
+                                                            >
+                                                                View More
+                                                            </Button>
+                                                        </TableCell>
+                                                    </TableRow>
+                                                    {/* Seller Breakdown Sub-rows */}
+                                                    {Object.entries(week.statsBySeller)
+                                                        .sort((a, b) => b[1].profit - a[1].profit)
+                                                        .map(([seller, s]) => (
+                                                            <TableRow key={`${weekKey}-${seller}`} className="border-b border-gray-100 dark:border-zinc-800/50 hover:bg-gray-50/50 dark:hover:bg-zinc-800/30">
+                                                                <TableCell className="pl-8 text-sm text-gray-500">
+                                                                    {seller}
+                                                                </TableCell>
+                                                                <TableCell className="text-right text-sm text-gray-500">{s.count}</TableCell>
+                                                                <TableCell className="text-right text-sm text-gray-500">Rs. {s.revenue.toLocaleString()}</TableCell>
+                                                                <TableCell className="text-right text-sm text-gray-500">Rs. {s.cost.toLocaleString()}</TableCell>
+                                                                <TableCell className={`text-right text-sm font-medium ${s.profit >= 0 ? 'text-green-500/80' : 'text-red-500/80'}`}>
+                                                                    Rs. {s.profit.toLocaleString()}
+                                                                </TableCell>
+                                                                <TableCell />
+                                                            </TableRow>
+                                                        ))}
+                                                </Fragment>
+                                            )
+                                        })
+                                    )}
+                                </TableBody>
+                            </Table>
+                        </div>
+                    </Card>
+                )}
+
+                {isWeeklyDetailOpen && weeklyDetailInterval && (
+                    <WeeklyBreakdownModal
+                        isOpen={isWeeklyDetailOpen}
+                        onClose={() => setIsWeeklyDetailOpen(false)}
+                        startDate={format(weeklyDetailInterval.start, 'yyyy-MM-dd')}
+                        endDate={format(weeklyDetailInterval.end, 'yyyy-MM-dd')}
+                    />
                 )}
 
                 {activeSubTab === 'monthly' && (

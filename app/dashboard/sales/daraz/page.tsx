@@ -45,6 +45,14 @@ const ALL_DARAZ_MODULES = [
         check: (hasPermission: (m: string, s?: string) => boolean) =>
             hasPermission('Daraz', 'Average Sales Price'),
     },
+    {
+        name: 'Daraz Order Report',
+        icon: FileText,
+        href: '/dashboard/sales/daraz/order-report',
+        color: 'bg-indigo-500',
+        check: (hasPermission: (m: string, s?: string) => boolean) =>
+            hasPermission('Daraz', 'Order List'), // Reusing Order List permission for now
+    },
 ]
 
 export default function DarazSalesMenuPage() {

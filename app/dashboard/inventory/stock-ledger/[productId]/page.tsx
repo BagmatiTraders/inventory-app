@@ -82,9 +82,17 @@ export default async function StockLedgerDetailPage({ params }: Props) {
                 <DetailRow label="Store Sales Qty" value={details.store_sales} colorClass="text-green-600 dark:text-green-400" />
 
                 <div className="my-2 border-t dark:border-zinc-800 border-dashed"></div>
+                
+                <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Ecommerce Order (website)</h3>
+                <DetailRow label="Ecommerce Shipped Order Qty" value={details.website_shipped} colorClass="text-green-600 dark:text-green-400" />
+                <DetailRow label="Ecommerce Delivered Order Qty" value={details.website_delivered} colorClass="text-green-600 dark:text-green-400" />
+                <DetailRow label="Ecommerce Returned Delivered Qty" value={details.website_returned_delivered} colorClass="text-red-600 dark:text-red-400" />
+                <DetailRow label="Total Sales By Ecommerce" value={details.website_shipped + details.website_delivered} isBold={true} colorClass="text-blue-600 dark:text-blue-400" />
 
-                <DetailRow label="Returned Delivered Qty" value={details.daraz_returned_delivered} colorClass="text-red-600 dark:text-red-400" />
-                <DetailRow label="Customer Return Qty" value={details.daraz_customer_return} colorClass="text-red-600 dark:text-red-400" /> {/* Listed twice as per prompt implies separate focus, or technically it contributes to both sales and returns logic differently in ledger? In ledger, Customer Return is sales (sold) AND return? No, Customer Return in sales column? Wait. 
+                <div className="my-4 border-t dark:border-zinc-800 border-dashed"></div>
+
+                <DetailRow label="Daraz Returned Delivered Qty" value={details.daraz_returned_delivered} colorClass="text-red-600 dark:text-red-400" />
+                <DetailRow label="Daraz Customer Return Qty" value={details.daraz_customer_return} colorClass="text-red-600 dark:text-red-400" /> {/* Listed twice as per prompt implies separate focus, or technically it contributes to both sales and returns logic differently in ledger? In ledger, Customer Return is sales (sold) AND return? No, Customer Return in sales column? Wait. 
                 In ledger service:
                 Sales Column (Green) includes: Customer Return.
                 Sales Return Column (Red) includes: Customer Return.
