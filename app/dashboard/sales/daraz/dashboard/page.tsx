@@ -8,7 +8,7 @@ import { ArrowLeft, BarChart2, AlertCircle, PieChart, RefreshCw, Download, List,
 import Link from 'next/link'
 import { Card } from '@/components/ui-shim'
 import { useSearchParams } from 'next/navigation'
-import { useDashboard } from '@/app/dashboard/layout'
+import { useDashboard } from '@/app/dashboard/context'
 
 import { OrderStatusSyncTable } from '@/features/sales/components/OrderStatusSyncTable'
 import { OrderSyncPageContent } from '../order-sync/page'

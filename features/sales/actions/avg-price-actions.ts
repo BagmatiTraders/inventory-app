@@ -5,6 +5,7 @@ import { revalidatePath } from 'next/cache'
 import { getGoogleSheetsClient } from '@/lib/google-sheets'
 import axios from 'axios'
 import crypto from 'crypto'
+import { createClient as createJSClient } from '@supabase/supabase-js'
 
 const STORE_NAME_MAP: Record<string, string> = {
     'lamichhaneram100@gmail.com': 'Balaju',
@@ -30,6 +31,7 @@ export interface DarazAvgPriceItem {
     seller_sku2: string | null
     seller_sku3: string | null
     seller_sku4: string | null
+    seller_accounts: string[]
     purchasing_price: number // Priority: Last Price -> Est Price -> Wholesale -> 0
     purchasing_remark: string | null
     commission_percent: number | null // Daraz fee % based on delivered orders
@@ -42,6 +44,9 @@ export interface DarazAvgPriceItem {
     campaign_price_profit: number | null
     updated_at: string | null
     live_prices?: Record<string, LivePriceDetail>
+    website_regular_price?: number | null
+    website_special_price?: number | null
+    mrp_price?: number | null
 }
 
 export async function getDarazAvgPrices() {
@@ -55,6 +60,30 @@ export async function getDarazAvgPrices() {
     if (productsError) {
         console.error('Error fetching products from inventory_price_reports_view:', productsError)
         throw new Error('Failed to fetch product pricing data: ' + productsError.message)
+    }
+
+    // 1a. Fetch MRP prices
+    const { data: mrpPricesData, error: mrpError } = await supabase
+        .from('mrp_prices')
+        .select('inventory_id, product_name, mrp_price')
+        .order('applied_date', { ascending: false })
+        .order('created_at', { ascending: false })
+
+    const mrpMapById = new Map<string, number>()
+    const mrpMapByName = new Map<string, number>()
+
+    if (mrpPricesData && !mrpError) {
+        mrpPricesData.forEach(item => {
+            if (item.inventory_id && !mrpMapById.has(item.inventory_id)) {
+                mrpMapById.set(item.inventory_id, Number(item.mrp_price))
+            }
+            const nameKey = item.product_name?.toLowerCase().trim()
+            if (nameKey && !mrpMapByName.has(nameKey)) {
+                mrpMapByName.set(nameKey, Number(item.mrp_price))
+            }
+        })
+    } else if (mrpError) {
+        console.warn('mrp_prices fetch error:', mrpError.message)
     }
 
     // 1b. Fetch SKUs from products table (since view might not have them)
@@ -237,10 +266,40 @@ export async function getDarazAvgPrices() {
         })
     }
 
+    // 3b. Fetch Website Prices from Ecommerce DB
+    const ecommerceSupabaseUrl = process.env.NEXT_PUBLIC_ECOMMERCE_SUPABASE_URL
+    const ecommerceSupabaseKey = process.env.NEXT_PUBLIC_ECOMMERCE_SUPABASE_ANON_KEY
+    const websitePricesMap = new Map<string, { regular_price: number | null, special_price: number | null }>()
+
+    if (ecommerceSupabaseUrl && ecommerceSupabaseKey) {
+        try {
+            const ecommerceSupabase = createJSClient(ecommerceSupabaseUrl, ecommerceSupabaseKey)
+            const { data: webProducts, error: webErr } = await ecommerceSupabase
+                .from('ecommerce_products')
+                .select('inventory_id, regular_price, special_price')
+            
+            if (!webErr && webProducts) {
+                webProducts.forEach(wp => {
+                    if (wp.inventory_id) {
+                        websitePricesMap.set(wp.inventory_id, {
+                            regular_price: wp.regular_price ? Number(wp.regular_price) : null,
+                            special_price: wp.special_price ? Number(wp.special_price) : null
+                        })
+                    }
+                })
+            } else if (webErr) {
+                console.error('Error fetching from ecommerce_products:', webErr)
+            }
+        } catch (err) {
+            console.error('Exception fetching website prices:', err)
+        }
+    }
+
     // 4. Combine all data
     const result: DarazAvgPriceItem[] = (productsData || []).map((p: any) => {
         const prodSkus = skuMap.get(p.product_id) || {}
         const skus = [prodSkus.seller_sku1, prodSkus.seller_sku2, prodSkus.seller_sku3, prodSkus.seller_sku4].filter(Boolean)
+        const sellerAccounts = [prodSkus.seller_account1, prodSkus.seller_account2, prodSkus.seller_account3, prodSkus.seller_account4].filter(Boolean)
 
         const comboData = calculatedComboPrices[p.product_id]
         const baseData = basePricesMap[p.product_id] || { price: 0, remark: null }
@@ -292,6 +351,12 @@ export async function getDarazAvgPrices() {
             }
         })
 
+        const websitePrices = websitePricesMap.get(p.product_id) || { regular_price: null, special_price: null }
+
+        const mrpPrice = (p.product_id && mrpMapById.has(p.product_id))
+            ? mrpMapById.get(p.product_id)
+            : (p.product_name ? mrpMapByName.get(p.product_name.toLowerCase().trim()) : null)
+
         return {
             product_id: p.product_id,
             product_name: p.product_name,
@@ -301,6 +366,7 @@ export async function getDarazAvgPrices() {
             seller_sku2: prodSkus.seller_sku2 || null,
             seller_sku3: prodSkus.seller_sku3 || null,
             seller_sku4: prodSkus.seller_sku4 || null,
+            seller_accounts: sellerAccounts,
             purchasing_price: purchasingPrice,
             purchasing_remark: purchasingRemark,
             commission_percent: commissionPercent !== null ? commissionPercent * 100 : null, // Convert to percentage 15%
@@ -312,7 +378,10 @@ export async function getDarazAvgPrices() {
             campaign_price: campaignPrice,
             campaign_price_profit: campaignPriceProfit,
             updated_at: editableStats?.updated_at || null,
-            live_prices: productLivePrices
+            live_prices: productLivePrices,
+            website_regular_price: websitePrices.regular_price,
+            website_special_price: websitePrices.special_price,
+            mrp_price: mrpPrice || null
         }
     })
 
@@ -345,6 +414,37 @@ export async function updateDarazAvgPrice(productId: string, data: { market_pric
             .from('daraz_avg_prices')
             .insert([{ product_id: productId, ...data }])
         if (error) throw new Error(error.message)
+    }
+
+    revalidatePath('/dashboard/sales/daraz/average-sales-price')
+    return { success: true }
+}
+
+export async function bulkUpdateDarazAvgPrice(updates: { product_id: string, market_price?: number | null, campaign_price?: number | null }[]) {
+    const supabase = await createClient()
+
+    if (!updates || updates.length === 0) return { success: true }
+
+    const BATCH_SIZE = 50;
+    for (let i = 0; i < updates.length; i += BATCH_SIZE) {
+        const batch = updates.slice(i, i + BATCH_SIZE);
+        await Promise.all(batch.map(async (update) => {
+            const { data: existing } = await supabase
+                .from('daraz_avg_prices')
+                .select('product_id')
+                .eq('product_id', update.product_id)
+                .maybeSingle()
+            
+            const payload: any = {}
+            if (update.market_price !== undefined) payload.market_price = update.market_price
+            if (update.campaign_price !== undefined) payload.campaign_price = update.campaign_price
+
+            if (existing) {
+                await supabase.from('daraz_avg_prices').update(payload).eq('product_id', update.product_id)
+            } else {
+                await supabase.from('daraz_avg_prices').insert([{ product_id: update.product_id, ...payload }])
+            }
+        }));
     }
 
     revalidatePath('/dashboard/sales/daraz/average-sales-price')
@@ -897,5 +997,57 @@ export async function pushStockToDaraz(
     } catch (error: any) {
         console.error('pushStockToDaraz Error:', error)
         return { success: false, message: error.message || 'Unknown error' }
+    }
+}
+
+/**
+ * Update Website prices in bulk by updating the ecommerce_products table in the Ecommerce DB.
+ */
+export async function updateWebsitePricesBulk(updates: { inventory_id: string, regular_price: number, special_price: number }[]) {
+    const ecommerceSupabaseUrl = process.env.NEXT_PUBLIC_ECOMMERCE_SUPABASE_URL
+    const ecommerceServiceRoleKey = process.env.ECOMMERCE_SUPABASE_SERVICE_ROLE_KEY
+
+    if (!ecommerceSupabaseUrl) {
+        return { success: false, message: 'Ecommerce URL not configured.' }
+    }
+    
+    if (!ecommerceServiceRoleKey) {
+        return { success: false, message: 'Missing ECOMMERCE_SUPABASE_SERVICE_ROLE_KEY in .env.local! Cannot bypass RLS to update prices.' }
+    }
+
+    try {
+        const ecommerceSupabase = createJSClient(ecommerceSupabaseUrl, ecommerceServiceRoleKey)
+        
+        let successCount = 0
+        let errorCount = 0
+
+        for (const upd of updates) {
+            // Only update products that already exist with this inventory_id
+            const { error, count } = await ecommerceSupabase
+                .from('ecommerce_products')
+                .update({ 
+                    regular_price: upd.regular_price, 
+                    special_price: upd.special_price 
+                })
+                .eq('inventory_id', upd.inventory_id)
+            
+            if (error) {
+                console.error(`Failed to update website price for inventory_id ${upd.inventory_id}:`, error.message)
+                errorCount++
+            } else {
+                successCount++
+            }
+        }
+
+        revalidatePath('/dashboard/sales/daraz/average-sales-price')
+        
+        if (errorCount > 0) {
+            return { success: true, message: `Updated ${successCount} products. ${errorCount} failed (likely not synced to website yet).` }
+        }
+        return { success: true, message: `Successfully updated ${successCount} products on Website.` }
+
+    } catch (err: any) {
+        console.error('Website Bulk Update Error:', err)
+        return { success: false, message: err.message || 'Unknown error occurred.' }
     }
 }

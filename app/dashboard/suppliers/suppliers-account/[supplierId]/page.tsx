@@ -8,7 +8,7 @@ import { ArrowLeft, Loader2 } from 'lucide-react'
 import { getSupplierStats, getSupplierDetailedTransactions, LedgerDetailType } from '@/features/suppliers/actions/supplier-ledger-actions'
 import { Card } from '@/components/ui-shim'
 
-import { useDashboard } from '@/app/dashboard/layout'
+import { useDashboard } from '@/app/dashboard/context'
 import { useEffect } from 'react'
 
 export default function SupplierDetailLedgerPage({ params }: { params: Promise<{ supplierId: string }> }) {

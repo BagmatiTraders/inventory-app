@@ -5,8 +5,7 @@ import { Card, Button } from '@/components/ui-shim'
 import { Search, ChevronLeft, ChevronRight, Edit2, Check, X, Loader2, RefreshCw, AlertTriangle, ArrowLeft } from 'lucide-react'
 import Image from 'next/image'
 import Link from 'next/link'
-import { getDarazAvgPrices, updateDarazAvgPrice, syncDarazAvgPricesGoogleSheets, pullDarazAvgPricesFromGoogleSheets, syncLiveSellerPrices, pushPriceToDaraz, DarazAvgPriceItem } from '@/features/sales/actions/avg-price-actions'
-
+import { getDarazAvgPrices, updateDarazAvgPrice, bulkUpdateDarazAvgPrice, syncDarazAvgPricesGoogleSheets, pullDarazAvgPricesFromGoogleSheets, syncLiveSellerPrices, pushPriceToDaraz, DarazAvgPriceItem, updateWebsitePricesBulk } from '@/features/sales/actions/avg-price-actions'
 export default function DarazAverageSalesPricePage() {
     const [data, setData] = useState<DarazAvgPriceItem[]>([])
     const [isLoading, setIsLoading] = useState(true)
@@ -16,9 +15,26 @@ export default function DarazAverageSalesPricePage() {
     const [pushingId, setPushingId] = useState<string | null>(null)
     const [isUpdatingStock, setIsUpdatingStock] = useState(false)
     const [showOnlyStockOut, setShowOnlyStockOut] = useState(false)
+    const [filterAccount, setFilterAccount] = useState<string>('')
+    const [livePriceFilter, setLivePriceFilter] = useState<'' | 'daraz' | 'website' | 'mrp'>('')
     const [stockModalProduct, setStockModalProduct] = useState<DarazAvgPriceItem | null>(null)
     const [stockEdits, setStockEdits] = useState<Record<string, number>>({}) // key: store_id:sku
     const [showLivePriceColumns, setShowLivePriceColumns] = useState(true)
+
+    // Bulk Actions
+    const [selectedProductIds, setSelectedProductIds] = useState<Set<string>>(new Set())
+    const [isBulkPushing, setIsBulkPushing] = useState(false)
+    const [bulkPushProgress, setBulkPushProgress] = useState({ current: 0, total: 0 })
+    const [isBulkSaving, setIsBulkSaving] = useState(false)
+    const [applyBulkOnlyIfEmpty, setApplyBulkOnlyIfEmpty] = useState(false)
+    const [applyBulkOnlyIfPurchase, setApplyBulkOnlyIfPurchase] = useState(false)
+    const [applyBulkOnlyIfMrp, setApplyBulkOnlyIfMrp] = useState(false)
+    const [bulkMathAction, setBulkMathAction] = useState<string>('')
+    const [campaignMathAction, setCampaignMathAction] = useState<string>('')
+    const [targetPlatform, setTargetPlatform] = useState<'daraz' | 'website' | 'campaign'>('daraz')
+    const [websiteDiscountType, setWebsiteDiscountType] = useState<'amount' | 'percent' | 'daraz_price' | 'daraz_campaign'>('daraz_price')
+    const [websiteDiscountValue, setWebsiteDiscountValue] = useState<string>('')
+    const [isWebsitePushing, setIsWebsitePushing] = useState(false)
 
     // Drag to scroll
     const scrollContainerRef = useRef<HTMLDivElement>(null)
@@ -48,6 +64,15 @@ export default function DarazAverageSalesPricePage() {
     // Search
     const [search, setSearch] = useState('')
     const [debouncedSearch, setDebouncedSearch] = useState('')
+
+    const hasFilters = search || filterAccount || showOnlyStockOut || livePriceFilter;
+    const clearFilters = () => {
+        setSearch('')
+        setFilterAccount('')
+        setShowOnlyStockOut(false)
+        setLivePriceFilter('')
+        setCurrentPage(1)
+    }
 
     // Regular price profit-percent dropdown (15 / 20 / 25)
     const [regularPct, setRegularPct] = useState<15 | 20 | 25>(15)
@@ -146,26 +171,301 @@ export default function DarazAverageSalesPricePage() {
             setPushingId(null)
         }
     }
+
+
+
+    const toggleSelection = (productId: string) => {
+        setSelectedProductIds(prev => {
+            const next = new Set(prev)
+            if (next.has(productId)) next.delete(productId)
+            else next.add(productId)
+            return next
+        })
+    }
+
+    const handleBulkMath = (type: 'increase' | 'decrease' | 'regular' | 'mrp' | 'lowest_live' | 'live_1' | 'live_2' | 'live_3' | 'live_4' | 'breakeven') => {
+        let amount = 0
+        if (type === 'increase' || type === 'decrease') {
+            const val = prompt(`Enter amount to ${type}:`)
+            if (!val || isNaN(parseFloat(val))) return
+            amount = parseFloat(val)
+        }
+
+        setData(prev => prev.map(item => {
+            if (!selectedProductIds.has(item.product_id)) return item
+
+            if (applyBulkOnlyIfEmpty && item.market_price && item.market_price > 0) {
+                return item // Skip because it is not empty
+            }
+
+            if (applyBulkOnlyIfPurchase && (!item.purchasing_price || item.purchasing_price < 1)) {
+                return item // Skip because it has no valid purchasing price
+            }
+
+            if (applyBulkOnlyIfMrp && (!item.mrp_price || item.mrp_price <= 0)) {
+                return item // Skip because it has no MRP price
+            }
+
+            let newPrice = item.market_price || 0
+            if (type === 'increase') newPrice += amount
+            if (type === 'decrease') newPrice -= amount
+            if (type === 'mrp') {
+                if (item.mrp_price && item.mrp_price > 0) {
+                    newPrice = item.mrp_price
+                }
+            }
+            if (type === 'regular') {
+                const commPct = item.commission_percent !== null ? item.commission_percent : 25
+                const breakeven = item.purchasing_price / (1 - commPct / 100)
+                const rawReg = breakeven * (1 + regularPct / 100)
+                newPrice = Math.ceil(rawReg / 5) * 5
+            }
+            if (type === 'breakeven') {
+                const commPct = item.commission_percent !== null ? item.commission_percent : 25
+                const breakeven = item.purchasing_price / (1 - commPct / 100)
+                newPrice = Math.round(breakeven / 5) * 5
+            }
+            if (type === 'lowest_live') {
+                let lowest = Infinity
+                Object.values(item.live_prices || {}).forEach(lp => {
+                    const price = lp.special_price || lp.price
+                    if (price > 0 && price < lowest) lowest = price
+                })
+                if (lowest !== Infinity) newPrice = lowest
+            }
+            if (type === 'live_1' && item.seller_sku1 && item.live_prices?.[item.seller_sku1]) {
+                newPrice = item.live_prices[item.seller_sku1].special_price || item.live_prices[item.seller_sku1].price
+            }
+            if (type === 'live_2' && item.seller_sku2 && item.live_prices?.[item.seller_sku2]) {
+                newPrice = item.live_prices[item.seller_sku2].special_price || item.live_prices[item.seller_sku2].price
+            }
+            if (type === 'live_3' && item.seller_sku3 && item.live_prices?.[item.seller_sku3]) {
+                newPrice = item.live_prices[item.seller_sku3].special_price || item.live_prices[item.seller_sku3].price
+            }
+            if (type === 'live_4' && item.seller_sku4 && item.live_prices?.[item.seller_sku4]) {
+                newPrice = item.live_prices[item.seller_sku4].special_price || item.live_prices[item.seller_sku4].price
+            }
+
+            return { ...item, market_price: newPrice }
+        }))
+    }
+
+    const handleBulkSave = async () => {
+        if (!confirm(`Save Daraz Price changes for ${selectedProductIds.size} products?`)) return
+        setIsBulkSaving(true)
+        try {
+            const updates = data.filter(d => selectedProductIds.has(d.product_id)).map(d => ({
+                product_id: d.product_id,
+                market_price: d.market_price
+            }))
+            const res = await bulkUpdateDarazAvgPrice(updates)
+            if (res.success) {
+                alert('✓ Bulk update successful!')
+                loadData()
+            }
+        } catch (err: any) {
+            alert(`Bulk save error: ${err.message}`)
+        } finally {
+            setIsBulkSaving(false)
+        }
+    }
+
+    const handleCampaignBulkMath = (type: 'discount_pct' | 'discount_amt' | 'breakeven_pct' | 'breakeven_amt' | 'regular') => {
+        let amount = 0
+        if (type !== 'regular') {
+            const val = prompt(`Enter value for ${type.replace('_', ' ')}:`)
+            if (!val || isNaN(parseFloat(val))) return
+            amount = parseFloat(val)
+        }
+
+        setData(prev => prev.map(item => {
+            if (!selectedProductIds.has(item.product_id)) return item
+
+            if (applyBulkOnlyIfEmpty && item.campaign_price && item.campaign_price > 0) {
+                return item // Skip because campaign price is not empty
+            }
+
+            if (applyBulkOnlyIfPurchase && (!item.purchasing_price || item.purchasing_price < 1)) {
+                return item // Skip because it has no valid purchasing price
+            }
+
+            let newCampaignPrice = item.campaign_price || 0
+            
+            if (type === 'regular') {
+                newCampaignPrice = item.regular_sales_price || 0
+            } else if (type === 'discount_pct') {
+                const darazPrice = item.market_price || 0
+                newCampaignPrice = Math.round(darazPrice - (darazPrice * (amount / 100)))
+            } else if (type === 'discount_amt') {
+                const darazPrice = item.market_price || 0
+                newCampaignPrice = Math.round(darazPrice - amount)
+            } else if (type === 'breakeven_pct' || type === 'breakeven_amt') {
+                const commPct = item.commission_percent !== null ? item.commission_percent : 25
+                const breakeven = item.purchasing_price / (1 - commPct / 100)
+                if (type === 'breakeven_pct') {
+                    newCampaignPrice = Math.round(breakeven + (breakeven * (amount / 100)))
+                } else {
+                    newCampaignPrice = Math.round(breakeven + amount)
+                }
+            }
+
+            return { ...item, campaign_price: newCampaignPrice }
+        }))
+    }
+
+    const handleCampaignBulkSave = async () => {
+        if (!confirm(`Save Campaign Price changes for ${selectedProductIds.size} products?`)) return
+        setIsBulkSaving(true)
+        try {
+            const updates = data.filter(d => selectedProductIds.has(d.product_id)).map(d => ({
+                product_id: d.product_id,
+                campaign_price: d.campaign_price
+            }))
+            const res = await bulkUpdateDarazAvgPrice(updates)
+            if (res.success) {
+                alert('✓ Campaign prices saved successfully!')
+                loadData()
+            }
+        } catch (err: any) {
+            alert(`Campaign save error: ${err.message}`)
+        } finally {
+            setIsBulkSaving(false)
+        }
+    }
+
+    const handleBulkPush = async () => {
+        const selected = data.filter(d => selectedProductIds.has(d.product_id) && (d.market_price ?? 0) > 0)
+        if (selected.length === 0) {
+            alert('No valid items selected (make sure Daraz Price is set).')
+            return
+        }
+        if (!confirm(`Push Daraz Prices for ${selected.length} products sequentially?\nThis may take a few minutes.`)) return
+        
+        setIsBulkPushing(true)
+        setBulkPushProgress({ current: 0, total: selected.length })
+        
+        let successCount = 0
+        let failedProducts: string[] = []
+        
+        for (let i = 0; i < selected.length; i++) {
+            setBulkPushProgress({ current: i + 1, total: selected.length })
+            try {
+                const res = await pushPriceToDaraz(selected[i].product_id)
+                if (res.success) {
+                    successCount++
+                } else {
+                    failedProducts.push(`${selected[i].product_name} (${res.message || 'Unknown error'})`)
+                }
+            } catch (err: any) {
+                failedProducts.push(`${selected[i].product_name} (${err.message})`)
+            }
+        }
+        
+        setIsBulkPushing(false)
+        let alertMsg = `Bulk push completed!\nSuccessful: ${successCount}\nFailed: ${failedProducts.length}`
+        if (failedProducts.length > 0) {
+            alertMsg += `\n\nFailed Products:\n- ${failedProducts.join('\n- ')}`
+        }
+        alert(alertMsg)
+    }
+
+    const handleWebsiteBulkPush = async () => {
+        const selected = data.filter(d => selectedProductIds.has(d.product_id))
+        if (selected.length === 0) return
+        
+        let val = parseFloat(websiteDiscountValue)
+        if ((websiteDiscountType === 'amount' || websiteDiscountType === 'percent') && (isNaN(val) || websiteDiscountValue.trim() === '')) {
+            alert('Please enter a valid discount value.')
+            return
+        }
+
+        if (!confirm(`Calculate and push Website Prices for ${selected.length} products?\nRounding to nearest Rs. 5 will be applied.`)) return
+
+        setIsWebsitePushing(true)
+        try {
+            const updates = selected.map(item => {
+                let activeDarazPrice = 0
+                
+                if (websiteDiscountType === 'daraz_campaign') {
+                    // Use campaign price
+                    activeDarazPrice = item.campaign_price || 0
+                } else {
+                    // Determine active daraz price
+                    activeDarazPrice = item.market_price || 0
+                    if (activeDarazPrice === 0) {
+                        // Fallback to lowest live price
+                        let lowest = Infinity
+                        Object.values(item.live_prices || {}).forEach(lp => {
+                            const price = lp.special_price || lp.price
+                            if (price > 0 && price < lowest) lowest = price
+                        })
+                        if (lowest !== Infinity) activeDarazPrice = lowest
+                    }
+                }
+
+                if (activeDarazPrice === 0) {
+                    // If no Daraz price, fallback to regular_sales_price
+                    activeDarazPrice = item.regular_sales_price
+                }
+
+                let newSpecialPrice = activeDarazPrice
+                if (websiteDiscountType === 'amount') {
+                    newSpecialPrice = activeDarazPrice - val
+                } else if (websiteDiscountType === 'percent') {
+                    newSpecialPrice = activeDarazPrice - (activeDarazPrice * (val / 100))
+                }
+
+                if (newSpecialPrice < 0) newSpecialPrice = 0
+
+                // Rounding to nearest 5 ONLY for percentage discount
+                if (websiteDiscountType === 'percent') {
+                    newSpecialPrice = Math.round(newSpecialPrice / 5) * 5
+                } else {
+                    newSpecialPrice = Math.round(newSpecialPrice) // Standard integer rounding
+                }
+
+                const finalSpecial = newSpecialPrice < activeDarazPrice ? newSpecialPrice : activeDarazPrice
+                
+                return {
+                    inventory_id: item.product_id,
+                    regular_price: activeDarazPrice,
+                    special_price: finalSpecial
+                }
+            })
+
+            const res = await updateWebsitePricesBulk(updates)
+            if (res.success) {
+                alert(`✓ ${res.message}`)
+                loadData()
+            } else {
+                alert(`✗ Website Push Failed: ${res.message}`)
+            }
+        } catch (err: any) {
+            alert(`Error: ${err.message}`)
+        } finally {
+            setIsWebsitePushing(false)
+        }
+    }
     const openStockModal = (item: DarazAvgPriceItem) => {
         setStockModalProduct(item)
-        setStockEdits({}) 
+        setStockEdits({})
     }
 
     const handleUpdateStock = async (isOutOfStock: boolean) => {
         if (!stockModalProduct) return
-        
+
         const updates: Array<{ sku: string, quantity: number, store_id: string }> = []
-        
+
         Object.keys(stockModalProduct.live_prices || {}).forEach(sku => {
             const lp = stockModalProduct.live_prices?.[sku]
             if (!lp) return
-            
+
             const quantity = isOutOfStock ? 0 : (stockEdits[sku] ?? lp.quantity ?? 0)
             updates.push({ sku, quantity, store_id: lp.store_id || '' })
         })
-        
+
         if (updates.length === 0) return
-        
+
         setIsUpdatingStock(true)
         try {
             const { pushStockToDaraz } = await import('@/features/sales/actions/avg-price-actions')
@@ -231,101 +531,188 @@ export default function DarazAverageSalesPricePage() {
         }
     }
 
+    const allSellerAccounts = Array.from(new Set(data.flatMap(d => d.seller_accounts || []))).filter(Boolean).sort()
+
     const filteredData = data.filter(item => {
         let matches = true;
         if (debouncedSearch) {
             const s = debouncedSearch.toLowerCase()
             matches = (item.product_name?.toLowerCase().includes(s) || item.seller_skus.some(sku => sku?.toLowerCase().includes(s)))
         }
-        
+
+        if (filterAccount && matches) {
+            matches = item.seller_accounts?.includes(filterAccount) || false;
+        }
+
+        if (livePriceFilter === 'daraz' && matches) {
+            matches = Object.keys(item.live_prices || {}).length > 0;
+        } else if (livePriceFilter === 'website' && matches) {
+            matches = (item.website_regular_price != null || item.website_special_price != null);
+        } else if (livePriceFilter === 'mrp' && matches) {
+            matches = (item.mrp_price != null && item.mrp_price > 0);
+        }
+
+        if (targetPlatform === 'daraz' && applyBulkOnlyIfPurchase && matches) {
+            matches = (item.purchasing_price != null && item.purchasing_price >= 1);
+        }
+
+        if (targetPlatform === 'daraz' && applyBulkOnlyIfEmpty && matches) {
+            matches = (!item.market_price || item.market_price === 0);
+        }
+
+        if (targetPlatform === 'daraz' && applyBulkOnlyIfMrp && matches) {
+            matches = (item.mrp_price != null && item.mrp_price > 0);
+        }
+
+        if (targetPlatform === 'campaign' && applyBulkOnlyIfPurchase && matches) {
+            matches = (item.purchasing_price != null && item.purchasing_price >= 1);
+        }
+
+        if (targetPlatform === 'campaign' && applyBulkOnlyIfEmpty && matches) {
+            matches = (!item.campaign_price || item.campaign_price === 0);
+        }
+
         if (showOnlyStockOut && matches) {
             // A product is "Stock Out" if ALL linked SKUs across all stores have 0 quantity
             const totalStock = Object.values(item.live_prices || {}).reduce((sum, lp) => sum + (lp.quantity || 0), 0)
             matches = totalStock === 0
         }
-        
+
         return matches;
     })
 
     const totalPages = Math.ceil(filteredData.length / itemsPerPage)
     const paginatedData = filteredData.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
 
+    const handleBulkSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.checked) {
+            setSelectedProductIds(prev => {
+                const next = new Set(prev)
+                paginatedData.forEach(d => next.add(d.product_id))
+                return next
+            })
+        } else {
+            setSelectedProductIds(prev => {
+                const next = new Set(prev)
+                paginatedData.forEach(d => next.delete(d.product_id))
+                return next
+            })
+        }
+    }
+
     return (
         <div className="flex flex-col h-[calc(100vh-64px)] overflow-hidden bg-gray-50 dark:bg-zinc-900">
             {/* Header */}
-            <div className="bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 px-4 md:px-6 py-4 flex flex-col md:flex-row md:items-center justify-between gap-4 sticky top-0 z-20 shadow-sm">
+            <div className="bg-white dark:bg-zinc-900 px-[24px] py-[18px] flex flex-col gap-4 z-20 shadow-sm">
                 <div>
-                    <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                    <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
                         <Link href="/dashboard/sales/daraz" className="p-1 hover:bg-gray-100 rounded md:hidden">
                             <ArrowLeft size={20} />
                         </Link>
                         Average Sales Price
                     </h1>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">Calculate Breakeven and sync with Google Sheets ({data.length} items)</p>
                 </div>
 
-                <div className="flex items-center gap-3">
-                    <div className="relative w-full md:w-64 flex-1">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <div className="flex items-center gap-[12px] w-full overflow-x-auto hide-scrollbar">
+                    <select
+                        className="h-[42px] w-[180px] flex-none rounded-[12px] border border-[#E5E7EB] bg-white text-[13px] px-[16px] font-semibold text-gray-700 outline-none focus:border-[#4F46E5] focus:ring-4 focus:ring-[#4F46E5]/[0.08] cursor-pointer"
+                        value={filterAccount}
+                        onChange={e => { setFilterAccount(e.target.value); setCurrentPage(1); }}
+                    >
+                        <option value="">All Seller Accounts</option>
+                        {allSellerAccounts.map(acc => (
+                            <option key={acc} value={acc}>{acc}</option>
+                        ))}
+                    </select>
+
+                    <div className="relative flex-1 min-w-[260px]">
+                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-[18px] w-[18px] text-gray-400" />
                         <input
                             type="text"
                             placeholder="Search by Product or SKU..."
-                            className="w-full pl-9 pr-4 py-2 text-sm border dark:border-zinc-700 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-zinc-800 dark:text-gray-100"
+                            style={{ fontFamily: 'Inter, sans-serif' }}
+                            className="w-full h-[42px] pl-[44px] pr-[36px] text-[13px] rounded-[12px] border border-[#E5E7EB] bg-[#F9FAFB] focus:bg-white focus:outline-none focus:border-[#4F46E5] focus:ring-[4px] focus:ring-[#4F46E5]/[0.08] transition-all"
                             value={search}
                             onChange={(e) => { setSearch(e.target.value); setCurrentPage(1); }}
                         />
+                        {hasFilters && (
+                            <button
+                                onClick={clearFilters}
+                                className="absolute right-3 top-1/2 -translate-y-1/2 p-1 hover:bg-gray-200 rounded-full text-gray-400 hover:text-gray-600 transition-colors"
+                                title="Clear all filters"
+                            >
+                                <X size={14} />
+                            </button>
+                        )}
                     </div>
+
+                    <select
+                        value={livePriceFilter}
+                        onChange={(e) => { 
+                            const val = e.target.value as '' | 'daraz' | 'website' | 'mrp';
+                            setLivePriceFilter(val); 
+                            setCurrentPage(1); 
+                            if (val === 'daraz') setTargetPlatform('daraz');
+                            if (val === 'website') setTargetPlatform('website');
+                        }}
+                        className={`h-[42px] min-w-[160px] px-[12px] rounded-[12px] transition-all border text-[13px] font-semibold outline-none focus:ring-4 focus:ring-indigo-500/10 cursor-pointer ${livePriceFilter !== '' ? 'bg-[#F3F4F6] text-[#111827] border-[#D1D5DB]' : 'bg-white text-gray-700 border-[#E5E7EB] hover:bg-gray-50'}`}
+                    >
+                        <option value="">Show All Prices</option>
+                        <option value="daraz">Live on Daraz</option>
+                        <option value="website">Live on Website</option>
+                        <option value="mrp">Show Mrp Price</option>
+                    </select>
+
+                    <button
+                        onClick={() => setShowOnlyStockOut(!showOnlyStockOut)}
+                        className={`h-[42px] min-w-[120px] px-[16px] rounded-[12px] flex flex-row items-center justify-center gap-[8px] transition-all border text-[13px] font-semibold ${showOnlyStockOut ? 'bg-[#F3F4F6] text-[#111827] border-[#D1D5DB]' : 'bg-white text-gray-700 border-[#E5E7EB] hover:bg-gray-50'}`}
+                        title={showOnlyStockOut ? "Show All Products" : "Show Only Out of Stock"}
+                    >
+                        <AlertTriangle size={16} className={showOnlyStockOut ? "animate-pulse text-amber-500" : "text-gray-400"} />
+                        <span className="hidden md:inline whitespace-nowrap">Filter Stock Out</span>
+                    </button>
 
                     <a
                         href="https://docs.google.com/spreadsheets/d/1ztKJH0rrE1Od2lXJA2f8AoQ_FQ3fmnpqQietx2ZulZE/edit"
                         target="_blank"
                         rel="noreferrer"
-                        className="hidden md:flex items-center gap-2 px-3 py-2 text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg hover:bg-green-100 transition-colors"
+                        className="flex flex-row items-center justify-center gap-[8px] h-[42px] min-w-[120px] px-[16px] bg-white text-[13px] font-semibold text-gray-700 border border-[#E5E7EB] rounded-[12px] hover:bg-gray-50 transition-colors whitespace-nowrap"
                     >
                         View Sheet
                     </a>
 
-                    <Button
+                    <button
                         onClick={handlePull}
                         disabled={isPulling}
-                        className="hidden md:flex items-center gap-2 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 h-9 px-3 text-xs border border-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 dark:border-zinc-700 dark:text-gray-300"
+                        className="flex flex-row items-center justify-center gap-[8px] h-[42px] min-w-[120px] px-[16px] bg-white hover:bg-gray-50 text-[13px] font-semibold text-gray-700 border border-[#E5E7EB] rounded-[12px] transition-colors whitespace-nowrap"
                     >
-                        {isPulling ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+                        {isPulling ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} className="text-gray-400" />}
                         Sync by Sheet
-                    </Button>
+                    </button>
 
-                    <Button
-                        onClick={handleSyncLive}
-                        disabled={isSyncingLive}
-                        className="hidden md:flex items-center gap-2 bg-purple-50 hover:bg-purple-100 text-purple-700 h-9 px-3 text-xs border border-purple-200 transition-colors dark:bg-purple-900/20 dark:hover:bg-purple-900/40 dark:text-purple-300 dark:border-purple-800"
-                    >
-                        {isSyncingLive ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
-                        Sync Live Prices
-                    </Button>
-
-                    <Button
+                    <button
                         onClick={handleSync}
                         disabled={isSyncing}
-                        className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white h-9 px-3 text-xs whitespace-nowrap"
+                        className="flex flex-row items-center justify-center gap-[8px] h-[42px] min-w-[120px] px-[16px] bg-white hover:bg-gray-50 text-[13px] font-semibold text-gray-700 border border-[#E5E7EB] rounded-[12px] transition-colors whitespace-nowrap"
                     >
-                        {isSyncing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
-                        <span>Sync with Sheets</span>
-                    </Button>
+                        {isSyncing ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} className="text-gray-400" />}
+                        Sync with Sheets
+                    </button>
 
-                    <Button
-                        onClick={() => setShowOnlyStockOut(!showOnlyStockOut)}
-                        className={`flex items-center gap-2 h-9 px-3 text-xs transition-all ${showOnlyStockOut ? 'bg-red-600 text-white hover:bg-red-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-zinc-800 dark:text-gray-300'}`}
-                        title={showOnlyStockOut ? "Show All Products" : "Show Only Out of Stock"}
+                    <button
+                        onClick={handleSyncLive}
+                        disabled={isSyncingLive}
+                        className="flex flex-row items-center justify-center gap-[8px] h-[42px] min-w-[160px] px-[16px] bg-[#4F46E5] hover:bg-[#4338ca] text-[13px] font-semibold text-white rounded-[12px] transition-colors border-none whitespace-nowrap"
                     >
-                        <AlertTriangle size={14} className={showOnlyStockOut ? "animate-pulse" : ""} />
-                        <span className="hidden md:inline">{showOnlyStockOut ? "Showing Out of Stock" : "Filter Stock Out"}</span>
-                    </Button>
+                        {isSyncingLive ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
+                        Sync Live Prices
+                    </button>
                 </div>
             </div>
 
             {/* Content */}
-            <div className="flex-1 px-4 md:px-6 py-4 pb-0 flex flex-col overflow-hidden">
-                <Card className="flex-1 border-none shadow-md overflow-hidden bg-white dark:bg-zinc-900 flex flex-col">
+            <div className="flex-1 px-4 md:px-6 py-4 pb-0 flex flex-col overflow-hidden bg-gray-50 dark:bg-zinc-900">
+                <div className="flex-1 overflow-hidden bg-white dark:bg-zinc-900 rounded-[20px] border border-[#EEF2F7] dark:border-zinc-800 flex flex-col">
                     <div
                         ref={scrollContainerRef}
                         className={`flex-1 overflow-auto relative z-0 ${isDragging ? 'cursor-grabbing select-none' : 'cursor-grab'}`}
@@ -335,19 +722,24 @@ export default function DarazAverageSalesPricePage() {
                         onMouseMove={onDrag}
                     >
                         <table className="w-full text-sm min-w-[1200px] border-collapse relative">
-                            <thead className="text-xs uppercase tracking-wider text-gray-500">
-                                <tr className="border-b dark:border-zinc-800">
-                                    <th className="w-12 text-center p-3 font-medium align-middle sticky left-0 top-0 z-40 bg-gray-50 dark:bg-zinc-800 shadow-[1px_1px_0_0_#e5e7eb] dark:shadow-[1px_1px_0_0_#27272a]">S.N</th>
-                                    <th className="w-16 text-center p-3 font-medium align-middle sticky left-[48px] top-0 z-40 bg-gray-50 dark:bg-zinc-800 shadow-[1px_1px_0_0_#e5e7eb] dark:shadow-[1px_1px_0_0_#27272a]">Img</th>
-                                    <th className="w-64 p-3 text-left font-medium align-middle sticky left-[112px] top-0 z-40 bg-gray-50 dark:bg-zinc-800 shadow-[1px_1px_0_0_#e5e7eb] dark:shadow-[1px_1px_0_0_#27272a]">Product</th>
-                                    <th className="w-48 p-3 text-left font-medium align-middle sticky top-0 z-30 bg-gray-50 dark:bg-zinc-800 shadow-[0_1px_0_0_#e5e7eb] dark:shadow-[0_1px_0_0_#27272a]">SKUs</th>
-                                    <th className="text-right p-3 text-left font-medium align-middle sticky top-0 z-30 bg-gray-50 dark:bg-zinc-800 shadow-[0_1px_0_0_#e5e7eb] dark:shadow-[0_1px_0_0_#27272a]">Purchasing</th>
-                                    <th className="text-right p-3 text-left font-medium align-middle sticky top-0 z-30 bg-gray-50 dark:bg-zinc-800 shadow-[0_1px_0_0_#e5e7eb] dark:shadow-[0_1px_0_0_#27272a]">Commission</th>
-                                    <th className="text-right text-orange-600 p-3 text-left font-medium align-middle sticky top-0 z-30 bg-gray-50 dark:bg-zinc-800 shadow-[0_1px_0_0_#e5e7eb] dark:shadow-[0_1px_0_0_#27272a]">Breakeven</th>
+                            <thead className="uppercase text-[#6B7280] bg-[#F8FAFC] dark:bg-zinc-800 dark:text-gray-400">
+                                <tr style={{ height: '52px', fontSize: '12px', fontWeight: 700, letterSpacing: '0.4px' }}>
+                                    <th className="w-16 text-center p-3 align-middle sticky left-0 top-0 z-40 bg-[#F8FAFC] dark:bg-zinc-800 shadow-[1px_1px_0_0_#e5e7eb] dark:shadow-[1px_1px_0_0_#27272a]">
+                                        <div className="flex items-center justify-center gap-2">
+                                            <input type="checkbox" className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600 cursor-pointer" onChange={handleBulkSelectAll} checked={paginatedData.length > 0 && paginatedData.every(d => selectedProductIds.has(d.product_id))} />
+                                            <span>S.N</span>
+                                        </div>
+                                    </th>
+                                    <th className="w-16 text-center p-3 align-middle sticky left-[64px] top-0 z-40 bg-[#F8FAFC] dark:bg-zinc-800 shadow-[1px_1px_0_0_#e5e7eb] dark:shadow-[1px_1px_0_0_#27272a]">Img</th>
+                                    <th className="w-64 p-3 text-left align-middle sticky left-[128px] top-0 z-40 bg-[#F8FAFC] dark:bg-zinc-800 shadow-[1px_1px_0_0_#e5e7eb] dark:shadow-[1px_1px_0_0_#27272a]">Product</th>
+                                    <th className="w-48 p-3 text-left align-middle sticky top-0 z-30 bg-[#F8FAFC] dark:bg-zinc-800 shadow-[0_1px_0_0_#e5e7eb] dark:shadow-[0_1px_0_0_#27272a]">SKUs</th>
+                                    <th className="text-right p-3 text-left align-middle sticky top-0 z-30 bg-[#F8FAFC] dark:bg-zinc-800 shadow-[0_1px_0_0_#e5e7eb] dark:shadow-[0_1px_0_0_#27272a]">Purchasing</th>
+                                    <th className="text-right p-3 text-left align-middle sticky top-0 z-30 bg-[#F8FAFC] dark:bg-zinc-800 shadow-[0_1px_0_0_#e5e7eb] dark:shadow-[0_1px_0_0_#27272a]">Commission</th>
+                                    <th className="text-right text-orange-600 p-3 text-left align-middle sticky top-0 z-30 bg-[#F8FAFC] dark:bg-zinc-800 shadow-[0_1px_0_0_#e5e7eb] dark:shadow-[0_1px_0_0_#27272a]">Breakeven</th>
 
                                     {/* Toggle Live Prices Button */}
-                                    <th className="p-3 bg-gray-50 dark:bg-zinc-800 sticky top-0 z-30 align-middle w-10">
-                                        <button 
+                                    <th className="p-3 bg-[#F8FAFC] dark:bg-zinc-800 sticky top-0 z-30 align-middle w-10 shadow-[0_1px_0_0_#e5e7eb] dark:shadow-[0_1px_0_0_#27272a]">
+                                        <button
                                             onClick={() => setShowLivePriceColumns(!showLivePriceColumns)}
                                             className={`p-1.5 rounded-full transition-all ${showLivePriceColumns ? 'bg-purple-100 text-purple-600' : 'bg-gray-100 text-gray-400'}`}
                                             title={showLivePriceColumns ? "Hide Store Prices" : "Show Store Prices"}
@@ -358,12 +750,12 @@ export default function DarazAverageSalesPricePage() {
 
                                     {/* 4 Fixed Live Price Columns */}
                                     {showLivePriceColumns && [1, 2, 3, 4].map(idx => (
-                                        <th key={idx} className="text-right text-purple-600 whitespace-nowrap min-w-[120px] border-l border-gray-200 dark:border-gray-700 bg-purple-50/50 dark:bg-purple-900/20 p-3 font-medium align-middle sticky top-0 z-30 bg-gray-50 dark:bg-zinc-800 shadow-sm border-b dark:border-zinc-800">
+                                        <th key={idx} className="text-right text-purple-600 whitespace-nowrap min-w-[120px] border-l border-gray-200 dark:border-gray-700 bg-purple-50 dark:bg-purple-950 p-3 align-middle sticky top-0 z-30 shadow-[0_1px_0_0_#e5e7eb] dark:shadow-[0_1px_0_0_#27272a]">
                                             Live Price {idx}
                                         </th>
                                     ))}
 
-                                    <th className="text-right text-blue-600 min-w-[140px] p-3 text-left font-medium align-middle sticky top-0 z-30 bg-gray-50 dark:bg-zinc-800 shadow-[0_1px_0_0_#e5e7eb] dark:shadow-[0_1px_0_0_#27272a]">
+                                    <th className="text-right text-blue-600 min-w-[140px] p-3 text-left align-middle sticky top-0 z-30 bg-[#F8FAFC] dark:bg-zinc-800 shadow-[0_1px_0_0_#e5e7eb] dark:shadow-[0_1px_0_0_#27272a]">
                                         <div className="flex items-center justify-end gap-1">
                                             <span>Regular</span>
                                             <select
@@ -378,9 +770,10 @@ export default function DarazAverageSalesPricePage() {
                                             </select>
                                         </div>
                                     </th>
-                                    <th className="text-right w-32 border-l border-gray-200 dark:border-gray-700 p-3 text-left font-medium align-middle sticky top-0 z-30 bg-gray-50 dark:bg-zinc-800 shadow-[0_1px_0_0_#e5e7eb] dark:shadow-[0_1px_0_0_#27272a]">Daraz Price</th>
-                                    <th className="text-right w-32 p-3 text-left font-medium align-middle sticky top-0 z-30 bg-gray-50 dark:bg-zinc-800 shadow-[0_1px_0_0_#e5e7eb] dark:shadow-[0_1px_0_0_#27272a]">Campaign</th>
-                                    <th className="text-center w-24 p-3 text-left font-medium align-middle sticky top-0 z-30 bg-gray-50 dark:bg-zinc-800 shadow-[0_1px_0_0_#e5e7eb] dark:shadow-[0_1px_0_0_#27272a]">Actions</th>
+                                    <th className="text-right w-32 border-l border-gray-200 dark:border-gray-700 p-3 text-left align-middle sticky top-0 z-30 bg-[#F8FAFC] dark:bg-zinc-800 shadow-[0_1px_0_0_#e5e7eb] dark:shadow-[0_1px_0_0_#27272a]">Website Price</th>
+                                    <th className="text-right w-32 border-l border-gray-200 dark:border-gray-700 p-3 text-left align-middle sticky top-0 z-30 bg-[#F8FAFC] dark:bg-zinc-800 shadow-[0_1px_0_0_#e5e7eb] dark:shadow-[0_1px_0_0_#27272a]">Daraz Price</th>
+                                    <th className="text-right w-32 p-3 text-left align-middle sticky top-0 z-30 bg-[#F8FAFC] dark:bg-zinc-800 shadow-[0_1px_0_0_#e5e7eb] dark:shadow-[0_1px_0_0_#27272a]">Campaign</th>
+                                    <th className="text-center w-24 p-3 text-left align-middle sticky top-0 z-30 bg-[#F8FAFC] dark:bg-zinc-800 shadow-[0_1px_0_0_#e5e7eb] dark:shadow-[0_1px_0_0_#27272a]">Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -416,8 +809,13 @@ export default function DarazAverageSalesPricePage() {
 
                                         return (
                                             <tr key={item.product_id} className={`transition-colors group ${isHighlight ? 'bg-red-50 hover:bg-red-100 dark:bg-red-950/30 dark:hover:bg-red-900/40 border-l-4 border-l-red-500' : 'hover:bg-gray-50 dark:hover:bg-zinc-800'}`}>
-                                                <td className="text-center text-gray-500 p-4 align-middle sticky left-0 z-20 bg-white dark:bg-zinc-900 border-r dark:border-zinc-800">{((currentPage - 1) * itemsPerPage) + index + 1}</td>
-                                                <td className="text-center p-4 align-middle sticky left-[48px] z-20 bg-white dark:bg-zinc-900 border-r dark:border-zinc-800">
+                                                <td className="text-center text-gray-500 p-4 align-middle sticky left-0 z-20 bg-white dark:bg-zinc-900 border-r dark:border-zinc-800">
+                                                    <div className="flex items-center justify-center gap-2">
+                                                        <input type="checkbox" className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600 cursor-pointer" checked={selectedProductIds.has(item.product_id)} onChange={() => toggleSelection(item.product_id)} />
+                                                        <span>{((currentPage - 1) * itemsPerPage) + index + 1}</span>
+                                                    </div>
+                                                </td>
+                                                <td className="text-center p-4 align-middle sticky left-[64px] z-20 bg-white dark:bg-zinc-900 border-r dark:border-zinc-800">
                                                     <div className="w-10 h-10 relative bg-gray-100 dark:bg-zinc-800 rounded overflow-hidden mx-auto">
                                                         {item.image_url ? (
                                                             <Image src={item.image_url} alt="img" fill className="object-cover" />
@@ -428,12 +826,53 @@ export default function DarazAverageSalesPricePage() {
                                                         )}
                                                     </div>
                                                 </td>
-                                                <td className="p-4 align-middle sticky left-[112px] z-20 bg-white dark:bg-zinc-900 hover:bg-gray-50 dark:hover:bg-zinc-800 border-r dark:border-zinc-800 group-hover:bg-gray-50 dark:group-hover:bg-zinc-800 shadow-[1px_0_0_0_#e5e7eb] dark:shadow-[1px_0_0_0_#27272a]">
+                                                <td className="p-4 align-middle sticky left-[128px] z-20 bg-white dark:bg-zinc-900 hover:bg-gray-50 dark:hover:bg-zinc-800 border-r dark:border-zinc-800 group-hover:bg-gray-50 dark:group-hover:bg-zinc-800 shadow-[1px_0_0_0_#e5e7eb] dark:shadow-[1px_0_0_0_#27272a]">
                                                     {(() => {
                                                         const totalStock = Object.values(item.live_prices || {}).reduce((sum, lp) => sum + (lp.quantity || 0), 0)
                                                         const isOutOfStock = totalStock === 0 && Object.keys(item.live_prices || {}).length > 0;
+                                                        
+                                                        // Calculate MRP Violations
+                                                        const mrpViolations: string[] = [];
+                                                        const mrpVal = item.mrp_price;
+                                                        if (mrpVal != null) {
+                                                            if (item.market_price != null && item.market_price > mrpVal) {
+                                                                mrpViolations.push("Daraz Price");
+                                                            }
+                                                            if (item.campaign_price != null && item.campaign_price > mrpVal) {
+                                                                mrpViolations.push("Campaign Price");
+                                                            }
+                                                            const skus = [item.seller_sku1, item.seller_sku2, item.seller_sku3, item.seller_sku4];
+                                                            skus.forEach((sku, idx) => {
+                                                                if (!sku) return;
+                                                                const liveDet = item.live_prices?.[sku];
+                                                                if (liveDet) {
+                                                                    const sellingPrice = liveDet.special_price || liveDet.price;
+                                                                    if (sellingPrice > mrpVal) {
+                                                                        const storeAlias = { 
+                                                                            'Bagmati Online': 'Bagmati', 
+                                                                            'Ram': 'Balaju', 
+                                                                            'Lamichhane Suppliers': 'Cosmetics', 
+                                                                            'Bagmati Traders': 'BTAS' 
+                                                                        }[liveDet.store_name] || liveDet.store_name;
+                                                                        mrpViolations.push(`Live Price ${idx + 1} (${storeAlias})`);
+                                                                    }
+                                                                }
+                                                            });
+                                                        }
+                                                        const hasMrpViolation = mrpViolations.length > 0;
+                                                        const violationTooltip = hasMrpViolation 
+                                                            ? `Above MRP Price in: ${mrpViolations.join(', ')}`
+                                                            : item.product_name;
+
+                                                        let nameColorClass = 'text-gray-900 dark:text-gray-100';
+                                                        if (hasMrpViolation) {
+                                                            nameColorClass = 'text-red-600 dark:text-red-400 font-bold underline decoration-dotted cursor-help';
+                                                        } else if (isOutOfStock) {
+                                                            nameColorClass = 'text-red-800 dark:text-red-400 font-bold';
+                                                        }
+
                                                         return (
-                                                            <div className={`font-medium truncate w-60 ${isOutOfStock ? 'text-red-800 dark:text-red-400 font-bold' : 'text-gray-900 dark:text-gray-100'}`} title={item.product_name}>
+                                                            <div className={`font-medium truncate w-60 ${nameColorClass}`} title={violationTooltip}>
                                                                 {item.product_name}
                                                                 {isOutOfStock && <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300">OUT</span>}
                                                             </div>
@@ -457,6 +896,11 @@ export default function DarazAverageSalesPricePage() {
                                                         {item.purchasing_remark && (
                                                             <span className="text-[10px] text-amber-600 dark:text-amber-500 italic font-medium">
                                                                 {item.purchasing_remark}
+                                                            </span>
+                                                        )}
+                                                        {item.mrp_price !== undefined && item.mrp_price !== null && (
+                                                            <span className="text-[11px] font-bold text-violet-700 dark:text-violet-400 bg-violet-50 dark:bg-violet-950/40 border border-violet-200 dark:border-violet-800/80 px-1.5 py-0.5 rounded mt-1 inline-block whitespace-nowrap shadow-sm">
+                                                                MRP: Rs. {item.mrp_price.toLocaleString(undefined, { maximumFractionDigits: 2 })}
                                                             </span>
                                                         )}
                                                     </div>
@@ -489,11 +933,15 @@ export default function DarazAverageSalesPricePage() {
                                                     }
                                                     const sellingPrice = liveDetails.special_price || liveDetails.price;
                                                     const regularPrice = liveDetails.special_price ? liveDetails.price : null;
+                                                    const isAboveMrp = item.mrp_price != null && sellingPrice > item.mrp_price;
 
                                                     return (
                                                         <td key={idx} className="text-right border-l border-gray-100 dark:border-zinc-800 align-top pt-3 bg-purple-50/10 dark:bg-purple-900/10 p-4 align-middle">
                                                             <div className="flex flex-col items-end gap-0.5">
-                                                                <span className="font-bold text-purple-900 dark:text-purple-100 whitespace-nowrap">
+                                                                <span 
+                                                                    className={`font-bold whitespace-nowrap ${isAboveMrp ? 'text-red-600 dark:text-red-400 underline decoration-dotted cursor-help' : 'text-purple-900 dark:text-purple-100'}`}
+                                                                    title={isAboveMrp ? `Price is above MRP Price (MRP: Rs. ${item.mrp_price})` : undefined}
+                                                                >
                                                                     Rs. {sellingPrice.toLocaleString()}
                                                                 </span>
                                                                 {regularPrice && (
@@ -532,6 +980,26 @@ export default function DarazAverageSalesPricePage() {
                                                     })()}
                                                 </td>
 
+                                                {/* Website Price */}
+                                                <td className="text-right border-l border-gray-100 dark:border-zinc-800 align-top pt-3 p-4 align-middle bg-[#fdfaf6] dark:bg-amber-950/10">
+                                                    <div className="flex flex-col items-end gap-0.5">
+                                                        {item.website_special_price || item.website_regular_price ? (
+                                                            <>
+                                                                <span className="font-bold text-emerald-700 dark:text-emerald-400">
+                                                                    Rs. {(item.website_special_price || item.website_regular_price)!.toLocaleString()}
+                                                                </span>
+                                                                {item.website_special_price && item.website_regular_price && (
+                                                                    <span className="text-[10px] text-gray-500 line-through font-medium whitespace-nowrap">
+                                                                        Rs. {item.website_regular_price.toLocaleString()}
+                                                                    </span>
+                                                                )}
+                                                            </>
+                                                        ) : (
+                                                            <span className="text-gray-400 italic text-sm">-</span>
+                                                        )}
+                                                    </div>
+                                                </td>
+
                                                 {/* Editable Daraz Price with Profit */}
                                                 <td className="text-right border-l border-gray-100 dark:border-zinc-800 align-top pt-3 p-4 align-middle">
                                                     {editingId === item.product_id ? (
@@ -544,9 +1012,17 @@ export default function DarazAverageSalesPricePage() {
                                                         />
                                                     ) : (
                                                         <div className="flex flex-col items-end gap-0.5">
-                                                            <span className="font-bold text-gray-900 dark:text-gray-100">
-                                                                {item.market_price ? `Rs. ${item.market_price.toLocaleString()}` : '-'}
-                                                            </span>
+                                                            {(() => {
+                                                                const isMarketAboveMrp = item.mrp_price != null && item.market_price != null && item.market_price > item.mrp_price;
+                                                                return (
+                                                                    <span 
+                                                                        className={`font-bold ${isMarketAboveMrp ? 'text-red-600 dark:text-red-400 underline decoration-dotted cursor-help' : 'text-gray-900 dark:text-gray-100'}`}
+                                                                        title={isMarketAboveMrp ? `Price is above MRP Price (MRP: Rs. ${item.mrp_price})` : undefined}
+                                                                    >
+                                                                        {item.market_price ? `Rs. ${item.market_price.toLocaleString()}` : '-'}
+                                                                    </span>
+                                                                );
+                                                            })()}
                                                             {item.market_price_profit !== null && (
                                                                 <span className={`text-[11px] font-semibold tracking-wide ${item.market_price_profit > 0 ? "text-green-600" : "text-red-500"}`}>
                                                                     {item.market_price_profit > 0 ? '+' : ''}Rs. {item.market_price_profit.toLocaleString(undefined, { maximumFractionDigits: 2 })}
@@ -568,9 +1044,17 @@ export default function DarazAverageSalesPricePage() {
                                                         />
                                                     ) : (
                                                         <div className="flex flex-col items-end gap-0.5">
-                                                            <span className="font-bold text-gray-900 dark:text-gray-100">
-                                                                {item.campaign_price ? `Rs. ${item.campaign_price.toLocaleString()}` : '-'}
-                                                            </span>
+                                                            {(() => {
+                                                                const isCampaignAboveMrp = item.mrp_price != null && item.campaign_price != null && item.campaign_price > item.mrp_price;
+                                                                return (
+                                                                    <span 
+                                                                        className={`font-bold ${isCampaignAboveMrp ? 'text-red-600 dark:text-red-400 underline decoration-dotted cursor-help' : 'text-gray-900 dark:text-gray-100'}`}
+                                                                        title={isCampaignAboveMrp ? `Price is above MRP Price (MRP: Rs. ${item.mrp_price})` : undefined}
+                                                                    >
+                                                                        {item.campaign_price ? `Rs. ${item.campaign_price.toLocaleString()}` : '-'}
+                                                                    </span>
+                                                                );
+                                                            })()}
                                                             {item.campaign_price_profit !== null && (
                                                                 <span className={`text-[11px] font-semibold tracking-wide ${item.campaign_price_profit > 0 ? "text-green-600" : "text-red-500"}`}>
                                                                     {item.campaign_price_profit > 0 ? '+' : ''}Rs. {item.campaign_price_profit.toLocaleString(undefined, { maximumFractionDigits: 2 })}
@@ -621,7 +1105,7 @@ export default function DarazAverageSalesPricePage() {
                             </tbody>
                         </table>
                     </div>
-                </Card>
+                </div>
             </div>
 
             {/* Pagination controls */}
@@ -647,6 +1131,237 @@ export default function DarazAverageSalesPricePage() {
                             <ChevronRight size={16} />
                         </Button>
                     </div>
+                </div>
+            )}
+
+            {/* Floating Bulk Action Bar */}
+            {selectedProductIds.size > 0 && (
+                <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-white dark:bg-zinc-900 rounded-2xl shadow-2xl border border-gray-200 dark:border-zinc-800 p-3 flex flex-row items-center gap-4 transition-all animate-in slide-in-from-bottom-10 fade-in duration-300 w-max max-w-[95vw] overflow-x-auto hide-scrollbar">
+                    <div className="flex items-center gap-2 px-3 border-r border-gray-200 dark:border-zinc-800">
+                        <span className="flex items-center justify-center w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300 text-xs font-bold whitespace-nowrap">
+                            {selectedProductIds.size}
+                        </span>
+                        <span className="text-sm font-semibold text-gray-700 dark:text-gray-300 whitespace-nowrap">Selected</span>
+                    </div>
+
+                    <div className="flex items-center gap-3 border-r border-gray-200 dark:border-zinc-800 pr-3 pl-1">
+                        <select
+                            value={targetPlatform}
+                            onChange={(e) => {
+                                const val = e.target.value as 'daraz' | 'website' | 'campaign';
+                                setTargetPlatform(val);
+                                setBulkMathAction('');
+                                setCampaignMathAction('');
+                            }}
+                            className="h-[38px] text-[13px] rounded-xl border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 font-bold outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer text-indigo-700 dark:text-indigo-400 shadow-sm"
+                        >
+                            <option value="daraz">Target: Daraz</option>
+                            <option value="campaign">Target: Campaign</option>
+                            <option value="website">Target: Website</option>
+                        </select>
+                    </div>
+
+                    {targetPlatform === 'daraz' ? (
+                        <>
+                            <div className="flex items-center gap-3 border-r border-gray-200 dark:border-zinc-800 pr-3">
+                                <div className="flex flex-col gap-1 pr-2">
+                                    <label className="flex items-center gap-1.5 text-[11px] font-medium text-gray-600 dark:text-gray-400 cursor-pointer whitespace-nowrap">
+                                        <input 
+                                            type="checkbox" 
+                                            checked={applyBulkOnlyIfEmpty}
+                                            onChange={(e) => setApplyBulkOnlyIfEmpty(e.target.checked)}
+                                            className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-600 w-3.5 h-3.5 cursor-pointer"
+                                        />
+                                        Empty Daraz Price
+                                    </label>
+
+                                    <label className="flex items-center gap-1.5 text-[11px] font-medium text-gray-600 dark:text-gray-400 cursor-pointer whitespace-nowrap">
+                                        <input 
+                                            type="checkbox" 
+                                            checked={applyBulkOnlyIfPurchase}
+                                            onChange={(e) => setApplyBulkOnlyIfPurchase(e.target.checked)}
+                                            className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-600 w-3.5 h-3.5 cursor-pointer"
+                                        />
+                                        Purchase
+                                    </label>
+
+                                    <label className="flex items-center gap-1.5 text-[11px] font-medium text-gray-600 dark:text-gray-400 cursor-pointer whitespace-nowrap">
+                                        <input 
+                                            type="checkbox" 
+                                            checked={applyBulkOnlyIfMrp}
+                                            onChange={(e) => setApplyBulkOnlyIfMrp(e.target.checked)}
+                                            className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-600 w-3.5 h-3.5 cursor-pointer"
+                                        />
+                                        MRP Price
+                                    </label>
+                                </div>
+
+                                <select
+                                    value={bulkMathAction}
+                                    onChange={(e) => {
+                                        const val = e.target.value;
+                                        setBulkMathAction(val);
+                                        if (val) {
+                                            handleBulkMath(val as any);
+                                        }
+                                    }}
+                                    className="h-[38px] text-[13px] rounded-xl border border-gray-200 dark:border-zinc-700 bg-gray-50 dark:bg-zinc-800 px-3 font-medium outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer"
+                                >
+                                    <option value="">Apply Bulk Math...</option>
+                                    <option value="increase">Increase Amount...</option>
+                                    <option value="decrease">Decrease Amount...</option>
+                                    <option value="regular">Set to Regular Price</option>
+                                    <option value="mrp">Set to MRP Price</option>
+                                    <option value="breakeven">Set to Breakeven</option>
+                                    <option value="lowest_live">Set to Lowest Live Price</option>
+                                    <option value="live_1">Set to Live Price 1</option>
+                                    <option value="live_2">Set to Live Price 2</option>
+                                    <option value="live_3">Set to Live Price 3</option>
+                                    <option value="live_4">Set to Live Price 4</option>
+                                </select>
+                            </div>
+
+                            <div className="flex items-center gap-2 pl-2 flex-none">
+                                <button
+                                    onClick={handleBulkSave}
+                                    disabled={isBulkSaving}
+                                    className="flex items-center gap-2 h-[38px] px-4 bg-green-600 hover:bg-green-700 text-white rounded-xl text-[13px] font-semibold transition-colors disabled:opacity-50 whitespace-nowrap"
+                                >
+                                    {isBulkSaving ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
+                                    Save Prices
+                                </button>
+
+                                <button
+                                    onClick={handleBulkPush}
+                                    disabled={isBulkPushing}
+                                    className="flex items-center gap-2 h-[38px] px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-[13px] font-semibold transition-colors disabled:opacity-50 whitespace-nowrap"
+                                >
+                                    {isBulkPushing ? (
+                                        <>
+                                            <Loader2 size={16} className="animate-spin" />
+                                            Pushing {bulkPushProgress.current} / {bulkPushProgress.total}...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <RefreshCw size={16} />
+                                            Push to Daraz
+                                        </>
+                                    )}
+                                </button>
+                            </div>
+                        </>
+                    ) : targetPlatform === 'campaign' ? (
+                        <>
+                            <div className="flex items-center gap-3 border-r border-gray-200 dark:border-zinc-800 pr-3">
+                                <div className="flex flex-col gap-1 pr-2">
+                                    <label className="flex items-center gap-1.5 text-[11px] font-medium text-gray-600 dark:text-gray-400 cursor-pointer whitespace-nowrap">
+                                        <input 
+                                            type="checkbox" 
+                                            checked={applyBulkOnlyIfEmpty}
+                                            onChange={(e) => setApplyBulkOnlyIfEmpty(e.target.checked)}
+                                            className="rounded border-gray-300 text-amber-600 focus:ring-amber-600 w-3.5 h-3.5 cursor-pointer"
+                                        />
+                                        Empty Daraz Price
+                                    </label>
+                                    <label className="flex items-center gap-1.5 text-[11px] font-medium text-gray-600 dark:text-gray-400 cursor-pointer whitespace-nowrap">
+                                        <input 
+                                            type="checkbox" 
+                                            checked={applyBulkOnlyIfPurchase}
+                                            onChange={(e) => setApplyBulkOnlyIfPurchase(e.target.checked)}
+                                            className="rounded border-gray-300 text-amber-600 focus:ring-amber-600 w-3.5 h-3.5 cursor-pointer"
+                                        />
+                                        Purchase
+                                    </label>
+                                </div>
+                                
+                                <select
+                                    value={campaignMathAction}
+                                    onChange={(e) => {
+                                        const val = e.target.value;
+                                        setCampaignMathAction(val);
+                                        if (val) {
+                                            handleCampaignBulkMath(val as any);
+                                        }
+                                    }}
+                                    className="h-[38px] text-[13px] rounded-xl border border-gray-200 dark:border-zinc-700 bg-gray-50 dark:bg-zinc-800 px-3 font-medium outline-none focus:ring-2 focus:ring-amber-500/20 cursor-pointer"
+                                >
+                                    <option value="">Apply Campaign Math...</option>
+                                    <option value="discount_pct">Discount by % from Daraz</option>
+                                    <option value="discount_amt">Discount by Amount from Daraz</option>
+                                    <option value="breakeven_pct">Breakeven + %</option>
+                                    <option value="breakeven_amt">Breakeven + Amount</option>
+                                    <option value="regular">Set to Regular Price</option>
+                                </select>
+                            </div>
+
+                            <div className="flex items-center gap-2 pl-2">
+                                <button
+                                    onClick={handleCampaignBulkSave}
+                                    disabled={isBulkSaving}
+                                    className="flex items-center gap-2 h-[38px] px-4 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-[13px] font-semibold transition-colors disabled:opacity-50 shadow-sm"
+                                >
+                                    {isBulkSaving ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
+                                    Save Price
+                                </button>
+                            </div>
+                        </>
+                    ) : (
+                        <>
+                            <div className="flex items-center gap-3 border-r border-gray-200 dark:border-zinc-800 pr-3">
+                                <select
+                                    value={websiteDiscountType}
+                                    onChange={(e) => setWebsiteDiscountType(e.target.value as any)}
+                                    className="h-[38px] text-[13px] rounded-xl border border-gray-200 dark:border-zinc-700 bg-gray-50 dark:bg-zinc-800 px-3 font-medium outline-none focus:ring-2 focus:ring-teal-500/20 cursor-pointer"
+                                >
+                                    <option value="daraz_price">Set to Daraz Price (No Discount)</option>
+                                    <option value="daraz_campaign">Set to Daraz Campaign</option>
+                                    <option value="amount">Discount by Amount (Rs)</option>
+                                    <option value="percent">Discount by Percentage (%)</option>
+                                </select>
+                                
+                                {(websiteDiscountType === 'amount' || websiteDiscountType === 'percent') && (
+                                    <input
+                                        type="number"
+                                        placeholder={websiteDiscountType === 'amount' ? 'Rs (e.g. 50)' : '% (e.g. 5)'}
+                                        value={websiteDiscountValue}
+                                        onChange={(e) => setWebsiteDiscountValue(e.target.value)}
+                                        className="h-[38px] w-28 text-[13px] rounded-xl border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 font-medium outline-none focus:ring-2 focus:ring-teal-500/20"
+                                    />
+                                )}
+                            </div>
+
+                            <div className="flex items-center gap-2 pl-2">
+                                <button
+                                    onClick={handleWebsiteBulkPush}
+                                    disabled={isWebsitePushing}
+                                    className="flex items-center gap-2 h-[38px] px-4 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-[13px] font-semibold transition-colors disabled:opacity-50"
+                                >
+                                    {isWebsitePushing ? (
+                                        <>
+                                            <Loader2 size={16} className="animate-spin" />
+                                            Pushing...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Check size={16} />
+                                            Push to Website
+                                        </>
+                                    )}
+                                </button>
+                            </div>
+                        </>
+                    )}
+
+                    <button 
+                        onClick={() => {
+                            setSelectedProductIds(new Set());
+                            setBulkMathAction('');
+                            setCampaignMathAction('');
+                        }} 
+                        className="p-2 ml-2 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-full transition-colors flex-none"
+                    >
+                        <X size={18} className="text-gray-500" />
+                    </button>
                 </div>
             )}
 

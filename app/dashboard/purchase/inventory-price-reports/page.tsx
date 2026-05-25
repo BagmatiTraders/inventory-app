@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Search, ChevronLeft, ChevronRight, Edit2, Check, X, Loader2, Package, Box, Download, Upload, Menu } from 'lucide-react'
 import { getInventoryPriceReports, updateProductEstPrice, bulkUpdateEstPrices, InventoryPriceReportItem } from '@/features/purchase/actions/price-report-actions'
 import Image from 'next/image'
-import { useDashboard } from '@/app/dashboard/layout'
+import { useDashboard } from '@/app/dashboard/context'
 
 export default function InventoryPriceReportsPage() {
     const router = useRouter()

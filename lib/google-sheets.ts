@@ -9,23 +9,34 @@ export async function getGoogleSheetsClient() {
         return google.sheets({ version: 'v4', auth: cachedAuth });
     }
 
-    // Explicitly load the service account JSON to avoid ADC path resolution issues
-    // on Windows with spaces in the path.
-    const credPath = process.env.GOOGLE_APPLICATION_CREDENTIALS
-    if (!credPath) {
-        throw new Error('GOOGLE_APPLICATION_CREDENTIALS environment variable is not set.')
-    }
+    let client_email = '';
+    let private_key = '';
 
-    const resolvedPath = path.resolve(credPath)
-    if (!fs.existsSync(resolvedPath)) {
-        throw new Error(`Google credentials file not found at: ${resolvedPath}`)
-    }
+    // In production (Vercel), use direct environment variables for credentials
+    if (process.env.GOOGLE_CLIENT_EMAIL && process.env.GOOGLE_PRIVATE_KEY) {
+        client_email = process.env.GOOGLE_CLIENT_EMAIL;
+        private_key = process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n');
+    } else {
+        // Explicitly load the service account JSON to avoid ADC path resolution issues
+        // on Windows with spaces in the path (used for local development).
+        const credPath = process.env.GOOGLE_APPLICATION_CREDENTIALS
+        if (!credPath) {
+            throw new Error('Missing Google Service Account credentials. Set GOOGLE_CLIENT_EMAIL and GOOGLE_PRIVATE_KEY (for Vercel), or GOOGLE_APPLICATION_CREDENTIALS (for local).')
+        }
 
-    const keyFile = JSON.parse(fs.readFileSync(resolvedPath, 'utf-8'))
+        const resolvedPath = path.resolve(credPath)
+        if (!fs.existsSync(resolvedPath)) {
+            throw new Error(`Google credentials file not found at: ${resolvedPath}`)
+        }
+
+        const keyFile = JSON.parse(fs.readFileSync(resolvedPath, 'utf-8'))
+        client_email = keyFile.client_email
+        private_key = keyFile.private_key
+    }
 
     const auth = new google.auth.JWT({
-        email: keyFile.client_email,
-        key: keyFile.private_key,
+        email: client_email,
+        key: private_key,
         scopes: ['https://www.googleapis.com/auth/spreadsheets']
     })
 

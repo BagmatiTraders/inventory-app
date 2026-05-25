@@ -293,9 +293,10 @@ export async function getProfitTrackerData(params: GetOrderReportParams) {
     const from = (page - 1) * limit
     const to = from + limit - 1
 
+    // 1. Get the list of paginated orders (without count: 'exact' to avoid timeout)
     let query = supabase
         .from('daraz_order_report_view')
-        .select('*', { count: 'exact' })
+        .select('*')
 
     if (search && search.trim()) {
         query = query.or(`order_number.ilike.%${search.trim()}%,invoice_number.ilike.%${search.trim()}%`)
@@ -326,7 +327,50 @@ export async function getProfitTrackerData(params: GetOrderReportParams) {
         .order('delivery_date', { ascending: false, nullsFirst: false })
         .order('created_at', { ascending: false, nullsFirst: false });
 
-    const { data, count, error } = await query;
+    // 2. Fetch count and data concurrently
+    const dataPromise = query;
+    let totalCount = 0;
+
+    const countPromise = (async () => {
+        try {
+            const { data: rpcCount, error: rpcCountError } = await supabase.rpc('get_order_report_count', {
+                search_term: search || '',
+                start_date_param: startDate || null,
+                end_date_param: endDate || null,
+                sync_status_param: syncStatus || 'all',
+                seller_account_param: sellerAccount === 'All' ? null : (sellerAccount || null)
+            });
+            if (!rpcCountError && rpcCount !== null) {
+                return Number(rpcCount);
+            }
+            console.warn('RPC get_order_report_count failed, using fallback:', rpcCountError);
+        } catch (e) {
+            console.error('Error fetching RPC count:', e);
+        }
+        
+        // Fast fallback: count from base table
+        try {
+            let fallbackQuery = supabase
+                .from('daraz_orders')
+                .select('id', { count: 'exact', head: true })
+                .eq('order_status', 'Delivered')
+                .or('deleted.is.null,deleted.eq.false');
+            
+            if (search && search.trim()) {
+                fallbackQuery = fallbackQuery.or(`order_number.ilike.%${search.trim()}%,invoice_number.ilike.%${search.trim()}%`);
+            }
+            
+            const { count: fallbackCount } = await fallbackQuery;
+            return fallbackCount || 0;
+        } catch (fallbackErr) {
+            console.error('Fallback count query failed:', fallbackErr);
+            return 0;
+        }
+    })();
+
+    const [dataResult, resolvedCount] = await Promise.all([dataPromise, countPromise]);
+    const { data, error } = dataResult;
+    totalCount = resolvedCount;
 
     if (error) {
         console.error('[SERVER ACTION] Query Error:', error);
@@ -360,8 +404,8 @@ export async function getProfitTrackerData(params: GetOrderReportParams) {
 
     return {
         data: formattedData,
-        totalCount: count || 0,
-        totalPages: Math.ceil((count || 0) / limit),
+        totalCount: totalCount,
+        totalPages: Math.ceil(totalCount / limit),
         currentPage: page,
         firstItemOffset: from
     };

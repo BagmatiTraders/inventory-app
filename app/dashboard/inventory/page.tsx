@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { Package, FileText, History, AlertTriangle, Menu, Camera, Tag } from 'lucide-react'
 import { Card } from '@/components/ui-shim'
-import { useDashboard } from '../layout'
+import { useDashboard } from '../context'
 import { usePermissions } from '@/lib/permissions/PermissionContext'
 
 const ALL_INVENTORY_MODULES = [

@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { X, Plus, Trash2, Search, AlertTriangle } from 'lucide-react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useDashboard } from '@/app/dashboard/layout'
+import { useDashboard } from '@/app/dashboard/context'
 import { getCompanyDetails } from '@/features/settings/actions/company-details-actions'
 import { getStockAnalysisData } from '@/features/stock-analysis/actions/stock-analysis-actions'
 import { updateSalesBill, createSalesBill, type SalesBillItem, type SalesBill } from '@/features/sales/actions/sales-bill-actions'

@@ -3,7 +3,7 @@
 import { Package, ShoppingCart, TrendingUp, Store, Menu } from 'lucide-react'
 import Link from 'next/link'
 import { Card } from '@/components/ui-shim'
-import { useDashboard } from '../layout'
+import { useDashboard } from '../context'
 import { usePermissions } from '@/lib/permissions/PermissionContext'
 
 // Daraz sub-roles that count as "Daraz access"

@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui-shim'
 import { BarChart3, TrendingUp, ShoppingCart, Package, ArrowLeft, Menu } from 'lucide-react'
 import Link from 'next/link'
-import { useDashboard } from '@/app/dashboard/layout'
+import { useDashboard } from '@/app/dashboard/context'
 import {
     getFiscalYears,
     getActiveFiscalYear,

@@ -3,7 +3,7 @@
 import { FileText, TrendingUp, Menu, LayoutDashboard, ShoppingCart } from 'lucide-react'
 import Link from 'next/link'
 import { Card } from '@/components/ui-shim'
-import { useDashboard } from '../layout'
+import { useDashboard } from '../context'
 import { usePermissions } from '@/lib/permissions/PermissionContext'
 
 // Purchase Summary dashboard is accessible if user has ANY of these sub-roles
@@ -36,6 +36,14 @@ const ALL_PURCHASE_MODULES = [
         color: 'bg-purple-500',
         check: (hasPermission: (m: string, s?: string) => boolean) =>
             hasPermission('Purchase', 'Inventory Reports'),
+    },
+    {
+        name: 'MRP List',
+        icon: FileText,
+        href: '/dashboard/purchase/mrp-list',
+        color: 'bg-emerald-500',
+        check: (hasPermission: (m: string, s?: string) => boolean) =>
+            hasPermission('Purchase', 'Inventory Reports') || true, // TODO: refine permissions if needed
     },
 ]
 

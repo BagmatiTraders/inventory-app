@@ -11,7 +11,7 @@ import { Card } from '@/components/ui-shim'
 import { EditDarazOrderModal } from '@/features/sales/components/EditDarazOrderModal'
 import { PartialReturnModal } from '@/features/sales/components/PartialReturnModal'
 import { DeletionReasonModal } from '@/features/sales/components/DeletionReasonModal'
-import { useDashboard } from '@/app/dashboard/layout'
+import { useDashboard } from '@/app/dashboard/context'
 import { usePermissions } from '@/lib/permissions/PermissionContext'
 // DarazInvoice removed
 

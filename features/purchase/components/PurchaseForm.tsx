@@ -6,6 +6,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { createPurchase, updatePurchase } from '@/features/purchase/actions/purchase-actions'
 import { getAllProductOptions } from '@/features/inventory/actions/product-actions'
 import { getSuppliers } from '@/features/suppliers/actions/supplier-actions'
+import { getLatestMrpByProductName, addMrpPrice, MrpPriceItem } from '@/features/purchase/actions/mrp-actions'
 import Select from 'react-select'
 import { X, Save, Loader2 } from 'lucide-react'
 import { ComboComponentSelectModal } from '@/features/inventory/components/ComboComponentSelectModal'
@@ -33,6 +34,12 @@ export default function PurchaseForm({ onClose, onSuccess, editMode = false, pur
 
     // Combo Resolving State
     const [comboResolving, setComboResolving] = useState<{ id: string, name: string } | null>(null)
+
+    // MRP State
+    const [latestMrp, setLatestMrp] = useState<MrpPriceItem | null>(null)
+    const [mrpDecision, setMrpDecision] = useState<'Yes' | 'No' | ''>('')
+    const [newMrpPrice, setNewMrpPrice] = useState('')
+    const [checkingMrp, setCheckingMrp] = useState(false)
 
     // Select Options State
     const [productOptions, setProductOptions] = useState<any[]>([])
@@ -119,6 +126,22 @@ export default function PurchaseForm({ onClose, onSuccess, editMode = false, pur
             product_id: opt?.value || '',
             product_name: opt?.name || opt?.label || ''
         })
+        
+        // Fetch MRP when product changes
+        if (opt?.name || opt?.label) {
+            setCheckingMrp(true)
+            getLatestMrpByProductName(opt.name || opt.label)
+                .then(res => {
+                    setLatestMrp(res.data)
+                    setMrpDecision(res.data ? 'Yes' : 'No')
+                    setNewMrpPrice('')
+                })
+                .finally(() => setCheckingMrp(false))
+        } else {
+            setLatestMrp(null)
+            setMrpDecision('')
+            setNewMrpPrice('')
+        }
     }
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -153,6 +176,17 @@ export default function PurchaseForm({ onClose, onSuccess, editMode = false, pur
             } else {
                 await createPurchase(purchasePayload)
                 toast.success("Purchase added successfully")
+            }
+
+            // Handle MRP saving
+            if ((latestMrp && mrpDecision === 'No' && newMrpPrice) || (!latestMrp && mrpDecision === 'Yes' && newMrpPrice)) {
+                await addMrpPrice({
+                    product_name: formData.product_name,
+                    inventory_id: formData.product_id,
+                    mrp_price: parseFloat(newMrpPrice),
+                    applied_date: formData.purchase_date
+                })
+                queryClient.invalidateQueries({ queryKey: ['mrp-prices'] })
             }
 
             // Invalidate Queries
@@ -453,6 +487,77 @@ export default function PurchaseForm({ onClose, onSuccess, editMode = false, pur
                                 />
                             </div>
                         </>
+                    )}
+
+                    {/* MRP Section (Shown in both layouts if product is selected) */}
+                    {formData.product_name && !editMode && (
+                        <div className="mt-4 p-4 border rounded-lg bg-emerald-50 dark:bg-emerald-900/10 dark:border-emerald-900/30">
+                            {checkingMrp ? (
+                                <div className="text-sm text-gray-500 flex items-center gap-2"><Loader2 size={14} className="animate-spin" /> Checking MRP...</div>
+                            ) : latestMrp ? (
+                                <div className="space-y-3">
+                                    <div className="text-sm font-semibold text-emerald-800 dark:text-emerald-300">
+                                        This Product has set MRP Rs. {latestMrp.mrp_price.toLocaleString()}
+                                    </div>
+                                    <div className="flex items-center gap-4 text-sm">
+                                        <span className="text-gray-600 dark:text-gray-300">Keep this MRP?</span>
+                                        <label className="flex items-center gap-1 cursor-pointer">
+                                            <input type="radio" name="mrp_decision" checked={mrpDecision === 'Yes'} onChange={() => setMrpDecision('Yes')} className="accent-emerald-600" /> Yes
+                                        </label>
+                                        <label className="flex items-center gap-1 cursor-pointer">
+                                            <input type="radio" name="mrp_decision" checked={mrpDecision === 'No'} onChange={() => setMrpDecision('No')} className="accent-emerald-600" /> No
+                                        </label>
+                                    </div>
+                                    {mrpDecision === 'No' && (
+                                        <div className="pt-2">
+                                            <label className="block text-xs font-bold mb-1 text-emerald-800 dark:text-emerald-300">New MRP Price</label>
+                                            <input 
+                                                type="number" 
+                                                step="0.01" 
+                                                min="0"
+                                                value={newMrpPrice}
+                                                onChange={e => setNewMrpPrice(e.target.value)}
+                                                className="w-full md:w-1/2 px-3 py-2 text-sm border-2 border-emerald-300 dark:border-emerald-700 rounded-md bg-white dark:bg-zinc-800 focus:ring-emerald-500"
+                                                placeholder="Enter new MRP..."
+                                            />
+                                        </div>
+                                    )}
+                                </div>
+                            ) : (
+                                <div className="space-y-3">
+                                    <div className="text-sm font-semibold text-emerald-800 dark:text-emerald-300">
+                                        Does this product have an MRP?
+                                    </div>
+                                    <div className="flex items-center gap-4 text-sm">
+                                        <label className="flex items-center gap-1 cursor-pointer">
+                                            <input type="radio" name="mrp_decision" checked={mrpDecision === 'Yes'} onChange={() => {
+                                                setMrpDecision('Yes');
+                                                if (!newMrpPrice && formData.unit_amount) {
+                                                    setNewMrpPrice(formData.unit_amount.toString());
+                                                }
+                                            }} className="accent-emerald-600" /> Yes
+                                        </label>
+                                        <label className="flex items-center gap-1 cursor-pointer">
+                                            <input type="radio" name="mrp_decision" checked={mrpDecision === 'No'} onChange={() => setMrpDecision('No')} className="accent-emerald-600" /> No
+                                        </label>
+                                    </div>
+                                    {mrpDecision === 'Yes' && (
+                                        <div className="pt-2">
+                                            <label className="block text-xs font-bold mb-1 text-emerald-800 dark:text-emerald-300">MRP Price</label>
+                                            <input 
+                                                type="number" 
+                                                step="0.01" 
+                                                min="0"
+                                                value={newMrpPrice}
+                                                onChange={e => setNewMrpPrice(e.target.value)}
+                                                className="w-full md:w-1/2 px-3 py-2 text-sm border-2 border-emerald-300 dark:border-emerald-700 rounded-md bg-white dark:bg-zinc-800 focus:ring-emerald-500"
+                                                placeholder="Suggest amount..."
+                                            />
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
                     )}
 
                 </form>

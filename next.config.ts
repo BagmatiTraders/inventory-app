@@ -79,6 +79,10 @@ const nextConfig: NextConfig = {
         protocol: 'https',
         hostname: 'cdn.sybazzar.com',
       },
+      {
+        protocol: 'https',
+        hostname: 'qualitycomputer.com.np',
+      },
     ],
   },
   // Add empty turbopack config to silence Turbopack warning

@@ -10,10 +10,11 @@ import DailyReportTab from '@/features/purchase/components/DailyReportTab'
 import DailyPurchaseListContent from '@/features/purchase/components/DailyPurchaseListContent'
 import BuySellSuppliersContent from '@/features/purchase/components/BuySellSuppliersContent'
 import PurchaseReportsContent from '@/features/purchase/components/PurchaseReportsContent'
+import MrpListContent from '@/features/purchase/components/MrpListContent'
 import { usePermissions } from '@/lib/permissions/PermissionContext'
 import { Forbidden403 } from '@/components/permissions/Forbidden403'
 
-type Tab = 'all-list' | 'daily-report' | 'daily-list' | 'buy-sell' | 'reports'
+type Tab = 'all-list' | 'daily-report' | 'daily-list' | 'buy-sell' | 'reports' | 'mrp-list'
 
 export default function PurchaseDashboardSubPage() {
     const { hasPermission, isLoading } = usePermissions()
@@ -28,7 +29,8 @@ export default function PurchaseDashboardSubPage() {
             { id: 'daily-report', has: hasPermission('Purchase', 'Daily Report') },
             { id: 'daily-list', has: hasPermission('Purchase', 'Purchase List') },
             { id: 'buy-sell', has: hasPermission('Purchase', 'Buy/sell (Suppliers)') },
-            { id: 'reports', has: hasPermission('Purchase', 'Purchase Reports') }
+            { id: 'reports', has: hasPermission('Purchase', 'Purchase Reports') },
+            { id: 'mrp-list', has: true }
         ].filter(t => t.has)
 
         if (availableTabs.length > 0 && !availableTabs.find(t => t.id === activeTab)) {
@@ -130,6 +132,16 @@ export default function PurchaseDashboardSubPage() {
                             Purchase Reports
                         </button>
                     )}
+                    <button
+                        onClick={() => setActiveTab('mrp-list')}
+                        className={`flex items-center gap-1 px-2 py-1 text-sm rounded transition-colors ${activeTab === 'mrp-list'
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700'
+                            }`}
+                    >
+                        <FileText size={12} />
+                        MRP List
+                    </button>
                 </div>
             </div>
 
@@ -149,6 +161,9 @@ export default function PurchaseDashboardSubPage() {
                 )}
                 {activeTab === 'reports' && hasPermission('Purchase', 'Purchase Reports') && (
                     <PurchaseReportsContent isEmbedded={true} />
+                )}
+                {activeTab === 'mrp-list' && (
+                    <MrpListContent isEmbedded={true} />
                 )}
             </div>
         </div>

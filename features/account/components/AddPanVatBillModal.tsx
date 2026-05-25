@@ -7,7 +7,7 @@ import { getPanVatCompanies } from '@/features/account/actions/pan-vat-company-a
 import { getCompanyDetails } from '@/features/settings/actions/company-details-actions'
 import { adToBS, bsToAD, formatNepaliCurrency } from '@/lib/utils/date-converter'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useDashboard } from '@/app/dashboard/layout'
+import { useDashboard } from '@/app/dashboard/context'
 
 interface AddPanVatBillModalProps {
     onClose: () => void

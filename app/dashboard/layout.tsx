@@ -20,23 +20,7 @@ const MobileDashboard = dynamic(() => import('@/components/dashboard/MobileDashb
 const MobileFooter = dynamic(() => import('@/components/dashboard/MobileFooter').then(mod => mod.MobileFooter), { ssr: false })
 const NavItem = dynamic(() => import('./NavItem').then(mod => mod.NavItem), { ssr: false })
 
-interface DashboardContextType {
-    isMobileMenuOpen: boolean
-    setIsMobileMenuOpen: (isOpen: boolean) => void
-    isCollapsed: boolean
-    setHeaderTitle?: (title: string | React.ReactNode | null) => void
-    setHeaderAction?: (action: React.ReactNode | null) => void
-}
-
-const DashboardContext = createContext<DashboardContextType | undefined>(undefined)
-
-export function useDashboard() {
-    const context = useContext(DashboardContext)
-    if (context === undefined) {
-        throw new Error('useDashboard must be used within a DashboardLayout')
-    }
-    return context
-}
+import { DashboardContext } from "./context"
 
 import { PermissionProvider } from '@/lib/permissions/PermissionContext'
 import { PermissionFilteredNav } from '@/components/permissions/PermissionFilteredNav'

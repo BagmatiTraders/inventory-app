@@ -13,7 +13,7 @@ import { AdminDeleteConfirm } from '@/features/sales/components/AdminDeleteConfi
 import { AuditTrailHover } from '@/features/sales/components/AuditTrailHover'
 import { toast } from 'sonner'
 import { BarcodeScannerModal } from '@/components/BarcodeScannerModal'
-import { useDashboard } from '@/app/dashboard/layout'
+import { useDashboard } from '@/app/dashboard/context'
 
 import { PartialReturnModal } from '@/features/sales/components/PartialReturnModal'
 

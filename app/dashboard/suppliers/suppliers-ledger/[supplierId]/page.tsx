@@ -7,7 +7,7 @@ import Link from 'next/link'
 import { ArrowLeft, Loader2, Share2, Trash2, Copy, Check, MessageSquare, Send } from 'lucide-react'
 import { getSupplierFullLedger, createLedgerShare, deleteLedgerComment, addLedgerComment } from '@/features/suppliers/actions/supplier-ledger-actions'
 import { Card } from '@/components/ui-shim'
-import { useDashboard } from '@/app/dashboard/layout'
+import { useDashboard } from '@/app/dashboard/context'
 import { toast } from 'sonner'
 
 export default function SupplierLedgerPage({ params }: { params: Promise<{ supplierId: string }> }) {
