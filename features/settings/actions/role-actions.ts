@@ -154,8 +154,7 @@ export async function seedDefaultRoles() {
         { main_role: 'Daraz', sub_role: 'Sales Report',            page_url: '/dashboard/sales/daraz/dashboard' },
         { main_role: 'Daraz', sub_role: 'Update Order Status',     page_url: '/dashboard/sales/daraz/update-status' },
         { main_role: 'Daraz', sub_role: 'Average Sales Price',     page_url: '/dashboard/sales/daraz/average-sales-price' },
-        // Marketplace
-        { main_role: 'Marketplace', sub_role: 'Marketplace Sales', page_url: '/dashboard/sales/marketplace' },
+
         // Website
         { main_role: 'Website', sub_role: 'Website Orders', page_url: '/dashboard/sales/website-orders' },
         // Store Sales

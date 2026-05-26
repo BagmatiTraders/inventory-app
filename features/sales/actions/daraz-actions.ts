@@ -1196,8 +1196,8 @@ export async function getDarazOrderStats(sellerAccount?: string, restrictShipped
             if (dateRestricted && restrictShippedToToday) {
                 const today = new Date().toISOString().split('T')[0]
                 const todayStart = `${today}T00:00:00.000Z`
-                // Match logic in getDarazOrders: Shipped Today means updated_at >= Today 00:00
-                query = query.gte('updated_at', todayStart)
+                // Match logic in getDarazOrders: Shipped Today means shipped_at >= Today 00:00
+                query = query.gte('shipped_at', todayStart)
             }
 
             return query

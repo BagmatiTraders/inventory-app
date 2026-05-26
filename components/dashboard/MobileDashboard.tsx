@@ -98,12 +98,7 @@ export function MobileDashboard() {
             icon: <ArrowLeftRight className="h-8 w-8 text-cyan-600" />,
             color: "bg-cyan-50"
         },
-        {
-            title: "Marketplace Sales",
-            href: "/dashboard/sales/marketplace",
-            icon: <Store className="h-8 w-8 text-emerald-600" />,
-            color: "bg-emerald-50"
-        },
+
         {
             title: "Mobile Capture",
             href: "/mobile/quick-capture",

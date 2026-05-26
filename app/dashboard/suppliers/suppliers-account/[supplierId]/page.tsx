@@ -84,7 +84,7 @@ export default function SupplierDetailLedgerPage({ params }: { params: Promise<{
             <div className="hidden md:flex sticky top-0 z-10 bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 px-4 py-3 items-center justify-between shadow-sm">
                 <div className="flex items-center gap-3">
                     <Link
-                        href={`/dashboard/suppliers/suppliers-account?fiscalYearId=${fiscalYearId || ''}`}
+                        href={`/dashboard/suppliers?fiscalYearId=${fiscalYearId || ''}`}
                         className="p-1 rounded-full hover:bg-gray-100 dark:hover:bg-zinc-800 text-gray-600 dark:text-gray-400"
                     >
                         <ArrowLeft size={18} />

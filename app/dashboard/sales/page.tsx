@@ -24,15 +24,7 @@ const ALL_SALES_MODULES = [
         check: (hasPermission: (m: string, s?: string) => boolean) =>
             DARAZ_SUB_ROLES.some(sub => hasPermission('Daraz', sub)),
     },
-    {
-        name: 'Marketplace Sales & Orders',
-        icon: ShoppingCart,
-        href: '/dashboard/sales/marketplace',
-        color: 'bg-blue-500',
-        label: null,
-        check: (hasPermission: (m: string, s?: string) => boolean) =>
-            hasPermission('Marketplace', 'Marketplace Sales'),
-    },
+
     {
         name: 'Website Sales & Orders',
         icon: Store, // You can change the icon later

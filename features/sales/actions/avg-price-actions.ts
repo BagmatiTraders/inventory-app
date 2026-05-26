@@ -757,6 +757,98 @@ export async function syncLiveSellerPrices() {
     }
 }
 
+export async function syncLiveSellerPricesForProduct(productId: string) {
+    try {
+        const supabase = await createClient()
+        const appKey = process.env.NEXT_PUBLIC_DARAZ_APP_KEY
+        const appSecret = process.env.DARAZ_APP_SECRET
+        const apiUrl = process.env.DARAZ_API_URL || 'https://api.daraz.com.np/rest'
+
+        if (!appKey || !appSecret) {
+            throw new Error('Missing Daraz API credentials')
+        }
+
+        const { data: skuRow, error: skuErr } = await supabase
+            .from('products')
+            .select('seller_sku1, seller_sku2, seller_sku3, seller_sku4')
+            .eq('id', productId)
+            .single()
+
+        if (skuErr || !skuRow) throw new Error('Product not found')
+
+        const productSkus = [skuRow.seller_sku1, skuRow.seller_sku2, skuRow.seller_sku3, skuRow.seller_sku4].filter(Boolean) as string[]
+        if (productSkus.length === 0) throw new Error('Product has no seller SKUs configured')
+
+        const { data: tokens, error: tokensErr } = await supabase.from('daraz_api_tokens').select('*')
+        if (tokensErr || !tokens || tokens.length === 0) {
+            throw new Error('No connected seller stores found')
+        }
+
+        const allLivePricesToUpsert: any[] = []
+
+        for (const token of tokens) {
+            const storeName = STORE_NAME_MAP[token.account] || (token.account ? token.account.split('@')[0] : 'Unknown Store')
+
+            const params: Record<string, any> = {
+                app_key: appKey,
+                access_token: token.access_token,
+                timestamp: new Date().getTime(),
+                sign_method: 'sha256',
+                filter: 'all',
+                sku_seller_list: JSON.stringify(productSkus)
+            }
+
+            const apiPath = '/products/get'
+            const keys = Object.keys(params).sort()
+            let str = apiPath
+            keys.forEach(k => { str += k + params[k] })
+            params.sign = crypto.createHmac('sha256', appSecret).update(str).digest('hex').toUpperCase()
+
+            try {
+                const res = await axios.get(`${apiUrl}${apiPath}`, { params })
+                const data = res.data?.data?.products || []
+
+                for (const prod of data) {
+                    const skus = prod.skus || []
+                    for (const sku of skus) {
+                        if (sku.SellerSku) {
+                            allLivePricesToUpsert.push({
+                                store_id: token.store_id,
+                                store_name: storeName,
+                                seller_sku: sku.SellerSku,
+                                sku_id: sku.SkuId ? String(sku.SkuId) : null,
+                                price: parseFloat(sku.price) || 0,
+                                special_price: sku.special_price ? parseFloat(sku.special_price) : null,
+                                quantity: parseInt(sku.quantity) || 0,
+                                updated_at: new Date().toISOString()
+                            })
+                        }
+                    }
+                }
+            } catch (err: any) {
+                console.error(`Failed to fetch live prices for ${storeName} for product ${productId}:`, err.message)
+            }
+        }
+
+        if (allLivePricesToUpsert.length > 0) {
+            const { error: upsertErr } = await supabase
+                .from('daraz_live_prices')
+                .upsert(allLivePricesToUpsert, { onConflict: 'store_id,seller_sku' })
+            if (upsertErr) {
+                console.error('Failed to upsert daraz live prices:', upsertErr.message)
+                throw new Error(`Failed to upsert daraz live prices: ${upsertErr.message}`)
+            }
+        }
+
+        revalidatePath('/dashboard/sales/daraz/average-sales-price')
+        return { success: true, count: allLivePricesToUpsert.length, message: `Successfully synced live price for ${allLivePricesToUpsert.length} SKU(s) from Daraz` }
+    } catch (error: any) {
+        console.error('syncLiveSellerPricesForProduct Error:', error)
+        return { success: false, message: error.message || 'Unknown error occurred during live price sync' }
+    }
+}
+
+
 
 /**
  * Push the Daraz Price (market_price) for one product to Daraz as a special price.

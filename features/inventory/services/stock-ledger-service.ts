@@ -114,9 +114,6 @@ export interface StockLedgerDetail {
     daraz_returning: number
     daraz_customer_return: number
     daraz_returned_delivered: number
-    marketplace_shipped: number
-    marketplace_delivered: number
-    marketplace_fail_delivered: number
     store_sales: number
     website_shipped: number
     website_delivered: number
@@ -153,12 +150,10 @@ export async function getProductStockDetails(productId: string): Promise<StockLe
         damageStats,
         purchaseStats,
         darazItems,
-        marketplaceItems,
         storeItems,
         websiteItems,
         // Auto Adjust: Combo Sales where THIS product is a component
         darazComboSales,
-        marketplaceComboSales,
         storeComboSales,
         websiteComboSales
     ] = await Promise.all([
@@ -172,9 +167,6 @@ export async function getProductStockDetails(productId: string): Promise<StockLe
         supabase.from('daraz_order_items')
             .select('quantity, item_status, order:daraz_orders!inner(order_status)')
             .eq('product_id', productId),
-        supabase.from('marketplace_order_items')
-            .select('quantity, item_status, order:marketplace_orders!inner(order_status)')
-            .eq('product_id', productId),
         supabase.from('store_sales_items')
             .select('qty')
             .eq('product_id', productId),
@@ -186,11 +178,6 @@ export async function getProductStockDetails(productId: string): Promise<StockLe
         parentIds.length > 0 ?
             supabase.from('daraz_order_items')
                 .select(`quantity, order:daraz_orders!inner(order_status), product_id`)
-                .in('product_id', parentIds) : Promise.resolve({ data: [] }),
-
-        parentIds.length > 0 ?
-            supabase.from('marketplace_order_items')
-                .select(`quantity, order:marketplace_orders!inner(order_status), product_id`)
                 .in('product_id', parentIds) : Promise.resolve({ data: [] }),
 
         parentIds.length > 0 ?
@@ -241,20 +228,6 @@ export async function getProductStockDetails(productId: string): Promise<StockLe
         }
     })
 
-    let marketplaceShipped = 0
-    let marketplaceDelivered = 0
-    let marketplaceFailDelivered = 0
-
-    marketplaceItems.data?.forEach((item: any) => {
-        const qty = item.quantity || 0
-        const sRaw = item.order?.order_status
-        const status = sRaw ? sRaw.toString().trim().toLowerCase() : ''
-
-        if (status === 'shipped') marketplaceShipped += qty
-        else if (status === 'delivered') marketplaceDelivered += qty
-        else if (['fail delivered', 'delivery failed', 'returned to seller'].includes(status)) marketplaceFailDelivered += qty
-    })
-    
     let websiteShipped = 0
     let websiteDelivered = 0
     let websiteReturnedDelivered = 0
@@ -294,7 +267,6 @@ export async function getProductStockDetails(productId: string): Promise<StockLe
     }
 
     processAutoAdjust(darazComboSales.data || [], 'quantity', true)
-    processAutoAdjust(marketplaceComboSales.data || [], 'quantity', true)
     processAutoAdjust(storeComboSales.data || [], 'qty', false)
     processAutoAdjust(websiteComboSales.data || [], 'quantity', true)
 
@@ -305,11 +277,10 @@ export async function getProductStockDetails(productId: string): Promise<StockLe
     // Sales Sum (Green items) for formula: Sales
     // Must include Shipped, Delivered, ALL Returning (Transit), AND Returned items (to offset the Return Add-back)
     const totalSalesForFormula = datSum(darazShipped, darazDelivered, darazReturning, darazCustomerReturn, darazReturnedDelivered) +
-        datSum(marketplaceShipped, marketplaceDelivered, marketplaceFailDelivered) + 
         datSum(websiteShipped, websiteDelivered, websiteReturnedDelivered) + storeSales
 
     // Sales Return Sum (Red items) for formula: Sales Return
-    const totalReturnsForFormula = datSum(darazReturnedDelivered) + marketplaceFailDelivered + websiteReturnedDelivered
+    const totalReturnsForFormula = datSum(darazReturnedDelivered) + websiteReturnedDelivered
 
     const storeStock = openingStock + manualAdjustment
 
@@ -336,9 +307,6 @@ export async function getProductStockDetails(productId: string): Promise<StockLe
         daraz_returning: darazReturning,
         daraz_customer_return: darazCustomerReturn,
         daraz_returned_delivered: darazReturnedDelivered,
-        marketplace_shipped: marketplaceShipped,
-        marketplace_delivered: marketplaceDelivered,
-        marketplace_fail_delivered: marketplaceFailDelivered,
         store_sales: storeSales,
         website_shipped: websiteShipped,
         website_delivered: websiteDelivered,

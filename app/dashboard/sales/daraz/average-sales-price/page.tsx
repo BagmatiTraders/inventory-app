@@ -2,10 +2,10 @@
 
 import React, { useState, useEffect, useRef } from 'react'
 import { Card, Button } from '@/components/ui-shim'
-import { Search, ChevronLeft, ChevronRight, Edit2, Check, X, Loader2, RefreshCw, AlertTriangle, ArrowLeft } from 'lucide-react'
+import { Search, ChevronLeft, ChevronRight, Edit2, Check, X, Loader2, RefreshCw, AlertTriangle, ArrowLeft, UploadCloud } from 'lucide-react'
 import Image from 'next/image'
 import Link from 'next/link'
-import { getDarazAvgPrices, updateDarazAvgPrice, bulkUpdateDarazAvgPrice, syncDarazAvgPricesGoogleSheets, pullDarazAvgPricesFromGoogleSheets, syncLiveSellerPrices, pushPriceToDaraz, DarazAvgPriceItem, updateWebsitePricesBulk } from '@/features/sales/actions/avg-price-actions'
+import { getDarazAvgPrices, updateDarazAvgPrice, bulkUpdateDarazAvgPrice, syncDarazAvgPricesGoogleSheets, pullDarazAvgPricesFromGoogleSheets, syncLiveSellerPrices, pushPriceToDaraz, DarazAvgPriceItem, updateWebsitePricesBulk, syncLiveSellerPricesForProduct } from '@/features/sales/actions/avg-price-actions'
 export default function DarazAverageSalesPricePage() {
     const [data, setData] = useState<DarazAvgPriceItem[]>([])
     const [isLoading, setIsLoading] = useState(true)
@@ -13,6 +13,9 @@ export default function DarazAverageSalesPricePage() {
     const [isPulling, setIsPulling] = useState(false)
     const [isSyncingLive, setIsSyncingLive] = useState(false)
     const [pushingId, setPushingId] = useState<string | null>(null)
+    const [activeSyncMenuProductId, setActiveSyncMenuProductId] = useState<string | null>(null)
+    const [syncingLiveProductId, setSyncingLiveProductId] = useState<string | null>(null)
+
     const [isUpdatingStock, setIsUpdatingStock] = useState(false)
     const [showOnlyStockOut, setShowOnlyStockOut] = useState(false)
     const [filterAccount, setFilterAccount] = useState<string>('')
@@ -171,6 +174,24 @@ export default function DarazAverageSalesPricePage() {
             setPushingId(null)
         }
     }
+
+    const handleSyncLiveForProduct = async (productId: string, productName: string) => {
+        setSyncingLiveProductId(productId)
+        try {
+            const res = await syncLiveSellerPricesForProduct(productId)
+            if (res.success) {
+                alert(`✓ Live prices synced!\n${res.message}`)
+                loadData()
+            } else {
+                alert(`✗ Sync failed:\n${res.message}`)
+            }
+        } catch (err: any) {
+            alert(`Sync error: ${err.message}`)
+        } finally {
+            setSyncingLiveProductId(null)
+        }
+    }
+
 
 
 
@@ -818,7 +839,7 @@ export default function DarazAverageSalesPricePage() {
                                                 <td className="text-center p-4 align-middle sticky left-[64px] z-20 bg-white dark:bg-zinc-900 border-r dark:border-zinc-800">
                                                     <div className="w-10 h-10 relative bg-gray-100 dark:bg-zinc-800 rounded overflow-hidden mx-auto">
                                                         {item.image_url ? (
-                                                            <Image src={item.image_url} alt="img" fill className="object-cover" />
+                                                            <Image src={item.image_url} alt="img" fill sizes="40px" className="object-cover" />
                                                         ) : (
                                                             <div className="w-full h-full flex items-center justify-center text-gray-300">
                                                                 <div className="w-4 h-4 rounded-full border-2 border-current opacity-50" />
@@ -1080,14 +1101,47 @@ export default function DarazAverageSalesPricePage() {
                                                             <button onClick={() => startEditing(item)} className="p-1.5 text-gray-400 group-hover:text-blue-600 hover:bg-blue-50 rounded transition-colors" title="Edit Prices">
                                                                 <Edit2 size={16} />
                                                             </button>
-                                                            <button
-                                                                onClick={() => handlePushPrice(item.product_id, item.product_name)}
-                                                                disabled={pushingId === item.product_id}
-                                                                className="p-1.5 text-gray-400 group-hover:text-green-600 hover:bg-green-50 rounded transition-colors disabled:opacity-50"
-                                                                title={item.market_price && item.market_price > 0 ? `Push Rs. ${item.market_price.toLocaleString()} to Daraz` : 'Set a Daraz Price first'}
-                                                            >
-                                                                {pushingId === item.product_id ? <Loader2 size={16} className="animate-spin text-green-600" /> : <RefreshCw size={16} />}
-                                                            </button>
+                                                            <div className="relative inline-block">
+                                                                <button
+                                                                    onClick={() => setActiveSyncMenuProductId(activeSyncMenuProductId === item.product_id ? null : item.product_id)}
+                                                                    disabled={pushingId === item.product_id || syncingLiveProductId === item.product_id}
+                                                                    className="p-1.5 text-gray-400 group-hover:text-green-600 hover:bg-green-50 rounded transition-colors disabled:opacity-50"
+                                                                    title="Sync / Push actions"
+                                                                >
+                                                                    {pushingId === item.product_id || syncingLiveProductId === item.product_id ? (
+                                                                        <Loader2 size={16} className="animate-spin text-green-600" />
+                                                                    ) : (
+                                                                        <RefreshCw size={16} />
+                                                                    )}
+                                                                </button>
+                                                                {activeSyncMenuProductId === item.product_id && (
+                                                                    <>
+                                                                        <div className="fixed inset-0 z-40 cursor-default" onClick={() => setActiveSyncMenuProductId(null)} />
+                                                                        <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl shadow-xl z-50 py-1.5 text-left animate-in fade-in slide-in-from-top-1 duration-150">
+                                                                            <button
+                                                                                onClick={() => {
+                                                                                    setActiveSyncMenuProductId(null)
+                                                                                    handlePushPrice(item.product_id, item.product_name)
+                                                                                }}
+                                                                                className="w-full text-left px-4 py-2.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-zinc-800 flex items-center gap-2 transition-colors"
+                                                                            >
+                                                                                <UploadCloud size={14} className="text-green-500" />
+                                                                                <span>Push to Daraz</span>
+                                                                            </button>
+                                                                            <button
+                                                                                onClick={() => {
+                                                                                    setActiveSyncMenuProductId(null)
+                                                                                    handleSyncLiveForProduct(item.product_id, item.product_name)
+                                                                                }}
+                                                                                className="w-full text-left px-4 py-2.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-zinc-800 flex items-center gap-2 transition-colors border-t border-gray-100 dark:border-zinc-800"
+                                                                            >
+                                                                                <RefreshCw size={14} className="text-blue-500" />
+                                                                                <span>Sync Live Price</span>
+                                                                            </button>
+                                                                        </div>
+                                                                    </>
+                                                                )}
+                                                            </div>
                                                             <button
                                                                 onClick={() => openStockModal(item)}
                                                                 className="p-1.5 text-gray-400 group-hover:text-amber-600 hover:bg-amber-50 rounded transition-colors"

@@ -76,8 +76,6 @@ export default async function StockLedgerDetailPage({ params }: Props) {
                 <DetailRow label="Daraz Returning to Seller Order" value={details.daraz_returning} colorClass="text-green-600 dark:text-green-400" />
                 <DetailRow label="Daraz Customer Return Order" value={details.daraz_customer_return} colorClass="text-green-600 dark:text-green-400" />
 
-                <DetailRow label="Marketplace Shipped Order" value={details.marketplace_shipped} colorClass="text-green-600 dark:text-green-400" />
-                <DetailRow label="Marketplace Delivered Order" value={details.marketplace_delivered} colorClass="text-green-600 dark:text-green-400" />
 
                 <DetailRow label="Store Sales Qty" value={details.store_sales} colorClass="text-green-600 dark:text-green-400" />
 
@@ -98,7 +96,7 @@ export default async function StockLedgerDetailPage({ params }: Props) {
                 Sales Return Column (Red) includes: Customer Return.
                 So it appears in both. I will list it here as requested.
                 */}
-                <DetailRow label="Marketplace Fail Delivered Qty" value={details.marketplace_fail_delivered} colorClass="text-red-600 dark:text-red-400" />
+
 
                 <div className="my-4 border-t-2 border-gray-100 dark:border-zinc-700"></div>
 

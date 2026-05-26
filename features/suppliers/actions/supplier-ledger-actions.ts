@@ -66,28 +66,56 @@ export async function getSupplierLedger({
 
     const supplierIds = suppliers.map(s => s.id)
 
-    // 3. Fetch ALL relevant financial data (Purchases & Transactions)
+    // 3. Fetch ALL relevant financial data (Purchases & Transactions) using pagination to bypass Supabase max_rows (1000) limit
     // Optimization: filtering by supplierIds to avoid full table scan if search is active
     // We need "Previous" data (before startDate) for Opening Balance
     // And "Current" data (startDate <= date <= endDate) for Debit/Credit
 
-    // Fetch Purchases
-    const { data: allPurchases, error: purchaseError } = await supabase
-        .from('purchases')
-        .select('supplier_id, purchase_date, purchase_type, payment_type, total_amount')
-        .in('supplier_id', supplierIds)
-        .lte('purchase_date', endDate) // No need for future data
+    // Fetch Purchases in pages of 1000
+    let allPurchases: any[] = []
+    let purchasesPage = 0
+    const pageSize = 1000
+    while (true) {
+        const from = purchasesPage * pageSize
+        const to = from + pageSize - 1
+        const { data, error } = await supabase
+            .from('purchases')
+            .select('supplier_id, purchase_date, purchase_type, payment_type, total_amount')
+            .in('supplier_id', supplierIds)
+            .lte('purchase_date', endDate)
+            .range(from, to)
 
-    // Fetch Transactions
-    const { data: allTransactions, error: transactionError } = await supabase
-        .from('supplier_transactions')
-        .select('supplier_id, transaction_date, transaction_type, amount')
-        .in('supplier_id', supplierIds)
-        .lte('transaction_date', endDate)
+        if (error) {
+            console.error('Error fetching purchases data', error)
+            return { ledger: [], error: 'Failed to fetch purchases data' }
+        }
+        if (!data || data.length === 0) break
+        allPurchases = allPurchases.concat(data)
+        if (data.length < pageSize) break
+        purchasesPage++
+    }
 
-    if (purchaseError || transactionError) {
-        console.error('Error fetching ledger data', purchaseError, transactionError)
-        return { ledger: [], error: 'Failed to fetch financial data' }
+    // Fetch Transactions in pages of 1000
+    let allTransactions: any[] = []
+    let transactionsPage = 0
+    while (true) {
+        const from = transactionsPage * pageSize
+        const to = from + pageSize - 1
+        const { data, error } = await supabase
+            .from('supplier_transactions')
+            .select('supplier_id, transaction_date, transaction_type, amount')
+            .in('supplier_id', supplierIds)
+            .lte('transaction_date', endDate)
+            .range(from, to)
+
+        if (error) {
+            console.error('Error fetching transactions data', error)
+            return { ledger: [], error: 'Failed to fetch transactions data' }
+        }
+        if (!data || data.length === 0) break
+        allTransactions = allTransactions.concat(data)
+        if (data.length < pageSize) break
+        transactionsPage++
     }
 
     // 4. Client-side Aggregation
@@ -467,6 +495,7 @@ export async function getSupplierFullLedger({
         .select('id, purchase_date, purchase_type, payment_type, total_amount, product_id, quantity, unit_amount, products(product_name)')
         .eq('supplier_id', supplierId)
         .order('purchase_date', { ascending: false })
+        .limit(100000)
 
     if (endDate) {
         purchaseQuery = purchaseQuery.lte('purchase_date', endDate)
@@ -480,6 +509,7 @@ export async function getSupplierFullLedger({
         .select('id, transaction_date, transaction_type, transaction_mode, payment_method, amount, remarks')
         .eq('supplier_id', supplierId)
         .order('transaction_date', { ascending: false })
+        .limit(100000)
 
     if (endDate) {
         transQuery = transQuery.lte('transaction_date', endDate)

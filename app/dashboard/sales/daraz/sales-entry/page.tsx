@@ -963,11 +963,11 @@ export default function DarazSalesEntryPage() {
                         return acc
                     }, {})
 
-                    // Filter orders for display: Hide Cancel if !is_printed
+                    // Filter orders for display: Hide Cancel/Cancelled or Unpaid orders
                     const displayedOrders = group.orders.filter(order => {
                         const s = order.order_status.toLowerCase()
-                        if ((s === 'cancel' || s === 'cancelled') && !order.is_printed) {
-                            return false // Hide unprinted cancel orders
+                        if (s === 'cancel' || s === 'cancelled' || s === 'unpaid') {
+                            return false // Hide Cancel/Cancelled and Unpaid orders
                         }
                         return true
                     })

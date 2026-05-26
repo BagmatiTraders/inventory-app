@@ -32,8 +32,6 @@ INSERT INTO page_roles (main_role, sub_role, page_url) VALUES
   ('Daraz', 'Update Order Status',    '/dashboard/sales/daraz/update-status'),
   ('Daraz', 'Average Sales Price',    '/dashboard/sales/daraz/average-sales-price'),
 
-  -- Marketplace
-  ('Marketplace', 'Marketplace Sales', '/dashboard/sales/marketplace'),
 
   -- Store Sales
   ('Store Sales', 'Store Post',        '/dashboard/sales/store-sales'),

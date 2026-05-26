@@ -26,12 +26,8 @@ const MobileHeader: React.FC<MobileHeaderProps> = ({
     switch (pathname) {
       case '/dashboard/sales/daraz':
         return 'E-commerce Sales & Orders';
-      case '/dashboard/sales/marketplace':
-        return 'Marketplace Sales & Orders';
       case '/dashboard/sales/daraz/sales-entry':
         return 'Order Entry';
-      case '/dashboard/sales/marketplace/sales-entry':
-        return 'Marketplace Sales Entry';
       case '/dashboard/sales/daraz/update-status':
         return 'Update Order Status';
       case '/dashboard/sales/daraz/dashboard':
