@@ -9,6 +9,7 @@ import { AddSalesBillModal } from '@/features/sales/components/AddSalesBillModal
 import { SalesBillList } from '@/features/sales/components/SalesBillList'
 import { SalesBillDetailModal } from '@/features/sales/components/SalesBillDetailModal'
 import { SalesBill } from '@/features/sales/actions/sales-bill-actions'
+import { SalesAnalysisPage } from '@/features/sales/components/SalesAnalysisPage'
 
 export default function SalesBillingPage() {
     const [activeTab, setActiveTab] = useState<'bill-entry' | 'stock-analysis' | 'sales-analysis'>('bill-entry')
@@ -102,10 +103,7 @@ export default function SalesBillingPage() {
                 ) : activeTab === 'stock-analysis' ? (
                     <StockAnalysisPage />
                 ) : (
-                    <div className="bg-white dark:bg-zinc-900 rounded-lg border dark:border-zinc-800 p-8 text-center text-gray-500">
-                        <p className="text-lg font-semibold">Sales Analysis</p>
-                        <p className="text-sm mt-2">Content to be implemented later.</p>
-                    </div>
+                    <SalesAnalysisPage />
                 )}
             </div>
 
