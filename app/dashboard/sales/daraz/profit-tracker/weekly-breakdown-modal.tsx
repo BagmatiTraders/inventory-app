@@ -30,6 +30,7 @@ export function WeeklyBreakdownModal({ isOpen, onClose, startDate, endDate }: We
     const [search, setSearch] = useState('')
     const [sellerFilter, setSellerFilter] = useState('All')
     const [availableSellers, setAvailableSellers] = useState<string[]>([])
+    const [showUnsyncedOnly, setShowUnsyncedOnly] = useState(false)
 
     useEffect(() => {
         getSellerAccounts().then(setAvailableSellers)
@@ -53,8 +54,9 @@ export function WeeklyBreakdownModal({ isOpen, onClose, startDate, endDate }: We
         orders.forEach((order: any) => {
             const matchesSearch = !search || order.order_number.toLowerCase().includes(search.toLowerCase())
             const matchesSeller = sellerFilter === 'All' || order.seller_account === sellerFilter
+            const matchesSync = !showUnsyncedOnly || order.sync_status === 'not_synced'
 
-            if (matchesSearch && matchesSeller) {
+            if (matchesSearch && matchesSeller && matchesSync) {
                 if (order.products && order.products.length > 0) {
                     order.products.forEach((p: any) => {
                         rows.push({
@@ -70,7 +72,8 @@ export function WeeklyBreakdownModal({ isOpen, onClose, startDate, endDate }: We
                             // However, we'll show the order-level fees and profit on each row or the first row.
                             // The requirement says: "show total profit of order which we had already made in order details"
                             daraz_fee: order.daraz_fees,
-                            total_profit: order.profit
+                            total_profit: order.profit,
+                            sync_status: order.sync_status
                         })
                     })
                 } else {
@@ -81,13 +84,14 @@ export function WeeklyBreakdownModal({ isOpen, onClose, startDate, endDate }: We
                         sales_amount: order.total_revenue,
                         purchase_cost: order.total_purchase_cost,
                         daraz_fee: order.daraz_fees,
-                        total_profit: order.profit
+                        total_profit: order.profit,
+                        sync_status: order.sync_status
                     })
                 }
             }
         })
         return rows
-    }, [orders, search, sellerFilter])
+    }, [orders, search, sellerFilter, showUnsyncedOnly])
 
     // Totals for the footer
     // Note: Since we exploded rows, summing daraz_fee and total_profit from rows would double count.
@@ -97,13 +101,14 @@ export function WeeklyBreakdownModal({ isOpen, onClose, startDate, endDate }: We
         return orders.filter((o: any) => {
             const matchesSearch = !search || o.order_number.toLowerCase().includes(search.toLowerCase())
             const matchesSeller = sellerFilter === 'All' || o.seller_account === sellerFilter
-            if (!matchesSearch || !matchesSeller) return false
+            const matchesSync = !showUnsyncedOnly || o.sync_status === 'not_synced'
+            if (!matchesSearch || !matchesSeller || !matchesSync) return false
             
             if (seen.has(o.order_number)) return false
             seen.add(o.order_number)
             return true
         })
-    }, [orders, search, sellerFilter])
+    }, [orders, search, sellerFilter, showUnsyncedOnly])
 
     const totals = useMemo(() => {
         return {
@@ -131,18 +136,29 @@ export function WeeklyBreakdownModal({ isOpen, onClose, startDate, endDate }: We
                                 className="pl-10"
                             />
                         </div>
-                        <div className="flex items-center gap-2">
-                            <Filter className="h-4 w-4 text-gray-400" />
-                            <select
-                                value={sellerFilter}
-                                onChange={(e) => setSellerFilter(e.target.value)}
-                                className="h-10 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-gray-100"
+                        <div className="flex items-center gap-3">
+                            <Button
+                                type="button"
+                                variant={showUnsyncedOnly ? "destructive" : "outline"}
+                                onClick={() => setShowUnsyncedOnly(!showUnsyncedOnly)}
+                                className="h-10 text-xs font-semibold px-4 shrink-0 transition-colors"
                             >
-                                <option value="All">All Sellers</option>
-                                {availableSellers.map(seller => (
-                                    <option key={seller} value={seller}>{seller}</option>
-                                ))}
-                            </select>
+                                {showUnsyncedOnly ? "Show All Orders" : "Show Unsynced Only"}
+                            </Button>
+
+                            <div className="flex items-center gap-2">
+                                <Filter className="h-4 w-4 text-gray-400" />
+                                <select
+                                    value={sellerFilter}
+                                    onChange={(e) => setSellerFilter(e.target.value)}
+                                    className="h-10 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-gray-100"
+                                >
+                                    <option value="All">All Sellers</option>
+                                    {availableSellers.map(seller => (
+                                        <option key={seller} value={seller}>{seller}</option>
+                                    ))}
+                                </select>
+                            </div>
                         </div>
                     </div>
                 </DialogHeader>
@@ -158,6 +174,7 @@ export function WeeklyBreakdownModal({ isOpen, onClose, startDate, endDate }: We
                             <TableHeader className="bg-gray-50 dark:bg-zinc-800 sticky top-0 z-10">
                                 <TableRow>
                                     <TableHead className="w-12">S.N</TableHead>
+                                    <TableHead className="w-[100px]">Sync Status</TableHead>
                                     <TableHead>Order Number</TableHead>
                                     <TableHead className="min-w-[200px]">Product Name</TableHead>
                                     <TableHead className="text-center">Qty</TableHead>
@@ -170,7 +187,7 @@ export function WeeklyBreakdownModal({ isOpen, onClose, startDate, endDate }: We
                             <TableBody>
                                 {explodedRows.length === 0 ? (
                                     <TableRow>
-                                        <TableCell colSpan={8} className="h-32 text-center text-gray-500">
+                                        <TableCell colSpan={9} className="h-32 text-center text-gray-500">
                                             No orders found for the selected filters.
                                         </TableCell>
                                     </TableRow>
@@ -183,6 +200,16 @@ export function WeeklyBreakdownModal({ isOpen, onClose, startDate, endDate }: We
                                         return (
                                             <TableRow key={`${row.order_number}-${idx}`} className={!isFirstInOrder ? "border-t-0 opacity-80" : ""}>
                                                 <TableCell className="text-gray-500 text-xs">{idx + 1}</TableCell>
+                                                <TableCell>
+                                                    {isFirstInOrder ? (
+                                                        <div className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium border ${row.sync_status === 'synced'
+                                                            ? 'bg-green-100 text-green-700 border-green-200 dark:bg-green-900/30 dark:text-green-400 dark:border-green-800'
+                                                            : 'bg-red-50 text-red-700 border-red-200 dark:bg-red-900/20 dark:text-red-400 dark:border-red-800'
+                                                            }`}>
+                                                            {row.sync_status === 'synced' ? 'Synced' : 'Not Synced'}
+                                                        </div>
+                                                    ) : ""}
+                                                </TableCell>
                                                 <TableCell className="font-mono text-xs">
                                                     {isFirstInOrder ? row.order_number : ""}
                                                 </TableCell>

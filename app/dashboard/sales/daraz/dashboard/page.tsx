@@ -4,7 +4,7 @@ import { useState, useEffect, Fragment } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { getDailySalesReport, getOrderSummaryReport, getOrderStatusSummary } from '@/features/sales/actions/daraz-actions'
 import { getUserRole } from '@/features/sales/actions/daraz-deletion-actions'
-import { ArrowLeft, BarChart2, AlertCircle, PieChart, RefreshCw, Download, List, FileText, Menu } from 'lucide-react'
+import { ArrowLeft, BarChart2, AlertCircle, PieChart, RefreshCw, Download, List, FileText, Menu, Package } from 'lucide-react'
 import Link from 'next/link'
 import { Card } from '@/components/ui-shim'
 import { useSearchParams } from 'next/navigation'
@@ -15,12 +15,13 @@ import { OrderSyncPageContent } from '../order-sync/page'
 import ProfitTrackerPage from '../profit-tracker/page'
 import { DarazOrderList } from '@/features/sales/components/DarazOrderList'
 import { DarazSalesReport } from '@/features/sales/components/DarazSalesReport'
+import { DarazProductReport } from '@/features/sales/components/DarazProductReport'
 import { usePermissions } from '@/lib/permissions/PermissionContext'
 import { Forbidden403 } from '@/components/permissions/Forbidden403'
 
 import { Suspense } from 'react'
 
-type ReportTab = 'daily' | 'summary' | 'status-sync' | 'order-sync' | 'profit-tracker' | 'order-list' | 'sales-report'
+type ReportTab = 'daily' | 'summary' | 'status-sync' | 'order-sync' | 'profit-tracker' | 'order-list' | 'sales-report' | 'product-report'
 
 function DashboardContent() {
     const { hasPermission } = usePermissions()
@@ -35,7 +36,8 @@ function DashboardContent() {
             { id: 'status-sync', has: hasPermission('Daraz', 'Order Status Sync') },
             { id: 'order-sync', has: hasPermission('Daraz', 'Order Sync') },
             { id: 'profit-tracker', has: hasPermission('Daraz', 'Profit Tracker') },
-            { id: 'sales-report', has: hasPermission('Daraz', 'Sales Report') }
+            { id: 'sales-report', has: hasPermission('Daraz', 'Sales Report') },
+            { id: 'product-report', has: hasPermission('Daraz', 'Sales Report') },
         ].filter(t => t.has)
 
         if (availableTabs.length > 0 && !availableTabs.find(t => t.id === activeTab)) {
@@ -63,7 +65,8 @@ function DashboardContent() {
             'status-sync': 'Order Status Sync',
             'order-sync': 'Order Sync',
             'profit-tracker': 'Profit Tracker',
-            'sales-report': 'Sales Report'
+            'sales-report': 'Sales Report Details',
+            'product-report': 'Product Report Details',
         }
 
         setHeaderTitle(titles[activeTab] || 'Sales Dashboard')
@@ -278,24 +281,39 @@ function DashboardContent() {
                         </button>
                     )}
                     {hasPermission('Daraz', 'Sales Report') && (
-                        <button
-                            onClick={() => setActiveTab('sales-report')}
-                            className={`flex items-center gap-1 px-2 py-1 text-sm rounded transition-colors ${activeTab === 'sales-report'
-                                ? 'bg-blue-600 text-white'
-                                : 'bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700'
-                                }`}
-                        >
-                            <FileText size={12} />
-                            Sales Report
-                        </button>
+                        <>
+                            <button
+                                onClick={() => setActiveTab('sales-report')}
+                                className={`flex items-center gap-1 px-2 py-1 text-sm rounded transition-colors ${activeTab === 'sales-report'
+                                    ? 'bg-blue-600 text-white'
+                                    : 'bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700'
+                                    }`}
+                            >
+                                <FileText size={12} />
+                                Sales Report Details
+                            </button>
+                            <button
+                                onClick={() => setActiveTab('product-report')}
+                                className={`flex items-center gap-1 px-2 py-1 text-sm rounded transition-colors ${activeTab === 'product-report'
+                                    ? 'bg-indigo-600 text-white'
+                                    : 'bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700'
+                                    }`}
+                            >
+                                <Package size={12} />
+                                Product Report Details
+                            </button>
+                        </>
                     )}
                 </div>
             </div>
 
             {/* Content */}
-            <div className={`flex-1 ${(activeTab === 'sales-report' || activeTab === 'order-list') ? 'overflow-hidden p-0' : 'overflow-auto p-3 pb-20 md:pb-3'}`}>
+            <div className={`flex-1 ${(activeTab === 'sales-report' || activeTab === 'product-report' || activeTab === 'order-list') ? 'overflow-hidden p-0' : 'overflow-auto p-3 pb-20 md:pb-3'}`}>
                 {activeTab === 'sales-report' && (
                     <DarazSalesReport isEmbedded={true} />
+                )}
+                {activeTab === 'product-report' && (
+                    <DarazProductReport isEmbedded={true} />
                 )}
                 {activeTab === 'daily' && (
                     <Card className="overflow-hidden hidden md:block">

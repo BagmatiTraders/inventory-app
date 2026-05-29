@@ -267,22 +267,35 @@ export async function getDarazOrderDetailsForReport(orderNumber: string) {
 export async function getSellerAccounts() {
     const supabase = await createClient()
 
-    // Query distinct seller_account from items
-    // Using a remote procedure call or simple distinct select
-    const { data, error } = await supabase
-        .from('daraz_order_items')
-        .select('seller_account')
-        .not('seller_account', 'is', null)
-        .order('seller_account')
+    const accounts = new Set<string>()
+    let page = 0
+    const pageSize = 1000
 
-    if (error) {
-        console.error('Error fetching seller accounts:', error)
-        return []
+    while (true) {
+        const { data, error } = await supabase
+            .from('daraz_order_items')
+            .select('seller_account')
+            .not('seller_account', 'is', null)
+            .range(page * pageSize, (page + 1) * pageSize - 1)
+
+        if (error) {
+            console.error('Error fetching seller accounts page:', error)
+            break
+        }
+
+        if (!data || data.length === 0) break
+
+        data.forEach((item: any) => {
+            if (item.seller_account) {
+                accounts.add(item.seller_account)
+            }
+        })
+
+        if (data.length < pageSize) break
+        page++
     }
 
-    // Client-side unique because 'distinct' via JS select is easier than RPC sometimes
-    const accounts = Array.from(new Set(data?.map((item: any) => item.seller_account) || [])).filter(Boolean)
-    return accounts
+    return Array.from(accounts).sort()
 }
 
 export async function getProfitTrackerData(params: GetOrderReportParams) {

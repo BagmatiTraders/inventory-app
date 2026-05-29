@@ -292,7 +292,8 @@ function ProfitTrackerContent({ isEmbedded = false }: { isEmbedded?: boolean }) 
         totalRevenue: number, 
         totalCost: number,
         orderCount: number,
-        statsBySeller: Record<string, { profit: number, revenue: number, cost: number, count: number }> 
+        totalMissing: number,
+        statsBySeller: Record<string, { profit: number, revenue: number, cost: number, count: number, missing: number }> 
     }> = {};
 
     Object.keys(stats).forEach(date => {
@@ -311,6 +312,7 @@ function ProfitTrackerContent({ isEmbedded = false }: { isEmbedded?: boolean }) 
                 totalRevenue: 0, 
                 totalCost: 0,
                 orderCount: 0,
+                totalMissing: 0,
                 statsBySeller: {} 
             };
         }
@@ -321,15 +323,17 @@ function ProfitTrackerContent({ isEmbedded = false }: { isEmbedded?: boolean }) 
         // Summing cost and order count requires iterating through sellers for the day
         Object.entries(day.statsBySeller).forEach(([seller, s]: [string, any]) => {
             if (!weeklyMap[weekKey].statsBySeller[seller]) {
-                weeklyMap[weekKey].statsBySeller[seller] = { profit: 0, revenue: 0, cost: 0, count: 0 };
+                weeklyMap[weekKey].statsBySeller[seller] = { profit: 0, revenue: 0, cost: 0, count: 0, missing: 0 };
             }
             weeklyMap[weekKey].statsBySeller[seller].profit += (s.profit || 0);
             weeklyMap[weekKey].statsBySeller[seller].revenue += (s.revenue || 0);
             weeklyMap[weekKey].statsBySeller[seller].cost += (s.cost || 0);
             weeklyMap[weekKey].statsBySeller[seller].count += (s.count || 0);
+            weeklyMap[weekKey].statsBySeller[seller].missing += (s.missing || 0);
             
             weeklyMap[weekKey].totalCost += (s.cost || 0);
             weeklyMap[weekKey].orderCount += (s.count || 0);
+            weeklyMap[weekKey].totalMissing += (s.missing || 0);
         });
     });
 
@@ -904,7 +908,14 @@ function ProfitTrackerContent({ isEmbedded = false }: { isEmbedded?: boolean }) 
                                                         <TableCell className="font-bold py-4">
                                                             <div className="flex flex-col">
                                                                 <span>{format(week.start, 'MMM d')} - {format(week.end, 'MMM d, yyyy')}</span>
-                                                                <span className="text-xs text-gray-500 font-normal">Week {format(week.start, 'w')}</span>
+                                                                <div className="flex items-center gap-2 mt-0.5">
+                                                                    <span className="text-xs text-gray-500 font-normal">Week {format(week.start, 'w')}</span>
+                                                                    {week.totalMissing > 0 && (
+                                                                        <span className="inline-flex items-center gap-0.5 text-[9px] font-bold text-red-500">
+                                                                            ⚠️ {week.totalMissing} unsynced
+                                                                        </span>
+                                                                    )}
+                                                                </div>
                                                             </div>
                                                         </TableCell>
                                                         <TableCell className="text-right font-medium">{week.orderCount}</TableCell>
@@ -932,7 +943,14 @@ function ProfitTrackerContent({ isEmbedded = false }: { isEmbedded?: boolean }) 
                                                         .map(([seller, s]) => (
                                                             <TableRow key={`${weekKey}-${seller}`} className="border-b border-gray-100 dark:border-zinc-800/50 hover:bg-gray-50/50 dark:hover:bg-zinc-800/30">
                                                                 <TableCell className="pl-8 text-sm text-gray-500">
-                                                                    {seller}
+                                                                    <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
+                                                                        <span>{seller}</span>
+                                                                        {s.missing > 0 && (
+                                                                            <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-red-500 bg-red-50 dark:bg-red-950/30 px-1.5 py-0.5 rounded border border-red-200 dark:border-red-900/50">
+                                                                                {s.missing} unsynced {s.missing === 1 ? 'order' : 'orders'}
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
                                                                 </TableCell>
                                                                 <TableCell className="text-right text-sm text-gray-500">{s.count}</TableCell>
                                                                 <TableCell className="text-right text-sm text-gray-500">Rs. {s.revenue.toLocaleString()}</TableCell>
