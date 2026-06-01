@@ -29,6 +29,8 @@ export interface Product {
     is_deleted: boolean
     status?: string // 'Active' | 'Inactive'
     product_combos?: { count: number }[]
+    sales_priority?: boolean
+    priority_seller_account?: string | null
 }
 
 export interface ProductCombo {
@@ -428,6 +430,8 @@ export async function createProduct(data: {
     seller_account4?: string
     combo_items?: Array<{ child_product_id: string; quantity: number }>
     import_flag?: boolean
+    sales_priority?: boolean
+    priority_seller_account?: string | null
 }) {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
@@ -460,6 +464,8 @@ export async function createProduct(data: {
             seller_account3: data.seller_account3 || null,
             seller_sku4: data.seller_sku4 || null,
             seller_account4: data.seller_account4 || null,
+            sales_priority: data.sales_priority ?? false,
+            priority_seller_account: data.priority_seller_account || null,
             created_by: user.id,
             updated_by: user.id,
             import_flag: data.import_flag || false,
@@ -522,6 +528,8 @@ export async function updateProduct(
         seller_sku4: string
         seller_account4: string
         combo_items: Array<{ child_product_id: string; quantity: number }>
+        sales_priority: boolean
+        priority_seller_account: string | null
     }>
 ) {
     const supabase = await createClient()

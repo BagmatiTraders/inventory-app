@@ -56,11 +56,11 @@ export function DeleteProductButton({ productId, productName, userRole, isPendin
         return (
             <button
                 disabled
-                className="px-3 py-1 text-sm text-orange-600 bg-orange-50 dark:bg-orange-900/20 rounded cursor-not-allowed flex items-center gap-1"
+                className="w-full text-left px-3 py-2 text-xs font-semibold text-orange-600 dark:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-950/20 rounded cursor-not-allowed flex items-center gap-1.5 transition-colors"
                 title="Delete pending approval"
             >
-                <Clock size={14} />
-                Pending
+                <Clock size={13} />
+                Pending Approval
             </button>
         )
     }
@@ -69,10 +69,10 @@ export function DeleteProductButton({ productId, productName, userRole, isPendin
         <button
             onClick={handleDelete}
             disabled={isDeleting}
-            className="px-3 py-1 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+            className="w-full text-left px-3 py-2 text-xs font-semibold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/20 rounded-md disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5 transition-colors"
         >
             <Trash2 size={13} />
-            {isDeleting ? 'Deleting...' : 'Delete'}
+            {isDeleting ? 'Deleting...' : 'Delete Product'}
         </button>
     )
 }

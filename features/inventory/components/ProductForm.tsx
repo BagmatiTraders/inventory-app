@@ -28,6 +28,8 @@ export function ProductForm({ initialData, onSubmit, onCancel, isSubmitting }: P
 
     // Seller SKUs
     const [sellerSku1, setSellerSku1] = useState(initialData?.seller_sku1 || '')
+    const [salesPriority, setSalesPriority] = useState<boolean>(initialData?.sales_priority || false)
+    const [prioritySellerAccount, setPrioritySellerAccount] = useState<string>(initialData?.priority_seller_account || '')
     const [sellerAccount1, setSellerAccount1] = useState(initialData?.seller_account1 || '')
     const [sellerSku2, setSellerSku2] = useState(initialData?.seller_sku2 || '')
     const [sellerAccount2, setSellerAccount2] = useState(initialData?.seller_account2 || '')
@@ -70,9 +72,11 @@ export function ProductForm({ initialData, onSubmit, onCancel, isSubmitting }: P
             productType !== (initialData?.product_type || 'single') ||
             sellerSku1 !== (initialData?.seller_sku1 || '') ||
             sellerAccount1 !== (initialData?.seller_account1 || '') ||
+            salesPriority !== (initialData?.sales_priority || false) ||
+            prioritySellerAccount !== (initialData?.priority_seller_account || '') ||
             comboItems.length > 0
         setHasChanges(changed)
-    }, [productName, imageUrl, productType, sellerSku1, sellerAccount1, comboItems, initialData])
+    }, [productName, imageUrl, productType, sellerSku1, sellerAccount1, salesPriority, prioritySellerAccount, comboItems, initialData])
 
     const handleCancelWithWarning = () => {
         if (hasChanges) {
@@ -240,6 +244,8 @@ export function ProductForm({ initialData, onSubmit, onCancel, isSubmitting }: P
             seller_account3: sellerAccount3.trim() || undefined,
             seller_sku4: sellerSku4.trim() || undefined,
             seller_account4: sellerAccount4.trim() || undefined,
+            sales_priority: salesPriority,
+            priority_seller_account: salesPriority ? (prioritySellerAccount.trim() || null) : null,
             combo_items: productType === 'combo' ? finalComboItems.map(item => ({
                 child_product_id: item.child_product_id,
                 quantity: item.quantity
@@ -538,6 +544,56 @@ export function ProductForm({ initialData, onSubmit, onCancel, isSubmitting }: P
                     </div>
                 )
             }
+
+            {/* Sales Priority Selection */}
+            <div className="border dark:border-zinc-700 rounded-lg p-3 bg-amber-50/50 dark:bg-amber-950/10 space-y-3">
+                <h3 className="text-sm font-medium text-amber-900 dark:text-amber-300">Sales Priority</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div>
+                        <label className="block text-xs font-medium mb-1">
+                            Enable Sales Priority
+                        </label>
+                        <select
+                            value={salesPriority ? 'Yes' : 'No'}
+                            onChange={(e) => {
+                                const isYes = e.target.value === 'Yes'
+                                setSalesPriority(isYes)
+                                if (!isYes) {
+                                    setPrioritySellerAccount('')
+                                }
+                            }}
+                            className="w-full px-2.5 py-1.5 text-sm border dark:border-zinc-700 rounded-md focus:ring-2 focus:ring-blue-500 dark:bg-zinc-900"
+                        >
+                            <option value="No">No</option>
+                            <option value="Yes">Yes</option>
+                        </select>
+                    </div>
+
+                    {salesPriority && (
+                        <div>
+                            <label className="block text-xs font-medium mb-1">
+                                Priority Seller Account <span className="text-red-500">*</span>
+                            </label>
+                            <select
+                                value={prioritySellerAccount}
+                                onChange={(e) => setPrioritySellerAccount(e.target.value)}
+                                className="w-full px-2.5 py-1.5 text-sm border dark:border-zinc-700 rounded-md focus:ring-2 focus:ring-blue-500 dark:bg-zinc-900"
+                                required
+                            >
+                                <option value="">Select priority account...</option>
+                                {Array.from(new Set([
+                                    sellerAccount1,
+                                    sellerAccount2,
+                                    sellerAccount3,
+                                    sellerAccount4
+                                ])).filter(Boolean).map(acc => (
+                                    <option key={acc} value={acc}>{acc}</option>
+                                ))}
+                            </select>
+                        </div>
+                    )}
+                </div>
+            </div>
 
             {/* Action Buttons */}
             <div className="flex items-center justify-end gap-3 pt-3 border-t dark:border-zinc-700">

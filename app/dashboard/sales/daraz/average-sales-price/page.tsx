@@ -9,6 +9,7 @@ import { getDarazAvgPrices, updateDarazAvgPrice, bulkUpdateDarazAvgPrice, syncDa
 export default function DarazAverageSalesPricePage() {
     const [data, setData] = useState<DarazAvgPriceItem[]>([])
     const [isLoading, setIsLoading] = useState(true)
+    const [salesDays, setSalesDays] = useState<number>(60)
     const [isSyncing, setIsSyncing] = useState(false)
     const [isPulling, setIsPulling] = useState(false)
     const [isSyncingLive, setIsSyncingLive] = useState(false)
@@ -18,6 +19,7 @@ export default function DarazAverageSalesPricePage() {
 
     const [isUpdatingStock, setIsUpdatingStock] = useState(false)
     const [showOnlyStockOut, setShowOnlyStockOut] = useState(false)
+    const [showPriorityOnly, setShowPriorityOnly] = useState<boolean>(false)
     const [filterAccount, setFilterAccount] = useState<string>('')
     const [livePriceFilter, setLivePriceFilter] = useState<'' | 'daraz' | 'website' | 'mrp'>('')
     const [stockModalProduct, setStockModalProduct] = useState<DarazAvgPriceItem | null>(null)
@@ -71,13 +73,14 @@ export default function DarazAverageSalesPricePage() {
     const [search, setSearch] = useState('')
     const [debouncedSearch, setDebouncedSearch] = useState('')
 
-    const hasFilters = search || filterAccount || showOnlyStockOut || livePriceFilter || filterHasPurchasing;
+    const hasFilters = search || filterAccount || showOnlyStockOut || livePriceFilter || filterHasPurchasing || showPriorityOnly;
     const clearFilters = () => {
         setSearch('')
         setFilterAccount('')
         setShowOnlyStockOut(false)
         setLivePriceFilter('')
         setFilterHasPurchasing(false)
+        setShowPriorityOnly(false)
         setCurrentPage(1)
     }
 
@@ -143,13 +146,13 @@ export default function DarazAverageSalesPricePage() {
     }, [search])
 
     useEffect(() => {
-        loadData()
-    }, [])
+        loadData(salesDays)
+    }, [salesDays])
 
-    async function loadData() {
+    async function loadData(days: number = salesDays) {
         setIsLoading(true)
         try {
-            const result = await getDarazAvgPrices()
+            const result = await getDarazAvgPrices(days)
             setData(result)
         } catch (error) {
             console.error('Failed to load data:', error)
@@ -700,6 +703,10 @@ export default function DarazAverageSalesPricePage() {
             matches = (item.purchasing_price != null && item.purchasing_price > 0);
         }
 
+        if (showPriorityOnly && matches) {
+            matches = item.sales_priority === true;
+        }
+
         return matches;
     })
 
@@ -745,6 +752,26 @@ export default function DarazAverageSalesPricePage() {
                         {allSellerAccounts.map(acc => (
                             <option key={acc} value={acc}>{acc}</option>
                         ))}
+                    </select>
+
+                    <select
+                        className="h-[42px] w-[160px] flex-none rounded-[12px] border border-[#E5E7EB] bg-white text-[13px] px-[16px] font-semibold text-gray-700 outline-none focus:border-[#4F46E5] focus:ring-4 focus:ring-[#4F46E5]/[0.08] cursor-pointer"
+                        value={salesDays}
+                        onChange={e => { setSalesDays(Number(e.target.value)); setCurrentPage(1); }}
+                    >
+                        <option value={30}>30 Days Sales</option>
+                        <option value={60}>60 Days Sales</option>
+                        <option value={90}>90 Days Sales</option>
+                        <option value={120}>120 Days Sales</option>
+                    </select>
+
+                    <select
+                        className="h-[42px] w-[160px] flex-none rounded-[12px] border border-[#E5E7EB] bg-white text-[13px] px-[16px] font-semibold text-gray-700 outline-none focus:border-[#4F46E5] focus:ring-4 focus:ring-[#4F46E5]/[0.08] cursor-pointer"
+                        value={showPriorityOnly ? 'Priority' : 'All'}
+                        onChange={e => { setShowPriorityOnly(e.target.value === 'Priority'); setCurrentPage(1); }}
+                    >
+                        <option value="All">All Products</option>
+                        <option value="Priority">Priority Products</option>
                     </select>
 
                     <div className="relative flex-1 min-w-[260px]">
@@ -1009,9 +1036,26 @@ export default function DarazAverageSalesPricePage() {
                                                         }
 
                                                         return (
-                                                            <div className={`font-medium truncate w-60 ${nameColorClass}`} title={violationTooltip}>
-                                                                {item.product_name}
-                                                                {isOutOfStock && <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300">OUT</span>}
+                                                            <div className="flex flex-col gap-0.5">
+                                                                <div className={`font-medium truncate w-60 ${nameColorClass}`} title={violationTooltip}>
+                                                                    {item.product_name}
+                                                                    {isOutOfStock && <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300">OUT</span>}
+                                                                </div>
+                                                                {item.sales_priority && item.priority_seller_account && (
+                                                                    <div className="mt-0.5 flex items-center select-none">
+                                                                        <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800 text-[10px] font-bold">
+                                                                            Priority Account: {item.priority_seller_account}
+                                                                        </span>
+                                                                    </div>
+                                                                )}
+                                                                {item.sold_qty !== undefined && item.sold_qty > 30 && (
+                                                                    <div className="text-[11px] text-[#4F46E5] dark:text-indigo-400 font-semibold mt-0.5 flex items-center gap-1 select-none">
+                                                                        <span className="inline-flex items-center justify-center px-1.5 py-0.2 rounded bg-indigo-50 dark:bg-indigo-950/40 text-[#4F46E5] dark:text-indigo-300 border border-indigo-150 dark:border-indigo-800 text-[10px] font-bold">
+                                                                            {item.sold_qty} sold
+                                                                        </span>
+                                                                        <span className="text-gray-400 dark:text-gray-500 font-normal">in {salesDays} days</span>
+                                                                    </div>
+                                                                )}
                                                             </div>
                                                         )
                                                     })()}
@@ -1072,6 +1116,10 @@ export default function DarazAverageSalesPricePage() {
                                                     const regularPrice = liveDetails.special_price ? liveDetails.price : null;
                                                     const isAboveMrp = item.mrp_price != null && sellingPrice > item.mrp_price;
 
+                                                    // Identify the matching account for this SKU index
+                                                    const accountName = [item.seller_account1, item.seller_account2, item.seller_account3, item.seller_account4][idx];
+                                                    const accountSoldQty = accountName ? (item.sold_qty_by_account?.[accountName] || 0) : 0;
+
                                                     return (
                                                         <td key={idx} className="text-right border-l border-gray-100 dark:border-zinc-800 align-top pt-3 bg-purple-50/10 dark:bg-purple-900/10 p-4 align-middle">
                                                             <div className="flex flex-col items-end gap-0.5">
@@ -1102,6 +1150,12 @@ export default function DarazAverageSalesPricePage() {
                                                                     );
                                                                 })()}
 
+                                                                {/* Account specific sold quantity display */}
+                                                                {accountSoldQty > 0 && (
+                                                                    <span className="text-[10px] text-[#4F46E5] dark:text-indigo-400 font-bold mt-1 bg-indigo-50/50 dark:bg-indigo-950/30 px-1.5 py-0.5 rounded border border-indigo-100 dark:border-indigo-850 select-none">
+                                                                        {accountSoldQty} sold
+                                                                    </span>
+                                                                )}
                                                             </div>
                                                         </td>
                                                     )

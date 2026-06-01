@@ -1,8 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import { getProducts, exportProducts, toggleProductStatus } from '@/features/inventory/actions/product-actions'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { getProducts, exportProducts, toggleProductStatus, updateProduct } from '@/features/inventory/actions/product-actions'
 import { ArrowLeft, Plus, Upload, Download, Search, X, Package, Trash2, Box, Image as ImageIcon } from 'lucide-react'
 import Link from 'next/link'
 import Image from 'next/image'
@@ -23,8 +23,54 @@ export default function ProductListPage() {
     const [viewProductId, setViewProductId] = useState<string | null>(null)
     const [editProductId, setEditProductId] = useState<string | null>(null)
 
+    // Priority and More menu states
+    const [priorityEditId, setPriorityEditId] = useState<string | null>(null)
+    const [moreMenuId, setMoreMenuId] = useState<string | null>(null)
+    const [isSavingPriority, setIsSavingPriority] = useState(false)
+
     // Get real user role from permission context
     const { userRole } = usePermissions()
+    const queryClient = useQueryClient()
+
+    const handleSetPriority = async (product: any, priority: boolean) => {
+        setIsSavingPriority(true)
+        try {
+            let prioritySellerAccount = product.priority_seller_account;
+            if (priority) {
+                // Find configured seller accounts
+                const accounts = [
+                    product.seller_account1,
+                    product.seller_account2,
+                    product.seller_account3,
+                    product.seller_account4
+                ].filter(Boolean);
+
+                if (accounts.length === 0) {
+                    alert('Please configure seller accounts for this product first by editing it.');
+                    setIsSavingPriority(false);
+                    setPriorityEditId(null);
+                    return;
+                }
+                if (!prioritySellerAccount) {
+                    prioritySellerAccount = accounts[0];
+                }
+            } else {
+                prioritySellerAccount = null;
+            }
+
+            await updateProduct(product.id, {
+                sales_priority: priority,
+                priority_seller_account: prioritySellerAccount
+            });
+
+            queryClient.invalidateQueries({ queryKey: ['products'] });
+        } catch (err: any) {
+            alert(`Failed to save priority: ${err.message}`);
+        } finally {
+            setIsSavingPriority(false);
+            setPriorityEditId(null);
+        }
+    }
 
     // Fetch products with pagination and search
     const { data, isLoading, error } = useQuery({
@@ -301,20 +347,91 @@ export default function ProductListPage() {
                                                 <td className="px-2 md:px-4 py-3 text-sm font-mono text-gray-500 dark:text-gray-400">
                                                     #{product.product_id}
                                                 </td>
-                                                <td className="hidden md:table-cell px-4 py-3">
-                                                    <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                        <button
-                                                            onClick={() => setViewProductId(product.id)}
-                                                            className="px-2.5 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 rounded hover:bg-gray-50 dark:hover:bg-zinc-700 transition-colors shadow-sm"
-                                                        >
-                                                            View
-                                                        </button>
-                                                        <div className="scale-90">
-                                                            <DeleteProductButton
-                                                                productId={product.id}
-                                                                productName={product.product_name}
-                                                                userRole={userRole ?? 'user'}
-                                                            />
+                                                <td className="hidden md:table-cell px-4 py-3 relative">
+                                                    <div className="flex items-center justify-end gap-2">
+                                                        {/* Priority Button Wrapper */}
+                                                        <div className="relative">
+                                                            <button
+                                                                onClick={() => {
+                                                                    setPriorityEditId(priorityEditId === product.id ? null : product.id);
+                                                                    setMoreMenuId(null);
+                                                                }}
+                                                                className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all shadow-sm ${
+                                                                    product.sales_priority
+                                                                        ? 'bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white border-none shadow-md shadow-amber-500/10 hover:shadow-lg hover:shadow-amber-500/20 active:scale-95'
+                                                                        : 'bg-white dark:bg-zinc-900 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-zinc-700 hover:border-amber-500 dark:hover:border-amber-500 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-amber-50/10 dark:hover:bg-amber-950/10 active:scale-95'
+                                                                }`}
+                                                            >
+                                                                Priority{product.sales_priority ? ': Yes' : ''}
+                                                            </button>
+
+                                                            {priorityEditId === product.id && (
+                                                                <>
+                                                                    {/* Fixed full-screen backdrop to detect click-out */}
+                                                                    <div className="fixed inset-0 z-40 cursor-default" onClick={() => setPriorityEditId(null)} />
+                                                                    {/* Floating Dropdown */}
+                                                                    <div className="absolute right-0 mt-1.5 w-32 rounded-lg bg-white dark:bg-zinc-800 border border-gray-150 dark:border-zinc-700 shadow-xl z-50 py-1 overflow-hidden animate-in fade-in slide-in-from-top-1 duration-100">
+                                                                        <button
+                                                                            disabled={isSavingPriority}
+                                                                            onClick={() => handleSetPriority(product, true)}
+                                                                            className="w-full text-left px-3 py-2 text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/20 flex items-center gap-1.5 transition-colors"
+                                                                        >
+                                                                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                                                                            Yes
+                                                                        </button>
+                                                                        <button
+                                                                            disabled={isSavingPriority}
+                                                                            onClick={() => handleSetPriority(product, false)}
+                                                                            className="w-full text-left px-3 py-2 text-xs font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/20 flex items-center gap-1.5 transition-colors"
+                                                                        >
+                                                                            <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+                                                                            No
+                                                                        </button>
+                                                                    </div>
+                                                                </>
+                                                            )}
+                                                        </div>
+
+                                                        {/* More Button Wrapper */}
+                                                        <div className="relative">
+                                                            <button
+                                                                onClick={() => {
+                                                                    setMoreMenuId(moreMenuId === product.id ? null : product.id);
+                                                                    setPriorityEditId(null);
+                                                                }}
+                                                                className="px-3 py-1.5 text-xs font-semibold text-indigo-600 dark:text-indigo-400 bg-white dark:bg-zinc-900 border border-indigo-200 dark:border-indigo-900/50 hover:bg-indigo-50 dark:hover:bg-indigo-950/20 hover:border-indigo-400 dark:hover:border-indigo-800 rounded-lg shadow-sm transition-all active:scale-95"
+                                                            >
+                                                                More
+                                                            </button>
+
+                                                            {moreMenuId === product.id && (
+                                                                <>
+                                                                    {/* Fixed full-screen backdrop to detect click-out */}
+                                                                    <div className="fixed inset-0 z-40 cursor-default" onClick={() => setMoreMenuId(null)} />
+                                                                    {/* Floating Dropdown */}
+                                                                    <div className="absolute right-0 mt-1.5 w-40 rounded-lg bg-white dark:bg-zinc-800 border border-gray-150 dark:border-zinc-700 shadow-xl z-50 py-1 overflow-hidden animate-in fade-in slide-in-from-top-1 duration-100">
+                                                                        <button
+                                                                            onClick={() => {
+                                                                                setViewProductId(product.id);
+                                                                                setMoreMenuId(null);
+                                                                            }}
+                                                                            className="w-full text-left px-3 py-2 text-xs font-semibold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-zinc-700 flex items-center gap-1.5 transition-colors"
+                                                                        >
+                                                                            View
+                                                                        </button>
+                                                                        
+                                                                        <div className="border-t border-gray-100 dark:border-zinc-700 my-1" />
+                                                                        
+                                                                        <div className="px-1 py-0.5">
+                                                                            <DeleteProductButton
+                                                                                productId={product.id}
+                                                                                productName={product.product_name}
+                                                                                userRole={userRole ?? 'user'}
+                                                                            />
+                                                                        </div>
+                                                                    </div>
+                                                                </>
+                                                            )}
                                                         </div>
                                                     </div>
                                                 </td>

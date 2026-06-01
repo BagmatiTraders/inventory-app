@@ -47,10 +47,101 @@ export interface DarazAvgPriceItem {
     website_regular_price?: number | null
     website_special_price?: number | null
     mrp_price?: number | null
+    sold_qty?: number
+    sold_qty_by_account?: Record<string, number>
+    seller_account1?: string | null
+    seller_account2?: string | null
+    seller_account3?: string | null
+    seller_account4?: string | null
+    sales_priority?: boolean
+    priority_seller_account?: string | null
 }
 
-export async function getDarazAvgPrices() {
+async function getSoldQuantitiesMap(days: number) {
     const supabase = await createClient()
+
+    const startDate = new Date()
+    startDate.setDate(startDate.getDate() - days)
+    const startDateStr = startDate.toISOString().split('T')[0]
+
+    let rawItems: any[] = []
+    let fetchPage = 0
+    const FETCH_SIZE = 1000
+    let hasMore = true
+
+    const NON_SOLD_STATUSES = [
+        'Returned Delivered', 'returned delivered',
+        'Customer Return Delivered', 'customer return delivered',
+        'Cancelled', 'cancelled', 'Cancel', 'cancel',
+        'unpaid', 'Unpaid',
+    ]
+
+    while (hasMore) {
+        const from = fetchPage * FETCH_SIZE
+        const to = from + FETCH_SIZE - 1
+
+        let pageQuery = supabase
+            .from('daraz_order_items')
+            .select(`
+                product_id,
+                quantity,
+                item_status,
+                seller_account,
+                daraz_orders!inner(
+                    order_date,
+                    order_status,
+                    deleted
+                )
+            `)
+            .not('product_id', 'is', null)
+            .gte('daraz_orders.order_date', startDateStr)
+            .range(from, to)
+
+        const { data, error } = await pageQuery
+        if (error) {
+            console.error('[getSoldQuantitiesMap] fetch error:', error)
+            break
+        }
+
+        if (!data || data.length === 0) {
+            hasMore = false
+        } else {
+            rawItems = rawItems.concat(data)
+            if (data.length < FETCH_SIZE) {
+                hasMore = false
+            } else {
+                fetchPage++
+            }
+        }
+    }
+
+    const soldQtyMap = new Map<string, { total: number; accounts: Record<string, number> }>()
+    rawItems.forEach((item: any) => {
+        if (item.daraz_orders?.deleted) return
+
+        const status = (item.item_status || item.daraz_orders?.order_status || '').trim().toLowerCase()
+        const isNonSold = NON_SOLD_STATUSES.some(s => s.toLowerCase() === status)
+        if (isNonSold) return
+
+        const qty = item.quantity || 1
+        const pid = item.product_id
+        const sellerAccount = item.seller_account || 'Unknown'
+        if (pid) {
+            if (!soldQtyMap.has(pid)) {
+                soldQtyMap.set(pid, { total: 0, accounts: {} })
+            }
+            const entry = soldQtyMap.get(pid)!
+            entry.total += qty
+            entry.accounts[sellerAccount] = (entry.accounts[sellerAccount] || 0) + qty
+        }
+    })
+
+    return soldQtyMap
+}
+
+export async function getDarazAvgPrices(days: number = 60) {
+    const supabase = await createClient()
+    const soldQtyMap = await getSoldQuantitiesMap(days)
 
     // 1. Fetch all products from pricing view
     const { data: productsData, error: productsError } = await supabase
@@ -89,7 +180,7 @@ export async function getDarazAvgPrices() {
     // 1b. Fetch SKUs from products table (since view might not have them)
     const { data: skusData, error: skuError } = await supabase
         .from('products')
-        .select('id, seller_sku1, seller_account1, seller_sku2, seller_account2, seller_sku3, seller_account3, seller_sku4, seller_account4')
+        .select('id, seller_sku1, seller_account1, seller_sku2, seller_account2, seller_sku3, seller_account3, seller_sku4, seller_account4, sales_priority, priority_seller_account')
 
     if (skuError) {
         console.error('Error fetching SKUs from products table:', skuError)
@@ -215,56 +306,96 @@ export async function getDarazAvgPrices() {
         })
     }
 
-    // 3. Fetch Delivered Daraz Orders with fees to find the LATEST commission per product
-    const { data: ordersWithItems, error: ordersError } = await supabase
-        .from('daraz_orders')
-        .select(`
-            daraz_fees,
-            created_at,
-            order_date,
-            items:daraz_order_items(product_id, seller_sku, amount, quantity)
-        `)
-        .eq('order_status', 'Delivered')
-        .not('daraz_fees', 'is', null) // Can be positive or negative
-        .order('created_at', { ascending: false }) // Sort by latest first
+    // 3. Fetch recent delivered order items to calculate accurate product commissions
+    let rawOrderItems: any[] = []
+    try {
+        let page = 0
+        const PAGE_SIZE = 1000
+        const MAX_PAGES = 5 // Fetch up to 5000 items
 
-    if (ordersError) {
-        console.error('Error fetching orders for commission:', ordersError)
-    }
+        while (page < MAX_PAGES) {
+            const from = page * PAGE_SIZE
+            const to = from + PAGE_SIZE - 1
+            
+            const { data, error } = await supabase
+                .from('daraz_order_items')
+                .select(`
+                    product_id,
+                    seller_sku,
+                    amount,
+                    quantity,
+                    daraz_orders!inner(
+                        id,
+                        daraz_fees,
+                        order_status,
+                        deleted
+                    )
+                `)
+                .eq('daraz_orders.order_status', 'Delivered')
+                .eq('daraz_orders.deleted', false)
+                .not('daraz_orders.daraz_fees', 'is', null)
+                .order('created_at', { ascending: false })
+                .range(from, to)
 
-    // Map product_id to its latest fee %
-    const latestCommissionMap = new Map<string, number>()
-
-    if (ordersWithItems) {
-        ordersWithItems.forEach((order: any) => {
-            const fees = Math.abs(order.daraz_fees || 0)
-            if (fees > 0) {
-                const totalRevenue = (order.items || []).reduce((sum: number, item: any) => sum + ((item.amount || 0) * (item.quantity || 1)), 0)
-
-                if (totalRevenue > 0) {
-                    const feePercent = fees / totalRevenue
-                    // Cap it realistically e.g. 0 to 99%
-                    if (feePercent >= 0 && feePercent < 1) {
-                        const productIds = new Set<string>()
-                        order.items?.forEach((item: any) => {
-                            let pid = item.product_id
-                            if (!pid && item.seller_sku) {
-                                pid = reverseSkuMap.get(item.seller_sku.toLowerCase().trim())
-                            }
-                            if (pid) productIds.add(pid)
-                        })
-
-                        productIds.forEach(pid => {
-                            // Since orders are sorted latest first, only set it if it's the first time we see this product
-                            if (!latestCommissionMap.has(pid)) {
-                                latestCommissionMap.set(pid, feePercent)
-                            }
-                        })
-                    }
-                }
+            if (error) {
+                console.error('Error fetching order items for commission:', error)
+                break
             }
-        })
+            if (!data || data.length === 0) break
+            
+            rawOrderItems = rawOrderItems.concat(data)
+            if (data.length < PAGE_SIZE) break
+            page++
+        }
+    } catch (err) {
+        console.error('Exception fetching order items for commission:', err)
     }
+
+    // Compile order total revenue and order items count
+    const orderRevenueMap = new Map<string, number>()
+    const orderItemCountMap = new Map<string, number>()
+
+    rawOrderItems.forEach((item: any) => {
+        const orderId = item.daraz_orders?.id
+        if (!orderId) return
+        const itemRevenue = (item.amount || 0) * (item.quantity || 1)
+        
+        orderRevenueMap.set(orderId, (orderRevenueMap.get(orderId) || 0) + itemRevenue)
+        orderItemCountMap.set(orderId, (orderItemCountMap.get(orderId) || 0) + 1)
+    })
+
+    // Group rates by product
+    const productCommissionDataMap = new Map<string, { singleItemRates: number[], multiItemRates: number[] }>()
+
+    rawOrderItems.forEach((item: any) => {
+        let pid = item.product_id
+        if (!pid && item.seller_sku) {
+            pid = reverseSkuMap.get(item.seller_sku.toLowerCase().trim())
+        }
+        if (!pid) return
+
+        const orderId = item.daraz_orders?.id
+        const orderFees = Math.abs(item.daraz_orders?.daraz_fees || 0)
+        const orderRevenue = orderRevenueMap.get(orderId) || 0
+        const orderItemCount = orderItemCountMap.get(orderId) || 1
+
+        if (orderRevenue <= 0 || orderFees <= 0) return
+
+        const rate = orderFees / orderRevenue
+        // Filter out extreme outlier rates (cap between 2% and 55% for safety)
+        if (rate < 0.02 || rate > 0.55) return
+
+        if (!productCommissionDataMap.has(pid)) {
+            productCommissionDataMap.set(pid, { singleItemRates: [], multiItemRates: [] })
+        }
+
+        const entry = productCommissionDataMap.get(pid)!
+        if (orderItemCount === 1) {
+            entry.singleItemRates.push(rate)
+        } else {
+            entry.multiItemRates.push(rate)
+        }
+    })
 
     // 3b. Fetch Website Prices from Ecommerce DB
     const ecommerceSupabaseUrl = process.env.NEXT_PUBLIC_ECOMMERCE_SUPABASE_URL
@@ -309,11 +440,22 @@ export async function getDarazAvgPrices() {
         const purchasingRemark = isCombo ? comboData.remark : baseData.remark
 
         // Latest Commission Percent
-        // Default is 25%; also treat any real commission below 15% as 25% (too low to be realistic)
-        const actualCommission = latestCommissionMap.has(p.product_id) ? latestCommissionMap.get(p.product_id)! : null
-        const isBelowMinimum = actualCommission !== null && actualCommission < 0.15
-        const isDefaultCommission = actualCommission === null || isBelowMinimum
-        const commissionPercent = isDefaultCommission ? 0.25 : actualCommission // 25% default
+        // Use single-item order rates first as they are 100% accurate, fallback to multi-item rates, then default to 25%
+        const commData = productCommissionDataMap.get(p.product_id)
+        let commissionPercent = 0.25
+        let isDefaultCommission = true
+
+        if (commData) {
+            if (commData.singleItemRates.length > 0) {
+                const sum = commData.singleItemRates.reduce((a, b) => a + b, 0)
+                commissionPercent = sum / commData.singleItemRates.length
+                isDefaultCommission = false
+            } else if (commData.multiItemRates.length > 0) {
+                const sum = commData.multiItemRates.reduce((a, b) => a + b, 0)
+                commissionPercent = sum / commData.multiItemRates.length
+                isDefaultCommission = false
+            }
+        }
 
         // Calculations
         let breakevenPrice = 0
@@ -357,6 +499,8 @@ export async function getDarazAvgPrices() {
             ? mrpMapById.get(p.product_id)
             : (p.product_name ? mrpMapByName.get(p.product_name.toLowerCase().trim()) : null)
 
+        const salesEntry = soldQtyMap.get(p.product_id)
+
         return {
             product_id: p.product_id,
             product_name: p.product_name,
@@ -366,6 +510,10 @@ export async function getDarazAvgPrices() {
             seller_sku2: prodSkus.seller_sku2 || null,
             seller_sku3: prodSkus.seller_sku3 || null,
             seller_sku4: prodSkus.seller_sku4 || null,
+            seller_account1: prodSkus.seller_account1 || null,
+            seller_account2: prodSkus.seller_account2 || null,
+            seller_account3: prodSkus.seller_account3 || null,
+            seller_account4: prodSkus.seller_account4 || null,
             seller_accounts: sellerAccounts,
             purchasing_price: purchasingPrice,
             purchasing_remark: purchasingRemark,
@@ -381,9 +529,16 @@ export async function getDarazAvgPrices() {
             live_prices: productLivePrices,
             website_regular_price: websitePrices.regular_price,
             website_special_price: websitePrices.special_price,
-            mrp_price: mrpPrice || null
+            mrp_price: mrpPrice || null,
+            sold_qty: salesEntry ? salesEntry.total : 0,
+            sold_qty_by_account: salesEntry ? salesEntry.accounts : {},
+            sales_priority: prodSkus.sales_priority || false,
+            priority_seller_account: prodSkus.priority_seller_account || null
         }
     })
+
+    // Sort by sold_qty descending
+    result.sort((a, b) => (b.sold_qty || 0) - (a.sold_qty || 0))
 
     return result
 }
