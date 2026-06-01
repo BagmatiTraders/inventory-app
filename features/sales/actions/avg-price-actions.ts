@@ -854,7 +854,7 @@ export async function syncLiveSellerPricesForProduct(productId: string) {
  * Push the Daraz Price (market_price) for one product to Daraz as a special price.
  * Special price date range: today -> 4 years from today.
  */
-export async function pushPriceToDaraz(productId: string) {
+export async function pushPriceToDaraz(productId: string, targetStoreIds?: string[]) {
     try {
         const supabase = await createClient()
         const appKey = process.env.NEXT_PUBLIC_DARAZ_APP_KEY
@@ -883,8 +883,14 @@ export async function pushPriceToDaraz(productId: string) {
         const marketPrice = priceRow?.market_price
         if (!marketPrice || marketPrice <= 0) throw new Error('Daraz Price is 0 or not set - enter a price first')
 
-        const { data: tokens, error: tokensErr } = await supabase.from('daraz_api_tokens').select('*')
+        let { data: tokens, error: tokensErr } = await supabase.from('daraz_api_tokens').select('*')
         if (tokensErr || !tokens || tokens.length === 0) throw new Error('No connected seller stores found')
+
+        if (targetStoreIds && targetStoreIds.length > 0) {
+            tokens = tokens.filter(t => targetStoreIds.includes(t.store_id))
+        }
+
+        if (tokens.length === 0) throw new Error('No matching connected seller accounts found for selection')
 
         const { data: livePrices } = await supabase
             .from('daraz_live_prices')

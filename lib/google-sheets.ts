@@ -9,17 +9,36 @@ export async function getGoogleSheetsClient() {
         return google.sheets({ version: 'v4', auth: cachedAuth });
     }
 
-    let client_email = '';
-    let private_key = '';
+    let client_email = (process.env.GOOGLE_CLIENT_EMAIL || '').trim();
+    let private_key = (process.env.GOOGLE_PRIVATE_KEY || '').trim();
 
-    // In production (Vercel), use direct environment variables for credentials
-    if (process.env.GOOGLE_CLIENT_EMAIL && process.env.GOOGLE_PRIVATE_KEY) {
-        client_email = process.env.GOOGLE_CLIENT_EMAIL;
-        private_key = process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n');
+    // Strip surrounding quotes if present
+    if (client_email.startsWith('"') && client_email.endsWith('"')) {
+        client_email = client_email.slice(1, -1);
+    }
+    if (client_email.startsWith("'") && client_email.endsWith("'")) {
+        client_email = client_email.slice(1, -1);
+    }
+    if (private_key.startsWith('"') && private_key.endsWith('"')) {
+        private_key = private_key.slice(1, -1);
+    }
+    if (private_key.startsWith("'") && private_key.endsWith("'")) {
+        private_key = private_key.slice(1, -1);
+    }
+
+    if (client_email && private_key) {
+        private_key = private_key.replace(/\\n/g, '\n');
     } else {
         // Explicitly load the service account JSON to avoid ADC path resolution issues
         // on Windows with spaces in the path (used for local development).
-        const credPath = process.env.GOOGLE_APPLICATION_CREDENTIALS
+        let credPath = (process.env.GOOGLE_APPLICATION_CREDENTIALS || '').trim();
+        if (credPath.startsWith('"') && credPath.endsWith('"')) {
+            credPath = credPath.slice(1, -1);
+        }
+        if (credPath.startsWith("'") && credPath.endsWith("'")) {
+            credPath = credPath.slice(1, -1);
+        }
+
         if (!credPath) {
             throw new Error('Missing Google Service Account credentials. Set GOOGLE_CLIENT_EMAIL and GOOGLE_PRIVATE_KEY (for Vercel), or GOOGLE_APPLICATION_CREDENTIALS (for local).')
         }

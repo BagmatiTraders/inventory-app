@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react'
 import { Card, Button } from '@/components/ui-shim'
-import { Search, ChevronLeft, ChevronRight, Edit2, Check, X, Loader2, RefreshCw, AlertTriangle, ArrowLeft, UploadCloud } from 'lucide-react'
+import { Search, ChevronLeft, ChevronRight, Edit2, Check, X, Loader2, RefreshCw, AlertTriangle, ArrowLeft, UploadCloud, ArrowDown } from 'lucide-react'
 import Image from 'next/image'
 import Link from 'next/link'
 import { getDarazAvgPrices, updateDarazAvgPrice, bulkUpdateDarazAvgPrice, syncDarazAvgPricesGoogleSheets, pullDarazAvgPricesFromGoogleSheets, syncLiveSellerPrices, pushPriceToDaraz, DarazAvgPriceItem, updateWebsitePricesBulk, syncLiveSellerPricesForProduct } from '@/features/sales/actions/avg-price-actions'
@@ -38,6 +38,9 @@ export default function DarazAverageSalesPricePage() {
     const [websiteDiscountType, setWebsiteDiscountType] = useState<'amount' | 'percent' | 'daraz_price' | 'daraz_campaign'>('daraz_price')
     const [websiteDiscountValue, setWebsiteDiscountValue] = useState<string>('')
     const [isWebsitePushing, setIsWebsitePushing] = useState(false)
+    const [pushSelectProduct, setPushSelectProduct] = useState<DarazAvgPriceItem | null>(null)
+    const [bulkPushModalOpen, setBulkPushModalOpen] = useState(false)
+    const [filterHasPurchasing, setFilterHasPurchasing] = useState(false)
 
     // Drag to scroll
     const scrollContainerRef = useRef<HTMLDivElement>(null)
@@ -62,18 +65,19 @@ export default function DarazAverageSalesPricePage() {
 
     // Pagination
     const [currentPage, setCurrentPage] = useState(1)
-    const itemsPerPage = 50
+    const [itemsPerPage, setItemsPerPage] = useState(50)
 
     // Search
     const [search, setSearch] = useState('')
     const [debouncedSearch, setDebouncedSearch] = useState('')
 
-    const hasFilters = search || filterAccount || showOnlyStockOut || livePriceFilter;
+    const hasFilters = search || filterAccount || showOnlyStockOut || livePriceFilter || filterHasPurchasing;
     const clearFilters = () => {
         setSearch('')
         setFilterAccount('')
         setShowOnlyStockOut(false)
         setLivePriceFilter('')
+        setFilterHasPurchasing(false)
         setCurrentPage(1)
     }
 
@@ -85,6 +89,53 @@ export default function DarazAverageSalesPricePage() {
     const [editMarketPrice, setEditMarketPrice] = useState<string>('')
     const [editCampaignPrice, setEditCampaignPrice] = useState<string>('')
     const [isSaving, setIsSaving] = useState(false)
+
+    // Helper to get stores with live price for a single product
+    const getStoresWithLivePrice = (item: DarazAvgPriceItem) => {
+        const storesMap = new Map<string, { store_id: string; store_name: string; price: number; special_price: number | null; sku: string }>()
+        Object.entries(item.live_prices || {}).forEach(([sku, lp]) => {
+            if (lp.store_id) {
+                if (!storesMap.has(lp.store_id)) {
+                    storesMap.set(lp.store_id, {
+                        store_id: lp.store_id,
+                        store_name: lp.store_name,
+                        price: lp.price,
+                        special_price: lp.special_price,
+                        sku
+                    })
+                }
+            }
+        })
+        return Array.from(storesMap.values())
+    }
+
+    // Helper to get stores with live price for bulk selection
+    const getBulkStoresWithLivePrice = (selectedItems: DarazAvgPriceItem[]) => {
+        const storesMap = new Map<string, { store_id: string; store_name: string; count: number }>()
+        selectedItems.forEach(item => {
+            const itemStores = new Set<string>()
+            Object.values(item.live_prices || {}).forEach(lp => {
+                if (lp.store_id) {
+                    itemStores.add(lp.store_id)
+                }
+            })
+            itemStores.forEach(storeId => {
+                const lpVal = Object.values(item.live_prices || {}).find(lp => lp.store_id === storeId)
+                const storeName = lpVal ? lpVal.store_name : 'Unknown'
+                const existing = storesMap.get(storeId)
+                if (existing) {
+                    existing.count += 1
+                } else {
+                    storesMap.set(storeId, {
+                        store_id: storeId,
+                        store_name: storeName,
+                        count: 1
+                    })
+                }
+            })
+        })
+        return Array.from(storesMap.values())
+    }
 
     useEffect(() => {
         const timer = setTimeout(() => setDebouncedSearch(search), 500)
@@ -158,11 +209,12 @@ export default function DarazAverageSalesPricePage() {
         }
     }
 
-    const handlePushPrice = async (productId: string, productName: string) => {
-        if (!confirm(`Push Daraz Price to Daraz account for "${productName}"?\nThis will set the Special Price on all linked SKUs.`)) return
+    const handlePushPrice = async (productId: string, productName: string, targetStoreIds?: string[]) => {
+        const storeLabel = targetStoreIds && targetStoreIds.length > 0 ? "selected store account(s)" : "all connected accounts"
+        if (!confirm(`Push Daraz Price to Daraz for "${productName}"?\nThis will set the Special Price on ${storeLabel}.`)) return
         setPushingId(productId)
         try {
-            const res = await pushPriceToDaraz(productId)
+            const res = await pushPriceToDaraz(productId, targetStoreIds)
             if (res.success) {
                 alert(`✓ Price pushed!\n${res.message}`)
             } else {
@@ -354,13 +406,14 @@ export default function DarazAverageSalesPricePage() {
         }
     }
 
-    const handleBulkPush = async () => {
+    const handleBulkPush = async (targetStoreIds?: string[]) => {
         const selected = data.filter(d => selectedProductIds.has(d.product_id) && (d.market_price ?? 0) > 0)
         if (selected.length === 0) {
             alert('No valid items selected (make sure Daraz Price is set).')
             return
         }
-        if (!confirm(`Push Daraz Prices for ${selected.length} products sequentially?\nThis may take a few minutes.`)) return
+        const storeLabel = targetStoreIds && targetStoreIds.length > 0 ? "selected store account(s)" : "all connected accounts"
+        if (!confirm(`Push Daraz Prices for ${selected.length} products sequentially to ${storeLabel}?\nThis may take a few minutes.`)) return
         
         setIsBulkPushing(true)
         setBulkPushProgress({ current: 0, total: selected.length })
@@ -371,7 +424,7 @@ export default function DarazAverageSalesPricePage() {
         for (let i = 0; i < selected.length; i++) {
             setBulkPushProgress({ current: i + 1, total: selected.length })
             try {
-                const res = await pushPriceToDaraz(selected[i].product_id)
+                const res = await pushPriceToDaraz(selected[i].product_id, targetStoreIds)
                 if (res.success) {
                     successCount++
                 } else {
@@ -388,6 +441,50 @@ export default function DarazAverageSalesPricePage() {
             alertMsg += `\n\nFailed Products:\n- ${failedProducts.join('\n- ')}`
         }
         alert(alertMsg)
+    }
+
+    const handlePushToWebsiteSingle = async (item: DarazAvgPriceItem) => {
+        let activeDarazPrice = item.market_price || 0
+        if (activeDarazPrice === 0) {
+            let lowest = Infinity
+            Object.values(item.live_prices || {}).forEach(lp => {
+                const price = lp.special_price || lp.price
+                if (price > 0 && price < lowest) lowest = price
+            })
+            if (lowest !== Infinity) activeDarazPrice = lowest
+        }
+        if (activeDarazPrice === 0) {
+            activeDarazPrice = item.regular_sales_price
+        }
+
+        const currentPrice = item.website_special_price || item.website_regular_price || activeDarazPrice;
+        const input = prompt(`Enter Website Special Price to push for "${item.product_name}":\n(Regular Price will be set to Rs. ${activeDarazPrice})`, currentPrice.toString())
+        if (input === null) return // cancelled
+        const val = parseFloat(input)
+        if (isNaN(val) || val < 0) {
+            alert("Please enter a valid price.")
+            return
+        }
+
+        setPushingId(item.product_id)
+        try {
+            const updates = [{
+                inventory_id: item.product_id,
+                regular_price: activeDarazPrice,
+                special_price: Math.round(val)
+            }]
+            const res = await updateWebsitePricesBulk(updates)
+            if (res.success) {
+                alert(`✓ ${res.message}`)
+                loadData()
+            } else {
+                alert(`✗ Website Push Failed: ${res.message}`)
+            }
+        } catch (err: any) {
+            alert(`Error: ${err.message}`)
+        } finally {
+            setPushingId(null)
+        }
     }
 
     const handleWebsiteBulkPush = async () => {
@@ -599,6 +696,10 @@ export default function DarazAverageSalesPricePage() {
             matches = totalStock === 0
         }
 
+        if (filterHasPurchasing && matches) {
+            matches = (item.purchasing_price != null && item.purchasing_price > 0);
+        }
+
         return matches;
     })
 
@@ -754,7 +855,22 @@ export default function DarazAverageSalesPricePage() {
                                     <th className="w-16 text-center p-3 align-middle sticky left-[64px] top-0 z-40 bg-[#F8FAFC] dark:bg-zinc-800 shadow-[1px_1px_0_0_#e5e7eb] dark:shadow-[1px_1px_0_0_#27272a]">Img</th>
                                     <th className="w-64 p-3 text-left align-middle sticky left-[128px] top-0 z-40 bg-[#F8FAFC] dark:bg-zinc-800 shadow-[1px_1px_0_0_#e5e7eb] dark:shadow-[1px_1px_0_0_#27272a]">Product</th>
                                     <th className="w-48 p-3 text-left align-middle sticky top-0 z-30 bg-[#F8FAFC] dark:bg-zinc-800 shadow-[0_1px_0_0_#e5e7eb] dark:shadow-[0_1px_0_0_#27272a]">SKUs</th>
-                                    <th className="text-right p-3 text-left align-middle sticky top-0 z-30 bg-[#F8FAFC] dark:bg-zinc-800 shadow-[0_1px_0_0_#e5e7eb] dark:shadow-[0_1px_0_0_#27272a]">Purchasing</th>
+                                    <th className="text-right p-3 text-left align-middle sticky top-0 z-30 bg-[#F8FAFC] dark:bg-zinc-800 shadow-[0_1px_0_0_#e5e7eb] dark:shadow-[0_1px_0_0_#27272a]">
+                                        <div className="flex items-center justify-end gap-1.5 select-none group/purchasing">
+                                            <span>Purchasing</span>
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setFilterHasPurchasing(!filterHasPurchasing);
+                                                    setCurrentPage(1);
+                                                }}
+                                                className={`p-1 rounded transition-all ${filterHasPurchasing ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/50 dark:text-indigo-300 opacity-100' : 'text-gray-400 hover:bg-gray-150 dark:hover:bg-zinc-700 opacity-0 group-hover/purchasing:opacity-100 focus:opacity-100'}`}
+                                                title={filterHasPurchasing ? "Showing only products with purchasing price > 0" : "Filter out 0 / empty purchasing prices"}
+                                            >
+                                                <ArrowDown size={14} className={`transition-transform duration-200 ${filterHasPurchasing ? 'rotate-180 text-indigo-600 dark:text-indigo-400' : 'text-gray-400'}`} />
+                                            </button>
+                                        </div>
+                                    </th>
                                     <th className="text-right p-3 text-left align-middle sticky top-0 z-30 bg-[#F8FAFC] dark:bg-zinc-800 shadow-[0_1px_0_0_#e5e7eb] dark:shadow-[0_1px_0_0_#27272a]">Commission</th>
                                     <th className="text-right text-orange-600 p-3 text-left align-middle sticky top-0 z-30 bg-[#F8FAFC] dark:bg-zinc-800 shadow-[0_1px_0_0_#e5e7eb] dark:shadow-[0_1px_0_0_#27272a]">Breakeven</th>
 
@@ -839,7 +955,7 @@ export default function DarazAverageSalesPricePage() {
                                                 <td className="text-center p-4 align-middle sticky left-[64px] z-20 bg-white dark:bg-zinc-900 border-r dark:border-zinc-800">
                                                     <div className="w-10 h-10 relative bg-gray-100 dark:bg-zinc-800 rounded overflow-hidden mx-auto">
                                                         {item.image_url ? (
-                                                            <Image src={item.image_url} alt="img" fill sizes="40px" className="object-cover" />
+                                                            <img src={item.image_url} alt="img" className="w-full h-full object-cover" />
                                                         ) : (
                                                             <div className="w-full h-full flex items-center justify-center text-gray-300">
                                                                 <div className="w-4 h-4 rounded-full border-2 border-current opacity-50" />
@@ -1121,7 +1237,7 @@ export default function DarazAverageSalesPricePage() {
                                                                             <button
                                                                                 onClick={() => {
                                                                                     setActiveSyncMenuProductId(null)
-                                                                                    handlePushPrice(item.product_id, item.product_name)
+                                                                                    setPushSelectProduct(item)
                                                                                 }}
                                                                                 className="w-full text-left px-4 py-2.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-zinc-800 flex items-center gap-2 transition-colors"
                                                                             >
@@ -1137,6 +1253,16 @@ export default function DarazAverageSalesPricePage() {
                                                                             >
                                                                                 <RefreshCw size={14} className="text-blue-500" />
                                                                                 <span>Sync Live Price</span>
+                                                                            </button>
+                                                                            <button
+                                                                                onClick={() => {
+                                                                                    setActiveSyncMenuProductId(null)
+                                                                                    handlePushToWebsiteSingle(item)
+                                                                                }}
+                                                                                className="w-full text-left px-4 py-2.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-zinc-800 flex items-center gap-2 transition-colors border-t border-gray-100 dark:border-zinc-800"
+                                                                            >
+                                                                                <UploadCloud size={14} className="text-teal-500" />
+                                                                                <span>Push to Website</span>
                                                                             </button>
                                                                         </div>
                                                                     </>
@@ -1168,22 +1294,42 @@ export default function DarazAverageSalesPricePage() {
                     <div className="text-sm text-gray-500">
                         Showing {((currentPage - 1) * itemsPerPage) + 1} to {Math.min(currentPage * itemsPerPage, filteredData.length)} of {filteredData.length} entries
                     </div>
-                    <div className="flex items-center gap-2">
-                        <Button
-                            variant="outline" size="sm"
-                            onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                            disabled={currentPage === 1}
-                        >
-                            <ChevronLeft size={16} />
-                        </Button>
-                        <span className="text-sm px-2">Page {currentPage} of {totalPages}</span>
-                        <Button
-                            variant="outline" size="sm"
-                            onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                            disabled={currentPage === totalPages}
-                        >
-                            <ChevronRight size={16} />
-                        </Button>
+                    <div className="flex items-center gap-4">
+                        {/* Rows per page selector */}
+                        <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+                            <span>Rows per page:</span>
+                            <select
+                                value={itemsPerPage}
+                                onChange={(e) => {
+                                    setItemsPerPage(Number(e.target.value))
+                                    setCurrentPage(1)
+                                }}
+                                className="h-8 rounded-[8px] border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-850 px-2 text-xs font-semibold text-gray-700 dark:text-gray-300 outline-none focus:border-indigo-500 cursor-pointer shadow-sm"
+                            >
+                                <option value={50}>50</option>
+                                <option value={100}>100</option>
+                                <option value={150}>150</option>
+                            </select>
+                        </div>
+
+                        {/* Page navigation */}
+                        <div className="flex items-center gap-2">
+                            <Button
+                                variant="outline" size="sm"
+                                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                                disabled={currentPage === 1}
+                            >
+                                <ChevronLeft size={16} />
+                            </Button>
+                            <span className="text-sm px-2 whitespace-nowrap">Page {currentPage} of {totalPages}</span>
+                            <Button
+                                variant="outline" size="sm"
+                                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                                disabled={currentPage === totalPages}
+                            >
+                                <ChevronRight size={16} />
+                            </Button>
+                        </div>
                     </div>
                 </div>
             )}
@@ -1286,7 +1432,7 @@ export default function DarazAverageSalesPricePage() {
                                 </button>
 
                                 <button
-                                    onClick={handleBulkPush}
+                                    onClick={() => setBulkPushModalOpen(true)}
                                     disabled={isBulkPushing}
                                     className="flex items-center gap-2 h-[38px] px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-[13px] font-semibold transition-colors disabled:opacity-50 whitespace-nowrap"
                                 >
@@ -1494,6 +1640,182 @@ export default function DarazAverageSalesPricePage() {
                                     variant="outline"
                                     onClick={() => setStockModalProduct(null)}
                                     className="w-full border-gray-200 dark:border-zinc-700 text-gray-500 hover:bg-gray-50 dark:hover:bg-zinc-800"
+                                >
+                                    Cancel
+                                </Button>
+                            </div>
+                        </div>
+                    </Card>
+                </div>
+            )}
+
+            {/* Push single product selection modal */}
+            {pushSelectProduct && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+                    <Card className="w-full max-w-md bg-white dark:bg-zinc-900 shadow-2xl border-none rounded-2xl overflow-hidden">
+                        <div className="p-6">
+                            <div className="flex items-center justify-between mb-4">
+                                <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                                    <UploadCloud className="text-green-500" size={22} />
+                                    Push Price to Daraz
+                                </h2>
+                                <button onClick={() => setPushSelectProduct(null)} className="p-2 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-full transition-colors">
+                                    <X size={20} className="text-gray-500" />
+                                </button>
+                            </div>
+
+                            <div className="mb-4 bg-gray-50 dark:bg-zinc-800/50 p-3 rounded-xl border border-gray-100 dark:border-zinc-800">
+                                <div className="text-sm font-semibold text-gray-700 dark:text-gray-300 truncate mb-1">
+                                    {pushSelectProduct.product_name}
+                                </div>
+                                <div className="text-xs text-gray-500 dark:text-gray-400">
+                                    Price to push: <span className="font-bold text-blue-600 dark:text-blue-400">Rs. {pushSelectProduct.market_price?.toLocaleString() || '-'}</span>
+                                </div>
+                            </div>
+
+                            <div className="space-y-2 mt-4">
+                                <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
+                                    Select Store Account:
+                                </div>
+                                
+                                {/* All Accounts Option */}
+                                <button
+                                    onClick={() => {
+                                        setPushSelectProduct(null)
+                                        handlePushPrice(pushSelectProduct.product_id, pushSelectProduct.product_name)
+                                    }}
+                                    className="w-full text-left px-4 py-3 bg-indigo-50 dark:bg-indigo-950/30 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 rounded-xl font-semibold text-sm transition-colors border border-indigo-100 dark:border-indigo-900 flex items-center justify-between shadow-sm"
+                                >
+                                    <span>All Accounts</span>
+                                    <span className="text-xs bg-indigo-200 dark:bg-indigo-900 px-2 py-0.5 rounded-full">Default</span>
+                                </button>
+
+                                {/* Stores with Live Price */}
+                                {(() => {
+                                    const stores = getStoresWithLivePrice(pushSelectProduct);
+                                    if (stores.length === 0) {
+                                        return (
+                                            <div className="text-xs text-gray-400 dark:text-gray-500 italic p-3 text-center bg-gray-50 dark:bg-zinc-800/20 rounded-xl border border-dashed border-gray-200 dark:border-zinc-800">
+                                                No accounts with live prices found. You can still push to All Accounts.
+                                            </div>
+                                        )
+                                    }
+                                    return stores.map(store => (
+                                        <button
+                                            key={store.store_id}
+                                            onClick={() => {
+                                                setPushSelectProduct(null)
+                                                handlePushPrice(pushSelectProduct.product_id, pushSelectProduct.product_name, [store.store_id])
+                                            }}
+                                            className="w-full text-left px-4 py-3 bg-white dark:bg-zinc-800 hover:bg-gray-50 dark:hover:bg-zinc-700 text-gray-700 dark:text-gray-200 rounded-xl text-sm transition-colors border border-gray-200 dark:border-zinc-700 flex items-center justify-between group shadow-sm"
+                                        >
+                                            <span className="font-semibold group-hover:text-blue-600 dark:group-hover:text-blue-400">{store.store_name}</span>
+                                            <span className="text-xs text-gray-500 dark:text-gray-400">
+                                                Live: Rs. {(store.special_price || store.price).toLocaleString()}
+                                            </span>
+                                        </button>
+                                    ))
+                                })()}
+                            </div>
+
+                            <div className="mt-6 flex justify-end">
+                                <Button
+                                    variant="outline"
+                                    onClick={() => setPushSelectProduct(null)}
+                                    className="border-gray-200 dark:border-zinc-700 text-gray-500 hover:bg-gray-50 dark:hover:bg-zinc-800"
+                                >
+                                    Cancel
+                                </Button>
+                            </div>
+                        </div>
+                    </Card>
+                </div>
+            )}
+
+            {/* Bulk push selection modal */}
+            {bulkPushModalOpen && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+                    <Card className="w-full max-w-md bg-white dark:bg-zinc-900 shadow-2xl border-none rounded-2xl overflow-hidden">
+                        <div className="p-6">
+                            <div className="flex items-center justify-between mb-4">
+                                <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                                    <UploadCloud className="text-green-500" size={22} />
+                                    Bulk Push to Daraz
+                                </h2>
+                                <button onClick={() => setBulkPushModalOpen(false)} className="p-2 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-full transition-colors">
+                                    <X size={20} className="text-gray-500" />
+                                </button>
+                            </div>
+
+                            {(() => {
+                                const selected = data.filter(d => selectedProductIds.has(d.product_id) && (d.market_price ?? 0) > 0);
+                                const totalSelected = selected.length;
+                                
+                                if (totalSelected === 0) {
+                                    return (
+                                        <div className="text-center py-6 text-red-500 font-semibold text-sm">
+                                            No valid items selected (make sure Daraz Price is set).
+                                        </div>
+                                    )
+                                }
+
+                                const stores = getBulkStoresWithLivePrice(selected);
+
+                                return (
+                                    <>
+                                        <div className="mb-4 bg-gray-50 dark:bg-zinc-800/50 p-3 rounded-xl border border-gray-100 dark:border-zinc-800 text-sm text-gray-600 dark:text-gray-400">
+                                            You are pushing prices for <span className="font-bold text-indigo-600 dark:text-indigo-400">{totalSelected}</span> selected product(s).
+                                        </div>
+
+                                        <div className="space-y-2 mt-4">
+                                            <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
+                                                Select Store Account to push to:
+                                            </div>
+                                            
+                                            {/* All Accounts Option */}
+                                            <button
+                                                onClick={() => {
+                                                    setBulkPushModalOpen(false)
+                                                    handleBulkPush()
+                                                }}
+                                                className="w-full text-left px-4 py-3 bg-indigo-50 dark:bg-indigo-950/30 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 rounded-xl font-semibold text-sm transition-colors border border-indigo-100 dark:border-indigo-900 flex items-center justify-between shadow-sm"
+                                            >
+                                                <span>All Accounts</span>
+                                                <span className="text-xs bg-indigo-200 dark:bg-indigo-900 px-2 py-0.5 rounded-full">Default</span>
+                                            </button>
+
+                                            {/* Stores with Live Price */}
+                                            {stores.length === 0 ? (
+                                                <div className="text-xs text-gray-400 dark:text-gray-500 italic p-3 text-center bg-gray-50 dark:bg-zinc-800/20 rounded-xl border border-dashed border-gray-200 dark:border-zinc-800">
+                                                    No accounts with live prices found for selected products. You can still push to All Accounts.
+                                                </div>
+                                            ) : (
+                                                stores.map(store => (
+                                                    <button
+                                                        key={store.store_id}
+                                                        onClick={() => {
+                                                            setBulkPushModalOpen(false)
+                                                            handleBulkPush([store.store_id])
+                                                        }}
+                                                        className="w-full text-left px-4 py-3 bg-white dark:bg-zinc-800 hover:bg-gray-50 dark:hover:bg-zinc-700 text-gray-700 dark:text-gray-200 rounded-xl text-sm transition-colors border border-gray-200 dark:border-zinc-700 flex items-center justify-between group shadow-sm"
+                                                    >
+                                                        <span className="font-semibold group-hover:text-blue-600 dark:group-hover:text-blue-400">{store.store_name}</span>
+                                                        <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">
+                                                            {store.count} / {totalSelected} products live
+                                                        </span>
+                                                    </button>
+                                                ))
+                                            )}
+                                        </div>
+                                    </>
+                                )
+                            })()}
+
+                            <div className="mt-6 flex justify-end">
+                                <Button
+                                    variant="outline"
+                                    onClick={() => setBulkPushModalOpen(false)}
+                                    className="border-gray-200 dark:border-zinc-700 text-gray-500 hover:bg-gray-50 dark:hover:bg-zinc-800"
                                 >
                                     Cancel
                                 </Button>
