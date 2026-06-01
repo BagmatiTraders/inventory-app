@@ -451,20 +451,34 @@ function ProfitTrackerContent({ isEmbedded = false }: { isEmbedded?: boolean }) 
                         <div className="flex items-center gap-3 w-full md:w-auto overflow-x-auto no-scrollbar py-1 md:py-0">
                             <BulkSyncButton orderNumbers={visibleOrderNumbers} />
 
-                            <div className="flex p-1 bg-gray-100 dark:bg-zinc-800 rounded-lg shrink-0">
-                                {(['all', 'synced', 'not_synced'] as const).map(status => (
-                                    <button
-                                        key={status}
-                                        onClick={() => { setSyncStatus(status); setPage(1); }}
-                                        className={`px-3 py-1 text-xs font-medium rounded-md transition-all whitespace-nowrap ${syncStatus === status
-                                            ? 'bg-white dark:bg-zinc-900 text-gray-900 dark:text-gray-100 shadow-sm'
-                                            : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
-                                            }`}
-                                    >
-                                        {status === 'all' ? 'All' : status === 'synced' ? 'Synced' : 'Not Synced'}
-                                    </button>
+                            <select
+                                value={syncStatus}
+                                onChange={(e) => {
+                                    setSyncStatus(e.target.value as any)
+                                    setPage(1)
+                                }}
+                                className="h-9 px-3 text-sm rounded-md border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:text-gray-100 font-medium"
+                            >
+                                <option value="all">All</option>
+                                <option value="synced">Synced</option>
+                                <option value="not_synced">Not Synced</option>
+                            </select>
+
+                            <select
+                                value={sellerAccount}
+                                onChange={(e) => {
+                                    setSellerAccount(e.target.value)
+                                    setPage(1)
+                                }}
+                                className="h-9 px-3 text-sm rounded-md border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:text-gray-100 font-medium"
+                            >
+                                <option value="All">All Seller Accounts</option>
+                                {availableSellers.map((seller) => (
+                                    <option key={seller} value={seller}>
+                                        {seller}
+                                    </option>
                                 ))}
-                            </div>
+                            </select>
                         </div>
                     )}
                 </div>
