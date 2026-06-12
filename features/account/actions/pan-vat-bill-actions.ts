@@ -63,7 +63,7 @@ export async function getPanVatBills(filters?: {
 
     let query = supabase
         .from('pan_vat_bills')
-        .select('id, issue_bill_date_ad, issue_bill_date_bs, invoice_no, supplier_company_id, supplier_company_name, buyer_company_id, buyer_company_name, total_amount')
+        .select('*')
         .eq('is_deleted', false)
         .order('issue_bill_date_ad', { ascending: false })
 

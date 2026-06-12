@@ -223,6 +223,7 @@ async function processSingleProductAutoPlan(productId: string, supabase: any) {
             // No plan yet — create a new Pending plan
             console.log(`[AutoPlan]   → No plan found. Creating new Pending plan with qty=${needed}`)
             const stats = await getProductPurchaseStatsInternal(productId, supabase)
+            const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString() // 30 days
             const { error } = await supabase
                 .from('purchase_plans')
                 .insert({
@@ -231,6 +232,7 @@ async function processSingleProductAutoPlan(productId: string, supabase: any) {
                     quantity: needed,
                     status: 'Pending',
                     remarks: 'Auto-planned from order demand',
+                    expires_at: expiresAt,
                     snapshot_latest_price: stats.latestPrice,
                     snapshot_latest_supplier: stats.latestSupplier,
                     snapshot_low_price: stats.lowPrice,
@@ -387,6 +389,7 @@ export async function autoPlanPurchaseForOrder(orderId: string): Promise<void> {
                 } else {
                     console.log(`[AutoPlan]   → Variation: Creating Pending Confirmation plan for child ${childProductId}: qty=${demand}, remarks="${newRemarks}"`)
                     const stats = await getProductPurchaseStatsInternal(childProductId, supabase)
+                    const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString() // 30 days
                     const { error: insErr } = await supabase
                         .from('purchase_plans')
                         .insert({
@@ -395,6 +398,7 @@ export async function autoPlanPurchaseForOrder(orderId: string): Promise<void> {
                             quantity: demand,
                             status: 'Pending Confirmation',
                             remarks: newRemarks,
+                            expires_at: expiresAt,
                             snapshot_latest_price: stats.latestPrice,
                             snapshot_latest_supplier: stats.latestSupplier,
                             snapshot_low_price: stats.lowPrice,

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Plus, Search, X } from 'lucide-react'
+import { Plus, Search, X, Download } from 'lucide-react'
 import { Card } from '@/components/ui-shim'
 import { useQuery } from '@tanstack/react-query'
 import { getPanVatBills, type PanVatBill } from '@/features/account/actions/pan-vat-bill-actions'
@@ -49,6 +49,69 @@ export function PanVatBillList({ onAddBill }: PanVatBillListProps) {
         setSearch('')
     }
 
+    const handleDownloadCSV = () => {
+        if (bills.length === 0) {
+            alert('No data available to download')
+            return
+        }
+
+        // CSV Headers
+        const headers = [
+            'Bill Date (B.S)',
+            'Bill Date (A.D)',
+            'Supplier Company',
+            'Supplier PAN/VAT',
+            'Invoice No',
+            'Buyer Name',
+            'Buyer PAN/VAT',
+            'Sub Total Amount',
+            'Taxable Amount',
+            'VAT 13%',
+            'Total Amount'
+        ]
+
+        // CSV Rows
+        const rows = bills.map(bill => [
+            bill.issue_bill_date_bs || '',
+            bill.issue_bill_date_ad ? format(new Date(bill.issue_bill_date_ad), 'yyyy-MM-dd') : '',
+            bill.supplier_company_name || '',
+            bill.supplier_pan_vat || '',
+            bill.invoice_no || '',
+            bill.buyer_company_name || '',
+            bill.buyer_pan_vat || '',
+            bill.sub_total_amount || 0,
+            bill.taxable_amount || 0,
+            bill.vat_13_percent || 0,
+            bill.total_amount || 0
+        ])
+
+        // Combine headers and rows
+        const csvContent = [
+            headers.join(','),
+            ...rows.map(row => row.map(val => {
+                const stringVal = String(val).replace(/"/g, '""')
+                return stringVal.includes(',') || stringVal.includes('\n') || stringVal.includes('"') 
+                    ? `"${stringVal}"` 
+                    : stringVal
+            }).join(','))
+        ].join('\n')
+
+        // Create blob and download link
+        const blob = new Blob([new Uint8Array([0xEF, 0xBB, 0xBF]), csvContent], { type: 'text/csv;charset=utf-8;' })
+        const url = URL.createObjectURL(blob)
+        const link = document.createElement('a')
+        link.href = url
+        
+        const fyName = selectedFiscalYear ? selectedFiscalYear.name.replace(/[^a-zA-Z0-9]/g, '_') : 'all'
+        const dateStr = format(new Date(), 'yyyyMMdd_HHmmss')
+        link.setAttribute('download', `purchase_book_${fyName}_${dateStr}.csv`)
+        
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+        URL.revokeObjectURL(url)
+    }
+
     return (
         <div className="space-y-4">
             <Card className="overflow-hidden">
@@ -91,16 +154,25 @@ export function PanVatBillList({ onAddBill }: PanVatBillListProps) {
                             )}
                         </div>
 
-                        {/* Clear Button */}
-                        {(fiscalYearId !== 'all' || search) && (
+                        {/* Action buttons (Clear & Download CSV) */}
+                        <div className="flex items-center gap-2">
+                            {(fiscalYearId !== 'all' || search) && (
+                                <button
+                                    onClick={handleClearFilters}
+                                    className="flex items-center gap-1.5 px-3 py-1.5 text-[13px] border dark:border-zinc-700 rounded-md hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors whitespace-nowrap"
+                                >
+                                    <X className="h-3.5 w-3.5" />
+                                    Clear Filters
+                                </button>
+                            )}
                             <button
-                                onClick={handleClearFilters}
-                                className="flex items-center gap-1.5 px-3 py-1.5 text-[13px] border dark:border-zinc-700 rounded-md hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors whitespace-nowrap"
+                                onClick={handleDownloadCSV}
+                                className="flex items-center gap-1.5 px-3 py-1.5 text-[13px] font-semibold bg-emerald-600 hover:bg-emerald-700 text-white rounded-md transition-colors whitespace-nowrap shadow-sm"
                             >
-                                <X className="h-3.5 w-3.5" />
-                                Clear Filters
+                                <Download className="h-3.5 w-3.5" />
+                                Download CSV
                             </button>
-                        )}
+                        </div>
                     </div>
                 </div>
 
@@ -110,24 +182,25 @@ export function PanVatBillList({ onAddBill }: PanVatBillListProps) {
                         <thead className="bg-gray-50 dark:bg-zinc-800">
                             <tr>
                                 <th className="px-3 py-2 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">S.N</th>
-                                <th className="px-3 py-2 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Date (AD)</th>
-                                <th className="px-3 py-2 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Date (BS)</th>
+                                <th className="px-3 py-2 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Date (B.S)</th>
                                 <th className="px-3 py-2 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Invoice No</th>
                                 <th className="px-3 py-2 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Supplier</th>
-                                <th className="px-3 py-2 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Buyer</th>
+                                <th className="px-3 py-2 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Supplier Pan/Vat</th>
+                                <th className="px-3 py-2 text-right text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Sub Total Amount</th>
+                                <th className="px-3 py-2 text-right text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Vat 13 %</th>
                                 <th className="px-3 py-2 text-right text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Total Amount</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-200 dark:divide-zinc-800">
                             {isLoading ? (
                                 <tr>
-                                    <td colSpan={7} className="px-3 py-8 text-center text-gray-500 text-[13px]">
+                                    <td colSpan={8} className="px-3 py-8 text-center text-gray-500 text-[13px]">
                                         Loading bills...
                                     </td>
                                 </tr>
                             ) : bills.length === 0 ? (
                                 <tr>
-                                    <td colSpan={7} className="px-3 py-8 text-center text-gray-500 text-[13px]">
+                                    <td colSpan={8} className="px-3 py-8 text-center text-gray-500 text-[13px]">
                                         No bills found. Click "Add Bill" to create one.
                                     </td>
                                 </tr>
@@ -135,8 +208,7 @@ export function PanVatBillList({ onAddBill }: PanVatBillListProps) {
                                 bills.map((bill, index) => (
                                     <tr key={bill.id} className="hover:bg-gray-50 dark:hover:bg-zinc-800/50">
                                         <td className="px-3 py-2 text-[13px] text-gray-500">{index + 1}</td>
-                                        <td className="px-3 py-2 text-[13px] font-medium text-gray-900 dark:text-gray-100">{format(new Date(bill.issue_bill_date_ad), 'MMM dd, yyyy')}</td>
-                                        <td className="px-3 py-2 text-[13px] text-gray-500 dark:text-gray-400">{bill.issue_bill_date_bs}</td>
+                                        <td className="px-3 py-2 text-[13px] text-gray-900 dark:text-gray-100">{bill.issue_bill_date_bs || '-'}</td>
                                         <td className="px-3 py-2 text-[13px] font-medium">
                                             <button
                                                 onClick={() => setSelectedBillId(bill.id)}
@@ -146,14 +218,34 @@ export function PanVatBillList({ onAddBill }: PanVatBillListProps) {
                                             </button>
                                         </td>
                                         <td className="px-3 py-2 text-[13px] text-gray-900 dark:text-gray-100">{bill.supplier_company_name || '-'}</td>
-                                        <td className="px-3 py-2 text-[13px] text-gray-900 dark:text-gray-100">{bill.buyer_company_name || '-'}</td>
+                                        <td className="px-3 py-2 text-[13px] text-gray-900 dark:text-gray-100">{bill.supplier_pan_vat || '-'}</td>
+                                        <td className="px-3 py-2 text-[13px] text-right text-gray-900 dark:text-gray-100">
+                                            Rs. {(bill.sub_total_amount || 0).toLocaleString('en-NP', { minimumFractionDigits: 2 })}
+                                        </td>
+                                        <td className="px-3 py-2 text-[13px] text-right text-gray-900 dark:text-gray-100">
+                                            Rs. {(bill.vat_13_percent || 0).toLocaleString('en-NP', { minimumFractionDigits: 2 })}
+                                        </td>
                                         <td className="px-3 py-2 text-[13px] text-right font-medium text-gray-900 dark:text-gray-100">
-                                            Rs. {bill.total_amount.toLocaleString('en-NP', { minimumFractionDigits: 2 })}
+                                            Rs. {(bill.total_amount || 0).toLocaleString('en-NP', { minimumFractionDigits: 2 })}
                                         </td>
                                     </tr>
                                 ))
                             )}
                         </tbody>
+                        <tfoot className="bg-gray-100 dark:bg-zinc-800/80 font-bold border-t border-gray-200 dark:border-zinc-700">
+                            <tr>
+                                <td className="px-3 py-2 text-[13px] text-gray-900 dark:text-gray-100" colSpan={5}>Total</td>
+                                <td className="px-3 py-2 text-[13px] text-right text-gray-900 dark:text-gray-100">
+                                    Rs. {bills.reduce((sum, bill) => sum + (bill.sub_total_amount || 0), 0).toLocaleString('en-NP', { minimumFractionDigits: 2 })}
+                                </td>
+                                <td className="px-3 py-2 text-[13px] text-right text-gray-900 dark:text-gray-100">
+                                    Rs. {bills.reduce((sum, bill) => sum + (bill.vat_13_percent || 0), 0).toLocaleString('en-NP', { minimumFractionDigits: 2 })}
+                                </td>
+                                <td className="px-3 py-2 text-[13px] text-right font-extrabold text-gray-900 dark:text-gray-100">
+                                    Rs. {bills.reduce((sum, bill) => sum + (bill.total_amount || 0), 0).toLocaleString('en-NP', { minimumFractionDigits: 2 })}
+                                </td>
+                            </tr>
+                        </tfoot>
                     </table>
                 </div>
             </Card>

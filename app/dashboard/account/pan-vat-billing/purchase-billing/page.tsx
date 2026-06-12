@@ -63,7 +63,7 @@ export default function PurchaseBillingPage() {
                             }`}
                     >
                         <FileText size={12} />
-                        Pan/Vat Bill
+                        Purchase Book
                     </button>
                     <button
                         onClick={() => setActiveTab('parties-statement')}
