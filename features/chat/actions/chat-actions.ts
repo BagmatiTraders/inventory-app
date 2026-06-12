@@ -120,7 +120,7 @@ export async function syncDarazChatSessions(storeId: string) {
     } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error)
         console.error(`[ChatSync] Session sync failed for store ${storeId}:`, errorMessage)
-        return { success: false, error: errorMessage }
+        return { success: false, reason: errorMessage }
     }
 }
 

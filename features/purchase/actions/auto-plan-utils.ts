@@ -180,12 +180,29 @@ async function processSingleProductAutoPlan(productId: string, supabase: any) {
 
     console.log(`[AutoPlan]   → "${product.product_name}": demand=${demand}, stock=${stock}, needed=${needed}`)
 
-    const { data: existingPlan } = await supabase
+    const { data: existingPlans, error: plansErr } = await supabase
         .from('purchase_plans')
         .select('id, status, quantity, remarks')
         .eq('product_id', productId)
         .in('status', ['Pending', 'Pending Confirmation'])
-        .maybeSingle()
+        .order('created_at', { ascending: true })
+
+    if (plansErr) {
+        console.error('[AutoPlan] Error fetching existing plans:', plansErr.message)
+    }
+
+    const existingPlan = existingPlans && existingPlans.length > 0 ? existingPlans[0] : null
+
+    // Self-healing: if there are duplicates, delete the extra ones
+    if (existingPlans && existingPlans.length > 1) {
+        console.warn(`[AutoPlan] ⚠️ Found ${existingPlans.length} duplicate plans for product ${productId}. Cleaning up...`)
+        const extraPlanIds = existingPlans.slice(1).map((p: any) => p.id)
+        const { error: delErr } = await supabase
+            .from('purchase_plans')
+            .delete()
+            .in('id', extraPlanIds)
+        if (delErr) console.error('[AutoPlan] Error deleting duplicate plans:', delErr.message)
+    }
 
     if (needed > 0) {
         if (existingPlan) {
@@ -299,12 +316,29 @@ export async function autoPlanPurchaseForOrder(orderId: string): Promise<void> {
             // Note: Since we bypass stock, the quantity needed is exactly the active demand for the child product.
             const demand = await getActiveDemandForProduct(childProductId, supabase)
 
-            const { data: existingPlan } = await supabase
+            const { data: existingPlans, error: plansErr } = await supabase
                 .from('purchase_plans')
                 .select('id, status, quantity, remarks')
                 .eq('product_id', childProductId)
                 .in('status', ['Pending', 'Pending Confirmation'])
-                .maybeSingle()
+                .order('created_at', { ascending: true })
+
+            if (plansErr) {
+                console.error('[AutoPlan] Error fetching existing plans for variation:', plansErr.message)
+            }
+
+            const existingPlan = existingPlans && existingPlans.length > 0 ? existingPlans[0] : null
+
+            // Self-healing: if there are duplicates, delete the extra ones
+            if (existingPlans && existingPlans.length > 1) {
+                console.warn(`[AutoPlan] ⚠️ Found ${existingPlans.length} duplicate plans for child product ${childProductId}. Cleaning up...`)
+                const extraPlanIds = existingPlans.slice(1).map((p: any) => p.id)
+                const { error: delErr } = await supabase
+                    .from('purchase_plans')
+                    .delete()
+                    .in('id', extraPlanIds)
+                if (delErr) console.error('[AutoPlan] Error deleting duplicate plans:', delErr.message)
+            }
 
             if (demand > 0) {
                 let newRemarks = product.product_name
