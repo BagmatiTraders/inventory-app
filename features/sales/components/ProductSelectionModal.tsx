@@ -16,7 +16,7 @@ interface ProductSelectionModalProps {
         stock?: number
     }>
     stockBreakdown?: any[] // List of products with stock details from getOrdersStockInfo
-    onProductSelect: (productId: string, remarks?: string) => void
+    onProductSelect: (productId: string, remarks?: string, quantity?: number) => void
 }
 
 export function ProductSelectionModal({ isOpen, onClose, products, stockBreakdown, onProductSelect }: ProductSelectionModalProps) {
@@ -213,7 +213,7 @@ export function ProductSelectionModal({ isOpen, onClose, products, stockBreakdow
                                                                     // Only pass remarks if it's a combo child. 
                                                                     // If single product (isCombo=false), pass undefined so remarks stay empty.
                                                                     const remarks = isCombo ? orderItem.product_name : undefined
-                                                                    onProductSelect(comp.id, remarks)
+                                                                    onProductSelect(comp.id, remarks, (orderItem.quantity || 1) * comp.qty)
                                                                 }}
                                                                 className="group relative flex flex-col items-start p-3 text-left border dark:border-zinc-700 rounded-xl hover:border-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/10 transition-all active:scale-[0.98] bg-white dark:bg-zinc-800 shadow-sm"
                                                             >

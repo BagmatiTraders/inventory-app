@@ -4,7 +4,7 @@ import { LocationGuard } from "@/features/security/components/LocationGuard"
 import { useSecurityCheck } from "@/features/security/hooks/useSecurityCheck"
 import { useTheme } from "@/lib/theme/ThemeProvider"
 import Link from "next/link"
-import { LogOut, LayoutDashboard, Settings, ShoppingCart, Calculator, Shield, Menu, MoreVertical, Moon, Sun, ChevronDown, ChevronRight, FileText, AlertTriangle, History, BarChart2, Package, ShoppingBag, User, Plus, Camera as CameraIcon, Wallet } from "lucide-react"
+import { LogOut, LayoutDashboard, Settings, ShoppingCart, Calculator, Shield, Menu, MoreVertical, Moon, Sun, ChevronDown, ChevronRight, FileText, AlertTriangle, History, BarChart2, Package, ShoppingBag, User, Plus, Camera as CameraIcon, Wallet, MessageSquare } from "lucide-react"
 import { logout } from "@/features/auth/actions/auth-actions"
 import { useRouter, usePathname } from "next/navigation"
 import { useState, useEffect } from "react"
@@ -148,10 +148,17 @@ function DashboardLayout({
                                 </PermissionFilteredNav>
 
                                 <PermissionFilteredNav mainRole="Daraz">
-                                    <div onClick={closeMobileMenu}>
-                                        <NavItem href="/dashboard/sales" icon={<ShoppingCart size={20} />} isCollapsed={isCollapsed}>
-                                            Sales & Orders
-                                        </NavItem>
+                                    <div className="space-y-1">
+                                        <div onClick={closeMobileMenu}>
+                                            <NavItem href="/dashboard/sales" icon={<ShoppingCart size={20} />} isCollapsed={isCollapsed}>
+                                                Sales & Orders
+                                            </NavItem>
+                                        </div>
+                                        <div onClick={closeMobileMenu}>
+                                            <NavItem href="/dashboard/chat-ai" icon={<MessageSquare size={20} />} isCollapsed={isCollapsed}>
+                                                Chat & AI
+                                            </NavItem>
+                                        </div>
                                     </div>
                                 </PermissionFilteredNav>
 

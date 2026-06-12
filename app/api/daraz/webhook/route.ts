@@ -100,6 +100,45 @@ export async function POST(request: NextRequest) {
                 const result = await syncSingleDarazOrderAction(String(tradeOrderId), store.id)
                 console.log(`[Webhook] ✅ Order ${tradeOrderId} auto-synced. Status: ${result.newStatus}`)
 
+                // Queue automated chat message if it is a new order (Pending)
+                if (result.newStatus === 'Pending') {
+                    try {
+                        const { data: chatSettings } = await supabase
+                            .from('daraz_chat_settings')
+                            .select('*')
+                            .eq('store_id', store.id)
+                            .maybeSingle()
+
+                        if (chatSettings?.auto_reply_on_new_order) {
+                            const delayMinutes = chatSettings.new_order_delay_minutes || 1
+                            const scheduledAt = new Date(Date.now() + delayMinutes * 60 * 1000).toISOString()
+                            
+                            // Check if already queued to prevent duplicate entries
+                            const { data: existingQueue } = await supabase
+                                .from('daraz_delayed_messages')
+                                .select('id')
+                                .eq('store_id', store.id)
+                                .eq('order_id', String(tradeOrderId))
+                                .maybeSingle()
+
+                            if (!existingQueue) {
+                                await supabase
+                                    .from('daraz_delayed_messages')
+                                    .insert({
+                                        store_id: store.id,
+                                        order_id: String(tradeOrderId),
+                                        txt: chatSettings.new_order_template,
+                                        scheduled_at: scheduledAt,
+                                        status: 'pending'
+                                    })
+                                console.log(`[Webhook] Queued delayed message for Order: ${tradeOrderId} at ${scheduledAt} (delay: ${delayMinutes} min)`)
+                            }
+                        }
+                    } catch (queueErr: any) {
+                        console.error('[Webhook] Failed to queue automated chat message:', queueErr.message)
+                    }
+                }
+
                 return NextResponse.json({
                     success: true,
                     message: `Order ${tradeOrderId} auto-synced`,

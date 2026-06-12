@@ -1,6 +1,6 @@
 'use server'
 
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createAdminClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 
 export interface PurchasePlan {
@@ -36,7 +36,7 @@ export interface PurchasePlan {
     }
     quantity: number
     remarks?: string
-    status: 'Pending' | 'Complete' | 'Cancel'
+    status: 'Pending' | 'Pending Confirmation' | 'Complete' | 'Cancel'
     expires_at: string
     created_at: string
     snapshot_latest_price: number
@@ -149,7 +149,7 @@ export async function checkActiveProductPlan(productId: string): Promise<boolean
         .from('purchase_plans')
         .select('*', { count: 'exact', head: true })
         .eq('product_id', productId)
-        .eq('status', 'Pending')
+        .in('status', ['Pending', 'Pending Confirmation'])
 
     return (count && count > 0) ? true : false
 }
@@ -163,12 +163,24 @@ export async function getActivePlanProductIds(): Promise<string[]> {
     const { data } = await supabase
         .from('purchase_plans')
         .select('product_id')
-        .eq('status', 'Pending')
+        .in('status', ['Pending', 'Pending Confirmation'])
 
     if (!data) return []
 
-    // Return unique IDs
-    return Array.from(new Set(data.map(plan => plan.product_id)))
+    const planProductIds = data.map(plan => plan.product_id).filter(Boolean) as string[]
+
+    if (planProductIds.length === 0) return []
+
+    // Fetch parent combo product IDs that contain these children as components
+    const { data: combos } = await supabase
+        .from('product_combos')
+        .select('parent_product_id')
+        .in('child_product_id', planProductIds)
+
+    const parentIds = combos ? combos.map((c: any) => c.parent_product_id).filter(Boolean) as string[] : []
+
+    // Return union of child IDs and parent combo IDs
+    return Array.from(new Set([...planProductIds, ...parentIds]))
 }
 
 /**
@@ -197,7 +209,7 @@ export async function createPurchasePlan(data: {
         .from('purchase_plans')
         .select('*', { count: 'exact', head: true })
         .eq('product_id', data.product_id)
-        .eq('status', 'Pending')
+        .in('status', ['Pending', 'Pending Confirmation'])
 
     if (count && count > 0) {
         throw new Error('Product Already in Purchase List')
@@ -227,7 +239,7 @@ export async function createPurchasePlan(data: {
 /**
  * Update Plan Status
  */
-export async function updatePurchasePlanStatus(id: string, status: 'Pending' | 'Complete' | 'Cancel') {
+export async function updatePurchasePlanStatus(id: string, status: 'Pending' | 'Pending Confirmation' | 'Complete' | 'Cancel') {
     const supabase = await createClient()
 
     // Determine new expiry time based on status

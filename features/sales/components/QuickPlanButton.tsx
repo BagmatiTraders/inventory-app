@@ -49,7 +49,7 @@ export function QuickPlanButton({ order, stockInfo, allOrders = [], activePlanPr
         }
     }
 
-    const handleProductSelect = async (productId: string, remarks?: string) => {
+    const handleProductSelect = async (productId: string, remarks?: string, quantity?: number) => {
         setShowProductSelection(false)
 
         if (!productId) {
@@ -68,22 +68,22 @@ export function QuickPlanButton({ order, stockInfo, allOrders = [], activePlanPr
             return
         }
 
-        // Calculate quantity from all Pending/Packed/ReadyToShip orders
-        let totalQty = 0
-        if (allOrders.length > 0) {
+        // If a precalculated quantity is provided, use it.
+        // Otherwise fallback to local calculation or 1.
+        let finalQty = quantity || 0
+        if (!finalQty && allOrders.length > 0) {
             const targetStatuses = ['pending', 'packed', 'ready to ship']
             const matchingOrders = allOrders.filter(o => targetStatuses.includes(o.order_status?.toLowerCase()))
 
             matchingOrders.forEach(o => {
                 const item = o.items?.find((i: any) => i.product_id === productId)
                 if (item) {
-                    totalQty += (item.quantity || 0)
+                    finalQty += (item.quantity || 0)
                 }
             })
         }
 
-        // If calculated total > 0, use it. Otherwise default to 1.
-        setPrefilledQuantity(totalQty > 0 ? totalQty : 1)
+        setPrefilledQuantity(finalQty > 0 ? finalQty : 1)
 
         setSelectedProductId(productId)
         if (remarks) setSelectedProductRemarks(remarks)

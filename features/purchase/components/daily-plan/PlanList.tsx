@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import React, { useState } from 'react'
 import { PurchasePlan, updatePurchasePlanStatus } from '@/features/purchase/actions/plan-actions'
 import { CountdownTimer } from './CountdownTimer'
 import { PlanDetailModal } from './PlanDetailModal'
@@ -61,6 +61,7 @@ export function PlanList({ plans, completedProductIds, onPlanUpdated }: PlanList
     }, {} as Record<string, PurchasePlan>))
 
     const pendingPlans = plans.filter(p => p.status === 'Pending' && !isPurchased(p))
+    const pendingConfirmationPlans = plans.filter(p => p.status === 'Pending Confirmation' && !isPurchased(p))
     const manualCompletePlans = plans.filter(p => p.status === 'Complete' && !isPurchased(p))
     const cancelPlans = plans.filter(p => p.status === 'Cancel')
 
@@ -149,6 +150,18 @@ export function PlanList({ plans, completedProductIds, onPlanUpdated }: PlanList
         }
     }
 
+    const handleApprovePendingConfirmation = async (plan: PurchasePlan) => {
+        if (!confirm(`Approve auto-planned purchase for "${plan.product?.product_name}"? This will move it to Pending.`)) return
+        try {
+            triggerMobileFeedback(true)
+            await updatePurchasePlanStatus(plan.id, 'Pending')
+            toast.success('Plan approved — moved to Pending')
+            onPlanUpdated?.()
+        } catch (err) {
+            toast.error('Failed to approve plan')
+        }
+    }
+
     const handleShareToWhatsApp = (plan: PurchasePlan) => {
         // Open share modal with just this plan selected
         setSelectedPlans([plan.id])
@@ -188,7 +201,7 @@ export function PlanList({ plans, completedProductIds, onPlanUpdated }: PlanList
         onPlanUpdated?.()
     }
 
-    const ActionButtons = ({ plan, type }: { plan: PurchasePlan, type: 'pending' | 'purchased' | 'complete' | 'cancel' }) => (
+    const ActionButtons = ({ plan, type }: { plan: PurchasePlan, type: 'pending' | 'pending-confirmation' | 'purchased' | 'complete' | 'cancel' }) => (
         <div className="flex items-center justify-end gap-2">
             {type === 'pending' && (
                 <>
@@ -221,6 +234,28 @@ export function PlanList({ plans, completedProductIds, onPlanUpdated }: PlanList
                 </>
             )}
 
+            {type === 'pending-confirmation' && (
+                <>
+                    {/* Approve Button */}
+                    <button
+                        onClick={() => handleApprovePendingConfirmation(plan)}
+                        className="px-2 py-1 bg-amber-500 hover:bg-amber-600 text-white text-xs rounded flex items-center gap-1 border border-amber-600"
+                        title="Approve auto-planned item"
+                    >
+                        <Check size={14} /> Approve
+                    </button>
+
+                    {/* Cancel Button */}
+                    <button
+                        onClick={() => handleMarkCancel(plan)}
+                        className="px-2 py-1 bg-red-50 hover:bg-red-100 text-red-600 text-xs rounded flex items-center gap-1 border border-red-200"
+                        title="Dismiss auto-planned item"
+                    >
+                        Dismiss
+                    </button>
+                </>
+            )}
+
             {type === 'purchased' && (
                 <button disabled className="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded font-bold flex items-center gap-1 border border-gray-200 cursor-not-allowed">
                     <Check size={14} /> Done
@@ -245,19 +280,22 @@ export function PlanList({ plans, completedProductIds, onPlanUpdated }: PlanList
         </div>
     )
 
-    const RenderTable = ({ data, title, colorClass, type }: { data: PurchasePlan[], title: string, colorClass: string, type: 'pending' | 'purchased' | 'complete' | 'cancel' }) => {
+    const RenderTable = ({ data, title, colorClass, type, headerBadge }: { data: PurchasePlan[], title: string, colorClass: string, type: 'pending' | 'pending-confirmation' | 'purchased' | 'complete' | 'cancel', headerBadge?: React.ReactNode }) => {
         if (data.length === 0) return null
 
         return (
             <Card className="mb-6 border-none shadow-none md:border md:shadow-sm bg-transparent md:bg-white md:dark:bg-zinc-900">
                 <CardHeader className="sticky top-0 z-10 py-3 px-4 md:px-6 bg-gray-100/95 dark:bg-zinc-800/95 backdrop-blur supports-[backdrop-filter]:bg-gray-100/60 border-b dark:border-zinc-700 md:static md:bg-gray-50 md:dark:bg-zinc-800 rounded-t-lg">
-                    <div className="flex justify-between items-center">
-                        <CardTitle className={`text-base font-bold ${colorClass.replace(
-                            /text-[a-z]+-[0-9]+/,
-                            (match) => `${match} dark:text-white`
-                        )}`}>
-                            {title} ({data.length})
-                        </CardTitle>
+                    <div className="flex justify-between items-center gap-2">
+                        <div className="flex items-center gap-2">
+                            <CardTitle className={`text-base font-bold ${colorClass.replace(
+                                /text-[a-z]+-[0-9]+/,
+                                (match) => `${match} dark:text-white`
+                            )}`}>
+                                {title} ({data.length})
+                            </CardTitle>
+                            {headerBadge}
+                        </div>
 
                         {/* Bulk Share Button for Pending Plans */}
                         {type === 'pending' && selectedPlans.length > 0 && (
@@ -295,7 +333,9 @@ export function PlanList({ plans, completedProductIds, onPlanUpdated }: PlanList
                                     <th className="px-4 py-2 w-[10%]">L. Price</th>
                                     <th className="px-4 py-2 w-[15%]">L. Supplier</th>
                                     <th className="px-4 py-2 w-[10%]">Remarks</th>
-                                    <th className="px-4 py-2 w-[10%]">Expires In</th>
+                                    {type !== 'pending-confirmation' && (
+                                        <th className="px-4 py-2 w-[10%]">Expires In</th>
+                                    )}
                                     <th className="px-4 py-2 w-[15%] text-right"></th>
                                 </tr>
                             </thead>
@@ -325,9 +365,11 @@ export function PlanList({ plans, completedProductIds, onPlanUpdated }: PlanList
                                         <td className="px-4 py-2">Rs. {plan.snapshot_latest_price}</td>
                                         <td className="px-4 py-2 truncate" title={plan.snapshot_latest_supplier}>{plan.snapshot_latest_supplier}</td>
                                         <td className="px-4 py-2 truncate">{plan.remarks}</td>
-                                        <td className="px-4 py-2">
-                                            <CountdownTimer targetDate={plan.expires_at} />
-                                        </td>
+                                        {type !== 'pending-confirmation' && (
+                                            <td className="px-4 py-2">
+                                                <CountdownTimer targetDate={plan.expires_at} />
+                                            </td>
+                                        )}
                                         <td className="px-4 py-2 text-right whitespace-nowrap">
                                             <ActionButtons plan={plan} type={type} />
                                         </td>
@@ -344,7 +386,9 @@ export function PlanList({ plans, completedProductIds, onPlanUpdated }: PlanList
                                 {/* Row 1: Countdown (Left) | Low Price (Right) */}
                                 <div className="flex justify-between items-center text-[10px] pb-1.5 border-b border-dashed">
                                     <div className="font-mono text-gray-500 dark:text-white">
-                                        <CountdownTimer targetDate={plan.expires_at} />
+                                        {type !== 'pending-confirmation' && (
+                                            <CountdownTimer targetDate={plan.expires_at} />
+                                        )}
                                     </div>
                                     <div className="flex items-center gap-2">
                                         <div className="font-medium text-gray-700 dark:text-gray-300">
@@ -416,6 +460,26 @@ export function PlanList({ plans, completedProductIds, onPlanUpdated }: PlanList
                                         </div>
                                     )}
 
+                                    {type === 'pending-confirmation' && (
+                                        <div className="grid grid-cols-2 gap-2">
+                                            {/* Approve Button */}
+                                            <button
+                                                onClick={() => handleApprovePendingConfirmation(plan)}
+                                                className="w-full py-1.5 bg-amber-500 hover:bg-amber-600 text-white font-medium text-[10px] rounded flex items-center justify-center gap-1 transition-all"
+                                            >
+                                                <Check size={12} /> Approve
+                                            </button>
+
+                                            {/* Dismiss Button */}
+                                            <button
+                                                onClick={() => handleMarkCancel(plan)}
+                                                className="w-full py-1.5 bg-red-50 hover:bg-red-100 text-red-600 font-medium text-[10px] rounded flex items-center justify-center gap-1 transition-all border border-red-200"
+                                            >
+                                                Dismiss
+                                            </button>
+                                        </div>
+                                    )}
+
                                     {type === 'complete' && (
                                         <button
                                             onClick={() => handleOpenPurchaseModal(plan)}
@@ -472,6 +536,17 @@ export function PlanList({ plans, completedProductIds, onPlanUpdated }: PlanList
                 }
             `}</style>
 
+            <RenderTable
+                data={pendingConfirmationPlans}
+                title="Needs Confirmation"
+                colorClass="text-amber-600"
+                type="pending-confirmation"
+                headerBadge={
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 text-[10px] font-semibold border border-amber-300">
+                        🤖 Auto-planned
+                    </span>
+                }
+            />
             <RenderTable data={pendingPlans} title="Pending Plans" colorClass="text-yellow-600" type="pending" />
             <RenderTable data={manualCompletePlans} title="Manually Completed" colorClass="text-green-600" type="complete" />
             <RenderTable data={purchasedPlans} title="Purchased Today" colorClass="text-blue-600" type="purchased" />
