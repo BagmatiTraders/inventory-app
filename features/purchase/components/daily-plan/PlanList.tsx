@@ -43,7 +43,7 @@ export function PlanList({ plans, completedProductIds, onPlanUpdated }: PlanList
 
     // Dynamic Grouping
     const isPurchased = (plan: PurchasePlan) => {
-        if (plan.status === 'Pending') return false;
+        if (plan.status === 'Pending' || plan.status === 'Pending Confirmation') return false;
         return completedProductIds.includes(plan.product_id)
     }
 

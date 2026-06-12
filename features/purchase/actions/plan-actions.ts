@@ -336,15 +336,15 @@ export async function updatePurchasePlan(id: string, data: { status?: string, qu
 export async function completePlanForProduct(productId: string) {
     const supabase = await createClient()
 
-    // Auto-complete (Purchased): 8 hours from now
-    const expiresAt = new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString()
+    // Auto-complete (Purchased): 30 minutes from now
+    const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString()
 
-    // Find active plans for this product that are Pending
+    // Find active or completed plans for this product
     const { error } = await supabase
         .from('purchase_plans')
         .update({ status: 'Complete', expires_at: expiresAt })
         .eq('product_id', productId)
-        .eq('status', 'Pending')
+        .in('status', ['Pending', 'Pending Confirmation', 'Complete'])
 
     if (error) console.error('Error auto-completing plans:', error)
 }
