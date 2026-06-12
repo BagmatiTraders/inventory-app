@@ -54,12 +54,15 @@ export interface ProductPurchaseStats {
 }
 
 /**
- * Cleanup expired plans and fetch active ones
+ * Cleanup expired plans and fetch active ones.
+ * Includes server-side deduplication: if the same product appears multiple
+ * times with an active status (Pending / Pending Confirmation), we keep only
+ * the oldest plan and delete the extras in the background.
  */
 export async function getPurchasePlans() {
     const supabase = await createClient()
 
-    // 1. Cleanup expired
+    // 1. Cleanup expired plans
     const { error: deleteError } = await supabase
         .from('purchase_plans')
         .delete()
@@ -67,7 +70,7 @@ export async function getPurchasePlans() {
 
     if (deleteError) console.error('Error cleaning up plans:', deleteError)
 
-    // 2. Fetch active
+    // 2. Fetch all plans (newest first for display)
     const { data, error } = await supabase
         .from('purchase_plans')
         .select(`
@@ -95,7 +98,42 @@ export async function getPurchasePlans() {
 
     if (error) throw new Error(error.message)
 
-    return data as PurchasePlan[]
+    const plans = (data || []) as PurchasePlan[]
+    const activeStatuses = new Set(['Pending', 'Pending Confirmation'])
+
+    // 3. Server-side deduplication — find duplicates for active plans by product_id
+    // Sort ascending by created_at to determine which is the "primary" (oldest) plan to keep
+    const sortedAsc = [...plans].sort(
+        (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+    )
+
+    const seenActive = new Map<string, string>() // product_id → primary plan id
+    const extraIds: string[] = []
+
+    for (const plan of sortedAsc) {
+        if (!activeStatuses.has(plan.status)) continue
+        if (seenActive.has(plan.product_id)) {
+            // This is a duplicate — mark for deletion
+            extraIds.push(plan.id)
+        } else {
+            seenActive.set(plan.product_id, plan.id)
+        }
+    }
+
+    // 4. Fire-and-forget: delete duplicate rows in the background
+    if (extraIds.length > 0) {
+        console.warn(`[PurchasePlans] Deduplicating ${extraIds.length} duplicate active plan(s) from DB`)
+        supabase.from('purchase_plans').delete().in('id', extraIds).then(({ error: delErr }) => {
+            if (delErr) console.error('[PurchasePlans] Error removing duplicates:', delErr.message)
+            else console.log(`[PurchasePlans] ✅ Removed ${extraIds.length} duplicate plan(s)`)
+        })
+    }
+
+    // 5. Return deduplicated list (maintaining newest-first display order)
+    const primaryIds = new Set(seenActive.values())
+    return plans.filter(p =>
+        !activeStatuses.has(p.status) || primaryIds.has(p.id)
+    ) as PurchasePlan[]
 }
 
 /**
