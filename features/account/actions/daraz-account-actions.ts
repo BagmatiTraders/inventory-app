@@ -278,9 +278,9 @@ export async function getStatementDetails(storeId: string, startDate: string, en
         }
     }
 
-    // Apply rule: Co-funded Voucher Max = Product Price Paid by Buyer * 2%
+    // Apply rule: Co-funded Voucher Max = Product Price Paid by Buyer * 3%
     // Fee is negative deduction.
-    fees.coFundedVoucherMax = -(productPricePaidByBuyer * 0.02)
+    fees.coFundedVoucherMax = -(productPricePaidByBuyer * 0.03)
 
     return {
         productPricePaidByBuyer,

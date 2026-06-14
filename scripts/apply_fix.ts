@@ -71,9 +71,9 @@ SELECT
         
         -- Item Level Deductions (Shipping & Vouchers)
         -- Columns don't exist in DB, using Frontend Estimation Logic
-        -- 3.39% Shipping + 2.00% Voucher = 5.39% of Revenue
+        -- 4.52% Shipping (4% + 13% VAT) + 3.00% Voucher = 7.52% of Revenue
         (
-            (SELECT SUM(total_amount) FROM daraz_order_items WHERE order_id = o.id) * 0.0539
+            (SELECT SUM(total_amount) FROM daraz_order_items WHERE order_id = o.id) * 0.0752
         ) -
 
         -- Fixed Extra Charge per order

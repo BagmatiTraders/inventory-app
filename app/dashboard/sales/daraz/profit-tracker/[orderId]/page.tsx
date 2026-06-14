@@ -288,13 +288,13 @@ export default function ProfitTrackerOrderPage() {
     // 4. Shipping Fee Discount (Always from Items)
     const val_shipping_discount = items.reduce((sum: number, i: any) => sum + (parseFloat(i.shipping_fee_discount_platform || 0) + parseFloat(i.shipping_fee_discount_seller || 0)), 0)
 
-    // 5. Free Shipping Max Fee (Fallback: 3.39%) - Show only if delivered
+    // 5. Free Shipping Max Fee (Fallback: 4% + 13% VAT) - Show only if delivered
     const val_free_ship_raw = calculateTotal('free_shipping_max_fee')
-    const val_free_ship = isFinanceVisible ? ((val_free_ship_raw > 0) ? val_free_ship_raw : (val_price * 0.0339)) : 0
+    const val_free_ship = isFinanceVisible ? ((val_free_ship_raw > 0) ? val_free_ship_raw : (val_price * 0.04 * 1.13)) : 0
 
-    // 6. Co-funded Voucher (Fallback: 2%) - Show only if delivered
+    // 6. Co-funded Voucher (Fallback: 3%) - Show only if delivered
     const val_voucher_raw = items.reduce((sum: number, i: any) => sum + (parseFloat(i.voucher_platform || 0) + parseFloat(i.voucher_seller || 0)), 0)
-    const val_voucher = isFinanceVisible ? ((val_voucher_raw > 0) ? val_voucher_raw : (val_price * 0.02)) : 0
+    const val_voucher = isFinanceVisible ? ((val_voucher_raw > 0) ? val_voucher_raw : (val_price * 0.03)) : 0
 
     // 7. Fees (Finance API or Fallback)
     // Commission Fee: Show only if delivered (per user request)
