@@ -17,7 +17,12 @@ function signRequest(apiName: string, params: Record<string, any>, appSecret: st
 export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams
     const code = searchParams.get('code')
-    const storeId = searchParams.get('state') // We passed storeId as state
+    const state = searchParams.get('state') || ''
+    
+    // Parse storeId and appType from state (formatted as storeId_appType)
+    const parts = state.split('_')
+    const storeId = parts[0]
+    const appType = parts[1] || 'order'
 
     if (!code) {
         return NextResponse.json({ error: 'Authorization code is missing' }, { status: 400 })
@@ -27,12 +32,16 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ error: 'Store ID (state) is missing' }, { status: 400 })
     }
 
-    const appKey = process.env.NEXT_PUBLIC_DARAZ_APP_KEY?.trim()
-    const appSecret = process.env.DARAZ_APP_SECRET?.trim()
+    const appKey = appType === 'chat'
+        ? process.env.NEXT_PUBLIC_DARAZ_CHAT_APP_KEY?.trim()
+        : process.env.NEXT_PUBLIC_DARAZ_APP_KEY?.trim()
+    const appSecret = appType === 'chat'
+        ? process.env.DARAZ_CHAT_APP_SECRET?.trim()
+        : process.env.DARAZ_APP_SECRET?.trim()
     const apiUrl = process.env.DARAZ_API_URL?.trim() || 'https://api.daraz.com.np/rest'
 
     if (!appKey || !appSecret) {
-        return NextResponse.json({ error: 'Daraz API configuration missing' }, { status: 500 })
+        return NextResponse.json({ error: `Daraz API configuration missing for ${appType} app` }, { status: 500 })
     }
 
     try {
@@ -49,7 +58,7 @@ export async function GET(request: NextRequest) {
         const authApiUrl = process.env.DARAZ_API_URL?.trim() || 'https://api.daraz.com.np/rest'
         params.sign = signRequest(apiPath, params, appSecret)
 
-        console.log('Requesting Daraz token...', { url: `${authApiUrl}${apiPath}`, params })
+        console.log(`Requesting Daraz token for ${appType} app...`, { url: `${authApiUrl}${apiPath}`, params })
 
         const response = await axios.post(`${authApiUrl}${apiPath}`, null, { params })
         const data = response.data
@@ -63,6 +72,7 @@ export async function GET(request: NextRequest) {
                 .from('daraz_api_tokens')
                 .upsert({
                     store_id: storeId,
+                    app_type: appType,
                     access_token: data.access_token,
                     refresh_token: data.refresh_token,
                     expires_in: data.expires_in,
@@ -70,18 +80,20 @@ export async function GET(request: NextRequest) {
                     account: data.account,
                     country: data.country,
                     updated_at: new Date().toISOString()
-                }, { onConflict: 'store_id' })
+                }, { onConflict: 'store_id,app_type' })
 
             if (error) {
                 console.error('Database Error:', error)
                 return NextResponse.json({ error: 'Failed to save token' }, { status: 500 })
             }
 
-            // Redirect back to Order Sync page with success
+            // Redirect back to correct page with success
             // Use NEXT_PUBLIC_APP_URL to ensure we redirect to the correct public URL (likely ngrok or production)
-            // and avoid issues where request.url might resolve to https://localhost (which fails)
             const baseUrl = process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin
-            return NextResponse.redirect(`${baseUrl}/dashboard/sales/daraz/order-sync?status=success`)
+            const redirectPath = appType === 'chat'
+                ? '/dashboard/chat-ai?status=success'
+                : '/dashboard/sales/daraz/order-sync?status=success'
+            return NextResponse.redirect(`${baseUrl}${redirectPath}`)
         } else {
             console.error('Daraz Auth Failed:', data)
             return NextResponse.json({ error: 'Failed to obtain access token', details: data }, { status: 500 })

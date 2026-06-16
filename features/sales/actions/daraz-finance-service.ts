@@ -32,10 +32,11 @@ export async function fetchDarazFinanceTransactions(orderId: string, storeId: st
         .from('daraz_api_tokens')
         .select('*')
         .eq('store_id', storeId)
-        .single()
+        .eq('app_type', 'order')
+        .maybeSingle()
 
     if (dbError || !tokenData) {
-        throw new Error('No active connection/token found for this store.')
+        throw new Error('No active connection/token found for this store. Please connect your Daraz account for Orders.')
     }
 
     let startTime = new Date()
@@ -136,10 +137,11 @@ export async function syncDarazFinances(storeId: string, startDateStr: string, e
         .from('daraz_api_tokens')
         .select('*')
         .eq('store_id', storeId)
-        .single()
+        .eq('app_type', 'order')
+        .maybeSingle()
 
     if (dbError || !tokenData) {
-        throw new Error('No active connection/token found for this store.')
+        throw new Error('No active connection/token found for this store. Please connect your Daraz account for Orders.')
     }
 
     const apiPath = '/finance/transaction/details/get'

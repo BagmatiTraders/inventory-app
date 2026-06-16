@@ -30,11 +30,11 @@ function signRequest(apiName: string, params: Record<string, unknown>, appSecret
 
 // 1. Get Store Tokens & App Config
 async function getStoreTokenAndSecret(storeId: string) {
-    const appKey = process.env.NEXT_PUBLIC_DARAZ_APP_KEY?.trim()
-    const appSecret = process.env.DARAZ_APP_SECRET?.trim()
+    const appKey = process.env.NEXT_PUBLIC_DARAZ_CHAT_APP_KEY?.trim()
+    const appSecret = process.env.DARAZ_CHAT_APP_SECRET?.trim()
 
     if (!appKey || !appSecret) {
-        throw new Error('Daraz API keys configuration missing on server env')
+        throw new Error('Daraz Chat API keys configuration missing on server env')
     }
 
     const supabase = await createAdminClient()
@@ -42,10 +42,11 @@ async function getStoreTokenAndSecret(storeId: string) {
         .from('daraz_api_tokens')
         .select('*')
         .eq('store_id', storeId)
-        .single()
+        .eq('app_type', 'chat')
+        .maybeSingle()
 
     if (error || !tokenData) {
-        throw new Error(`No active connection or token found for store: ${storeId}`)
+        throw new Error(`No active chat connection or token found for store: ${storeId}. Please connect your Daraz account for Chat.`)
     }
 
     return { appKey, appSecret, accessToken: tokenData.access_token }

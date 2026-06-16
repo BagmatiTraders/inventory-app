@@ -69,10 +69,11 @@ export async function syncSingleDarazOrderAction(orderId: string, storeId: strin
         .from('daraz_api_tokens')
         .select('*')
         .eq('store_id', storeId)
-        .single()
+        .eq('app_type', 'order')
+        .maybeSingle()
 
     if (dbError || !tokenData) {
-        throw new Error(`No active connection found for store: ${storeId}`)
+        throw new Error(`No active connection found for store: ${storeId}. Please connect your Daraz account for Orders.`)
     }
 
     try {

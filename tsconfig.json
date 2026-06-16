@@ -39,6 +39,7 @@
   ],
   "exclude": [
     "node_modules",
-    "mobile-app"
+    "mobile-app",
+    "supabase/functions"
   ]
 }

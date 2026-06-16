@@ -38,6 +38,7 @@ export async function GET(request: NextRequest) {
         .from('daraz_api_tokens')
         .select('*')
         .eq('store_id', storeId)
+        .eq('app_type', 'order')
         .single()
 
     if (dbError || !tokenData) {

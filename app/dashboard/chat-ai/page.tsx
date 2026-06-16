@@ -28,7 +28,7 @@ import {
     Shield
 } from 'lucide-react'
 import { toast } from 'sonner'
-
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui-shim'
 interface Store {
     id: string
     company_name: string
@@ -72,6 +72,9 @@ interface ChatRule {
 
 export default function ChatAiDashboard() {
     const [activeTab, setActiveTab] = useState<'chat' | 'settings'>('chat')
+    const [showAccountModal, setShowAccountModal] = useState(false)
+    const [connectedChatStores, setConnectedChatStores] = useState<string[]>([])
+    const [connectingStoreId, setConnectingStoreId] = useState<string | null>(null)
     const [stores, setStores] = useState<Store[]>([])
     const [activeStoreId, setActiveStoreId] = useState<string>('')
     const [storeSettings, setStoreSettings] = useState<Record<string, ChatSettings>>({})
@@ -100,7 +103,7 @@ export default function ChatAiDashboard() {
     // Preset tags for customer queries
     const PRESET_TAGS = ['Change Address', 'Change Phone Number', 'Wholesale Inquiry', 'Urgent Return', 'General FAQ']
 
-    // 1. Fetch initial store list
+    // 1. Fetch initial store list & active connections
     useEffect(() => {
         async function fetchStores() {
             const { data, error } = await supabase
@@ -119,6 +122,46 @@ export default function ChatAiDashboard() {
             }
         }
         fetchStores()
+        fetchConnectedChatStores()
+    }, [])
+
+    async function fetchConnectedChatStores() {
+        const { data, error } = await supabase
+            .from('daraz_api_tokens')
+            .select('store_id')
+            .eq('app_type', 'chat')
+        if (!error && data) {
+            setConnectedChatStores(data.map(d => d.store_id))
+        }
+    }
+
+    const handleConnectChat = async (storeId: string) => {
+        setConnectingStoreId(storeId)
+        try {
+            const response = await fetch(`/api/daraz/auth/url?storeId=${storeId}&appType=chat`)
+            const data = await response.json()
+            if (data.url) {
+                window.location.href = data.url
+            } else {
+                throw new Error(data.error || 'Failed to generate auth URL')
+            }
+        } catch (err: any) {
+            toast.error(err.message || 'Failed to initiate connection')
+            setConnectingStoreId(null)
+        }
+    }
+
+    useEffect(() => {
+        const params = new URLSearchParams(window.location.search)
+        if (params.get('status') === 'success') {
+            toast.success('Daraz Chat connected successfully!', {
+                description: 'Your assistant can now receive and send messages.'
+            })
+            // Clean query parameters from URL
+            const newUrl = window.location.pathname
+            window.history.replaceState({}, '', newUrl)
+            fetchConnectedChatStores()
+        }
     }, [])
 
     // 2. Fetch Settings and Rules when active store changes
@@ -401,6 +444,14 @@ export default function ChatAiDashboard() {
                             ))}
                         </select>
                     </div>
+
+                    <button
+                        onClick={() => setShowAccountModal(true)}
+                        className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-zinc-700 bg-white dark:bg-zinc-800 dark:text-zinc-200 border border-zinc-200 dark:border-zinc-700 rounded-lg shadow-sm hover:bg-zinc-50 dark:hover:bg-zinc-750 transition-all active:scale-95"
+                    >
+                        <Store size={16} className="text-zinc-500" />
+                        Daraz Account
+                    </button>
 
                     <button
                         onClick={handleSync}
@@ -961,6 +1012,51 @@ export default function ChatAiDashboard() {
                     </div>
                 </div>
             )}
+
+            {/* Daraz Chat Account Connections Modal */}
+            <Dialog open={showAccountModal} onOpenChange={setShowAccountModal}>
+                <DialogContent className="max-w-md bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800">
+                    <DialogHeader>
+                        <DialogTitle className="text-zinc-900 dark:text-zinc-100 flex items-center gap-2 text-lg font-bold">
+                            <Store className="text-orange-500" /> Daraz Chat Account
+                        </DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4 pt-2">
+                        <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                            Authorize each store for the <strong>Bagmati Traders IM Chat</strong> app (AppKey: 505350) to enable automated messaging and AI replies.
+                        </p>
+                        <div className="divide-y divide-zinc-100 dark:divide-zinc-800 border border-zinc-200 dark:border-zinc-800 rounded-lg overflow-hidden bg-zinc-50 dark:bg-zinc-950 max-h-64 overflow-y-auto">
+                            {stores.length === 0 ? (
+                                <p className="p-4 text-center text-xs text-zinc-500">No stores found.</p>
+                            ) : (
+                                stores.map(store => {
+                                    const isConnected = connectedChatStores.includes(store.id)
+                                    const isConnectingThis = connectingStoreId === store.id
+                                    return (
+                                        <div key={store.id} className="p-4 flex items-center justify-between gap-4 bg-white dark:bg-zinc-900">
+                                            <div className="min-w-0 flex-1">
+                                                <p className="text-sm font-semibold text-zinc-850 dark:text-zinc-200 truncate">{store.company_name}</p>
+                                                <p className="text-[11px] text-zinc-500 truncate">{store.seller_account}</p>
+                                            </div>
+                                            <button
+                                                disabled={isConnectingThis}
+                                                onClick={() => handleConnectChat(store.id)}
+                                                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm active:scale-95 shrink-0 ${
+                                                    isConnected
+                                                        ? 'bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-900/40 hover:bg-emerald-100'
+                                                        : 'bg-blue-600 hover:bg-blue-700 text-white font-bold'
+                                                }`}
+                                            >
+                                                {isConnectingThis ? 'Redirecting...' : isConnected ? 'Connected (Re-Auth)' : 'Connect Chat'}
+                                            </button>
+                                        </div>
+                                    )
+                                })
+                            )}
+                        </div>
+                    </div>
+                </DialogContent>
+            </Dialog>
         </div>
     )
 }

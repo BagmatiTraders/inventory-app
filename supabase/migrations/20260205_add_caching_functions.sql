@@ -39,7 +39,6 @@ BEGIN
     ORDER BY dps.date_str DESC, dps.seller;
 END;
 $$;
-
 -- Create a function to refresh the materialized view periodically
 CREATE OR REPLACE FUNCTION refresh_cache_if_needed()
 RETURNS VOID
@@ -55,7 +54,6 @@ BEGIN
     REFRESH MATERIALIZED VIEW CONCURRENTLY daily_profit_summary_cache;
 END;
 $$;
-
 -- Create a trigger function to invalidate/update cache when daraz orders change
 CREATE OR REPLACE FUNCTION update_profit_cache_on_order_change()
 RETURNS TRIGGER
@@ -80,27 +78,22 @@ BEGIN
     RETURN COALESCE(NEW, OLD);
 END;
 $$;
-
 -- Create triggers to update cache on daraz orders changes
 DROP TRIGGER IF EXISTS refresh_profit_cache_after_insert ON daraz_orders;
 DROP TRIGGER IF EXISTS refresh_profit_cache_after_update ON daraz_orders;
 DROP TRIGGER IF EXISTS refresh_profit_cache_after_delete ON daraz_orders;
-
 CREATE TRIGGER refresh_profit_cache_after_insert
     AFTER INSERT ON daraz_orders
     FOR EACH STATEMENT
     EXECUTE FUNCTION update_profit_cache_on_order_change();
-
 CREATE TRIGGER refresh_profit_cache_after_update  
     AFTER UPDATE ON daraz_orders
     FOR EACH STATEMENT
     EXECUTE FUNCTION update_profit_cache_on_order_change();
-
 CREATE TRIGGER refresh_profit_cache_after_delete
     AFTER DELETE ON daraz_orders
     FOR EACH STATEMENT
     EXECUTE FUNCTION update_profit_cache_on_order_change();
-
 -- Create function for optimized order profit calculation with caching considerations
 CREATE OR REPLACE FUNCTION get_optimized_order_report(
     page_param INTEGER DEFAULT 1,
@@ -174,7 +167,6 @@ BEGIN
     LIMIT limit_param;
 END;
 $$;
-
 -- Create function to get optimized order count for pagination
 CREATE OR REPLACE FUNCTION get_order_report_count(
     search_term TEXT DEFAULT '',
@@ -209,13 +201,11 @@ BEGIN
     RETURN count_result;
 END;
 $$;
-
 -- Grant permissions on new functions
 GRANT EXECUTE ON FUNCTION get_cached_daily_profit_summary(TEXT, TEXT, DATE, DATE, TEXT) TO authenticated;
 GRANT EXECUTE ON FUNCTION refresh_cache_if_needed() TO authenticated;
 GRANT EXECUTE ON FUNCTION get_optimized_order_report(INTEGER, INTEGER, TEXT, DATE, DATE, TEXT, TEXT) TO authenticated;
 GRANT EXECUTE ON FUNCTION get_order_report_count(TEXT, DATE, DATE, TEXT, TEXT) TO authenticated;
-
 -- Add comments to document the functions
 COMMENT ON FUNCTION get_cached_daily_profit_summary(TEXT, TEXT, DATE, DATE, TEXT) IS 'Function to get daily profit summary with caching for better performance';
 COMMENT ON FUNCTION refresh_cache_if_needed() IS 'Function to refresh materialized view cache when needed';

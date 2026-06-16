@@ -826,7 +826,7 @@ export async function syncLiveSellerPrices() {
             throw new Error('Missing Daraz API credentials')
         }
 
-        const { data: tokens, error: tokensErr } = await supabase.from('daraz_api_tokens').select('*')
+        const { data: tokens, error: tokensErr } = await supabase.from('daraz_api_tokens').select('*').eq('app_type', 'order')
         if (tokensErr || !tokens || tokens.length === 0) {
             throw new Error('No connected seller stores found')
         }
@@ -934,7 +934,7 @@ export async function syncLiveSellerPricesForProduct(productId: string) {
         const productSkus = [skuRow.seller_sku1, skuRow.seller_sku2, skuRow.seller_sku3, skuRow.seller_sku4].filter(Boolean) as string[]
         if (productSkus.length === 0) throw new Error('Product has no seller SKUs configured')
 
-        const { data: tokens, error: tokensErr } = await supabase.from('daraz_api_tokens').select('*')
+        const { data: tokens, error: tokensErr } = await supabase.from('daraz_api_tokens').select('*').eq('app_type', 'order')
         if (tokensErr || !tokens || tokens.length === 0) {
             throw new Error('No connected seller stores found')
         }
@@ -1038,7 +1038,7 @@ export async function pushPriceToDaraz(productId: string, targetStoreIds?: strin
         const marketPrice = priceRow?.market_price
         if (!marketPrice || marketPrice <= 0) throw new Error('Daraz Price is 0 or not set - enter a price first')
 
-        let { data: tokens, error: tokensErr } = await supabase.from('daraz_api_tokens').select('*')
+        let { data: tokens, error: tokensErr } = await supabase.from('daraz_api_tokens').select('*').eq('app_type', 'order')
         if (tokensErr || !tokens || tokens.length === 0) throw new Error('No connected seller stores found')
 
         if (targetStoreIds && targetStoreIds.length > 0) {
@@ -1160,7 +1160,7 @@ export async function pushStockToDaraz(
 
         if (!appKey || !appSecret) throw new Error('Missing Daraz API credentials')
 
-        const { data: tokens, error: tokensErr } = await supabase.from('daraz_api_tokens').select('*')
+        const { data: tokens, error: tokensErr } = await supabase.from('daraz_api_tokens').select('*').eq('app_type', 'order')
         if (tokensErr || !tokens || tokens.length === 0) throw new Error('No connected seller stores found')
 
         // Get SKU IDs from live prices cache to use for updates
