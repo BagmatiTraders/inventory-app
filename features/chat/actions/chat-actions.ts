@@ -71,7 +71,7 @@ export async function syncDarazChatSessions(storeId: string) {
             access_token: accessToken,
             timestamp,
             sign_method: 'sha256',
-            start_time: (Date.now() - 30 * 24 * 60 * 60 * 1000).toString(), // past 30 days
+            start_time: Date.now().toString(), // Start from current time to fetch recent sessions
             page_size: '50'
         }
 
@@ -138,7 +138,7 @@ export async function syncDarazChatMessages(storeId: string, sessionId: string) 
             timestamp,
             sign_method: 'sha256',
             session_id: sessionId,
-            start_time: (Date.now() - 3 * 24 * 60 * 60 * 1000).toString(), // past 3 days (due to 48h cleanup)
+            start_time: Date.now().toString(), // Start from current time to fetch recent messages
             page_size: '50'
         }
 
@@ -190,9 +190,9 @@ export async function syncDarazChatMessages(storeId: string, sessionId: string) 
                 newMessagesCached++
 
                 // Trigger AI or Keyword auto-reply process ONLY if message is:
-                // - Sent by buyer (from_account_type = '2')
+                // - Sent by buyer (from_account_type = '1')
                 // - Received recently (last 5 minutes)
-                const isBuyer = String(msg.from_account_type) === '2'
+                const isBuyer = String(msg.from_account_type) === '1'
                 const isRecent = (Date.now() - parseInt(String(msg.send_time))) < 5 * 60 * 1000
                 if (isBuyer && isRecent) {
                     await processIncomingMessageAutoReply(storeId, sessionId, {
@@ -264,9 +264,9 @@ export async function sendChatMessage(
             message_id: messageId,
             session_id: sessionId,
             from_account_id: 'seller', // identifier
-            from_account_type: '1', // Seller
+            from_account_type: '2', // Seller
             to_account_id: session?.buyer_id || 'buyer',
-            to_account_type: '2', // Buyer
+            to_account_type: '1', // Buyer
             content: templateId === '1' ? JSON.stringify({ txt }) : JSON.stringify({ templateId, itemId, orderId }),
             template_id: templateId,
             send_time: new Date().toISOString(),

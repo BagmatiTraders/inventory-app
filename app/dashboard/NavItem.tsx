@@ -2,7 +2,7 @@
 
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
 interface NavItemProps {
@@ -24,7 +24,23 @@ export const NavItem = ({
 }: NavItemProps) => {
   const [isOpen, setIsOpen] = useState(false);
   const pathname = usePathname();
-  const isActive = pathname === href || (subItems && subItems.some(item => pathname === item.href || pathname.startsWith(item.href + '/'))) || pathname.startsWith(href + '/');
+  const searchParams = useSearchParams();
+
+  // Helper to check if a specific link is active, considering query params if present
+  const isLinkActive = (targetHref: string) => {
+    if (targetHref.includes('?')) {
+      const [path, query] = targetHref.split('?');
+      if (pathname !== path) return false;
+      const params = new URLSearchParams(query);
+      for (const [key, val] of params.entries()) {
+        if (searchParams.get(key) !== val) return false;
+      }
+      return true;
+    }
+    return pathname === targetHref || pathname.startsWith(targetHref + '/');
+  };
+
+  const isActive = isLinkActive(href) || (subItems && subItems.some(item => isLinkActive(item.href)));
 
   // Auto-expand if active or one of sub-items is active
   useEffect(() => {
@@ -57,7 +73,7 @@ export const NavItem = ({
                 key={item.href}
                 href={item.href}
                 onClick={onMobileItemClick}
-                className={`block px-3 py-2 text-sm rounded-md transition-colors flex items-center gap-2 ${pathname === item.href
+                className={`block px-3 py-2 text-sm rounded-md transition-colors flex items-center gap-2 ${isLinkActive(item.href)
                   ? 'bg-gray-100 text-gray-900 dark:bg-zinc-800 dark:text-white font-medium'
                   : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-gray-50 dark:hover:bg-zinc-800/50'
                   }`}

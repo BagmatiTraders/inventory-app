@@ -155,7 +155,15 @@ function DashboardLayout({
                                             </NavItem>
                                         </div>
                                         <div onClick={closeMobileMenu}>
-                                            <NavItem href="/dashboard/chat-ai" icon={<MessageSquare size={20} />} isCollapsed={isCollapsed}>
+                                            <NavItem 
+                                                href="/dashboard/chat-ai?tab=chat" 
+                                                icon={<MessageSquare size={20} />} 
+                                                isCollapsed={isCollapsed}
+                                                subItems={[
+                                                    { label: 'Chat', href: '/dashboard/chat-ai?tab=chat' },
+                                                    { label: 'AI & Automation', href: '/dashboard/chat-ai?tab=settings' }
+                                                ]}
+                                            >
                                                 Chat & AI
                                             </NavItem>
                                         </div>

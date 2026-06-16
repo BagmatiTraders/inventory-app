@@ -1,6 +1,7 @@
 'use client'
 
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, Suspense } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase/client'
 import {
     syncDarazChatSessions,
@@ -73,8 +74,17 @@ interface ChatRule {
     reply_content: string
 }
 
-export default function ChatAiDashboard() {
+function ChatAiDashboardContent() {
+    const searchParams = useSearchParams()
     const [activeTab, setActiveTab] = useState<'chat' | 'settings'>('chat')
+
+    useEffect(() => {
+        const tab = searchParams.get('tab')
+        if (tab === 'chat' || tab === 'settings') {
+            setActiveTab(tab)
+        }
+    }, [searchParams])
+
     const [showAccountModal, setShowAccountModal] = useState(false)
     const [connectedChatStores, setConnectedChatStores] = useState<string[]>([])
     const [connectingStoreId, setConnectingStoreId] = useState<string | null>(null)
@@ -324,7 +334,19 @@ export default function ChatAiDashboard() {
         setReplyText('')
 
         try {
-            await sendChatMessage(activeStoreId, activeSessionId, '1', textToSend)
+            const result = await sendChatMessage(activeStoreId, activeSessionId, '1', textToSend)
+            if (result.success) {
+                // Refresh messages locally
+                const { data } = await supabase
+                    .from('daraz_chat_messages')
+                    .select('*')
+                    .eq('session_id', activeSessionId)
+                    .order('send_time', { ascending: true })
+                if (data) {
+                    setMessages(data)
+                    setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 50)
+                }
+            }
         } catch (err) {
             const errorMsg = err instanceof Error ? err.message : 'Failed to send message'
             toast.error(errorMsg)
@@ -463,6 +485,9 @@ export default function ChatAiDashboard() {
         fetchCustomerOrders()
     }, [activeSessionId, activeStoreId])
 
+    const activeSession = sessions.find(s => s.session_id === activeSessionId)
+    const currentStoreSettings = storeSettings[activeStoreId] || {}
+
     // Filter customer orders based on active session's title (username) or manual search query
     const filteredOrders = customerOrders.filter(order => {
         if (!activeSession) return false
@@ -547,20 +572,25 @@ export default function ChatAiDashboard() {
         }
     }
 
-    const currentStoreSettings = storeSettings[activeStoreId] || {}
-    const activeSession = sessions.find(s => s.session_id === activeSessionId)
-
     return (
         <div className="flex flex-col h-[calc(100vh-5rem)] bg-zinc-50 dark:bg-zinc-950 rounded-2xl overflow-hidden border border-zinc-200 dark:border-zinc-800">
             {/* Header Area */}
             <div className="bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 p-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 shrink-0">
                 <div>
-                    <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent dark:from-blue-400 dark:to-indigo-400">
-                        Chat & AI Assistant
-                    </h1>
-                    <p className="text-sm text-zinc-500 dark:text-zinc-400">
-                        Manage customer messaging, configure smart keywords, and deploy Gemini AI auto-replies.
-                    </p>
+                    {activeTab === 'chat' ? (
+                        <h1 className="text-2xl font-bold text-zinc-850 dark:text-zinc-100">
+                            Daraz Chat
+                        </h1>
+                    ) : (
+                        <>
+                            <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent dark:from-blue-400 dark:to-indigo-400">
+                                AI & Automation
+                            </h1>
+                            <p className="text-sm text-zinc-500 dark:text-zinc-400">
+                                Manage customer messaging, configure smart keywords, and deploy Gemini AI auto-replies.
+                            </p>
+                        </>
+                    )}
                 </div>
                 
                 {/* Store selection and Sync buttons */}
@@ -604,30 +634,7 @@ export default function ChatAiDashboard() {
                         {syncing ? 'Syncing...' : 'Sync Daraz'}
                     </button>
 
-                    <div className="flex bg-zinc-100 dark:bg-zinc-800 rounded-lg p-1 border border-zinc-200 dark:border-zinc-700">
-                        <button
-                            onClick={() => setActiveTab('chat')}
-                            className={`flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold rounded-md transition-all ${
-                                activeTab === 'chat'
-                                    ? 'bg-white dark:bg-zinc-700 text-blue-600 dark:text-white shadow-sm'
-                                    : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200'
-                            }`}
-                        >
-                            <MessageSquare size={14} />
-                            Chat
-                        </button>
-                        <button
-                            onClick={() => setActiveTab('settings')}
-                            className={`flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold rounded-md transition-all ${
-                                activeTab === 'settings'
-                                    ? 'bg-white dark:bg-zinc-700 text-blue-600 dark:text-white shadow-sm'
-                                    : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200'
-                            }`}
-                        >
-                            <Cpu size={14} />
-                            AI & Automation
-                        </button>
-                    </div>
+
                 </div>
             </div>
 
@@ -750,7 +757,7 @@ export default function ChatAiDashboard() {
                                         </div>
                                     ) : (
                                         messages.map((message) => {
-                                            const isSelf = String(message.from_account_type) === '1'
+                                            const isSelf = String(message.from_account_type) === '2' || message.from_account_id === 'seller'
                                             const parsed = parseMsgContent(message.content)
                                             const formattedTime = new Date(message.send_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 
@@ -1405,5 +1412,18 @@ export default function ChatAiDashboard() {
                 </DialogContent>
             </Dialog>
         </div>
+    )
+}
+
+export default function ChatAiDashboard() {
+    return (
+        <Suspense fallback={
+            <div className="flex flex-col items-center justify-center h-[calc(100vh-5rem)] bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-200 dark:border-zinc-800 p-8 shadow-sm">
+                <RefreshCw className="animate-spin h-8 w-8 text-blue-600 mb-3" />
+                <span className="text-sm text-zinc-605 dark:text-zinc-400 font-semibold">Loading Chat & AI Dashboard...</span>
+            </div>
+        }>
+            <ChatAiDashboardContent />
+        </Suspense>
     )
 }

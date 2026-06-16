@@ -15,11 +15,16 @@ async function run() {
         console.log("Checking and adding 'app_type' column if missing...");
         await client.query("ALTER TABLE public.daraz_api_tokens ADD COLUMN IF NOT EXISTS app_type TEXT NOT NULL DEFAULT 'order';");
 
-        // 2. Drop the existing primary key constraint
+        // 2. Drop unique constraints on store_id to allow multiple tokens (order & chat)
+        console.log("Dropping unique constraints on store_id...");
+        await client.query("ALTER TABLE public.daraz_api_tokens DROP CONSTRAINT IF EXISTS unique_store_token;");
+        await client.query("ALTER TABLE public.daraz_api_tokens DROP CONSTRAINT IF EXISTS daraz_api_tokens_store_id_key;");
+
+        // 3. Drop the existing primary key constraint
         console.log("Dropping existing primary key constraint 'daraz_api_tokens_pkey' if it exists...");
         await client.query("ALTER TABLE public.daraz_api_tokens DROP CONSTRAINT IF EXISTS daraz_api_tokens_pkey;");
 
-        // 3. Add the composite primary key constraint
+        // 4. Add the composite primary key constraint
         console.log("Adding composite primary key constraint on (store_id, app_type)...");
         await client.query("ALTER TABLE public.daraz_api_tokens ADD PRIMARY KEY (store_id, app_type);");
 

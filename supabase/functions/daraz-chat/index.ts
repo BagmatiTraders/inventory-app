@@ -141,9 +141,9 @@ async function sendDarazMessage(
         message_id: messageId,
         session_id: sessionId,
         from_account_id: 'seller',
-        from_account_type: '1', // Seller
+        from_account_type: '2', // Seller
         to_account_id: session?.buyer_id || 'buyer',
-        to_account_type: '2', // Buyer
+        to_account_type: '1', // Buyer
         content: JSON.stringify({ txt }),
         template_id: '1',
         send_time: new Date().toISOString(),
@@ -209,7 +209,7 @@ async function handleAiAutoReply(
                 const p = JSON.parse(m.content);
                 text = p.txt || m.content;
             } catch {}
-            const sender = m.from_account_type === '1' ? 'Seller (You)' : 'Buyer (Customer)';
+            const sender = m.from_account_type === '2' ? 'Seller (You)' : 'Buyer (Customer)';
             return `[${sender}]: ${text}`;
         }).join('\n');
     }
@@ -352,8 +352,8 @@ Deno.serve(async (req) => {
     }
 
     // Determine sender roles
-    const fromAccountType = String(data.from_account_type); // '1' = seller, '2' = buyer
-    const isBuyer = fromAccountType === '2' || fromAccountType === 'buyer';
+    const fromAccountType = String(data.from_account_type); // '2' = seller, '1' = buyer
+    const isBuyer = fromAccountType === '1' || fromAccountType === 'buyer';
     const buyerId = isBuyer ? String(data.from_account_id) : String(data.to_account_id);
 
     // Retrieve or create session
