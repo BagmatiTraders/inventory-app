@@ -25,7 +25,10 @@ import {
     ShoppingBag,
     Clock,
     Search,
-    Shield
+    Shield,
+    User,
+    Copy,
+    Star
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui-shim'
@@ -97,6 +100,12 @@ export default function ChatAiDashboard() {
     const [loadingSessions, setLoadingSessions] = useState(false)
     const [loadingMessages, setLoadingMessages] = useState(false)
     const [syncing, setSyncing] = useState(false)
+
+    // Right sidebar (Customer details / context) state
+    const [customerOrders, setCustomerOrders] = useState<any[]>([])
+    const [loadingOrders, setLoadingOrders] = useState(false)
+    const [ordersSearchQuery, setOrdersSearchQuery] = useState('')
+    const [activeRightTab, setActiveRightTab] = useState<'order' | 'product' | 'voucher'>('order')
 
     const chatEndRef = useRef<HTMLDivElement>(null)
 
@@ -399,6 +408,135 @@ export default function ChatAiDashboard() {
         }
     }
 
+    // Fetch orders for the customer in the active session
+    useEffect(() => {
+        if (!activeSession || !activeStoreId) {
+            setCustomerOrders([])
+            return
+        }
+
+        async function fetchCustomerOrders() {
+            setLoadingOrders(true)
+            try {
+                // Fetch all orders for this store and join items with product image URLs
+                const { data, error } = await supabase
+                    .from('daraz_orders')
+                    .select(`
+                        id,
+                        order_id,
+                        order_number,
+                        order_status,
+                        price,
+                        order_date,
+                        daraz_created_at,
+                        customer_name,
+                        shipping_name,
+                        tracking_number,
+                        daraz_order_items (
+                            id,
+                            product_name,
+                            quantity,
+                            amount,
+                            seller_sku,
+                            item_status,
+                            product_id,
+                            products (
+                                image_url
+                            )
+                        )
+                    `)
+                    .eq('store_id', activeStoreId)
+                    .order('order_date', { ascending: false })
+
+                if (error) {
+                    console.error('Error fetching customer orders:', error)
+                } else {
+                    setCustomerOrders(data || [])
+                }
+            } catch (err) {
+                console.error('Failed to load customer orders:', err)
+            } finally {
+                setLoadingOrders(false)
+            }
+        }
+
+        fetchCustomerOrders()
+    }, [activeSessionId, activeStoreId])
+
+    // Filter customer orders based on active session's title (username) or manual search query
+    const filteredOrders = customerOrders.filter(order => {
+        if (!activeSession) return false
+
+        const title = activeSession.title?.toLowerCase() || ''
+        const custName = order.customer_name?.toLowerCase() || ''
+        const shipName = order.shipping_name?.toLowerCase() || ''
+        const orderNum = order.order_number?.toLowerCase() || ''
+        const orderId = order.order_id?.toLowerCase() || ''
+
+        // Exact or partial matches for the customer's name
+        const matchesAuto = title && (custName.includes(title) || shipName.includes(title) || title.includes(custName))
+
+        if (ordersSearchQuery.trim() !== '') {
+            const query = ordersSearchQuery.toLowerCase().trim()
+            return custName.includes(query) || 
+                shipName.includes(query) || 
+                orderNum.includes(query) || 
+                orderId.includes(query) ||
+                order.daraz_order_items?.some((item: any) => 
+                    item.product_name?.toLowerCase().includes(query) || 
+                    item.seller_sku?.toLowerCase().includes(query)
+                )
+        }
+
+        return matchesAuto
+    })
+
+    // Handler to send order card to the conversation
+    const handleSendOrderCard = async (orderId: string) => {
+        if (!activeStoreId || !activeSessionId) return
+        toast.info('Sending order card...')
+        try {
+            await sendChatMessage(activeStoreId, activeSessionId, '10007', undefined, undefined, orderId)
+            toast.success('Order card sent successfully!')
+            
+            // Refresh messages locally
+            const { data } = await supabase
+                .from('daraz_chat_messages')
+                .select('*')
+                .eq('session_id', activeSessionId)
+                .order('send_time', { ascending: true })
+            if (data) setMessages(data)
+        } catch (err: any) {
+            toast.error(err.message || 'Failed to send order card')
+        }
+    }
+
+    // Handler to send guide link text summary to the conversation
+    const handleSendGuideLink = async (orderNumber: string, status: string, trackingNumber?: string) => {
+        if (!activeStoreId || !activeSessionId) return
+        toast.info('Sending order guide link...')
+        try {
+            const txt = `Order Status Details:\nOrder Number: ${orderNumber}\nStatus: ${status}\nTracking Number: ${trackingNumber || 'Pending / In Processing'}`
+            await sendChatMessage(activeStoreId, activeSessionId, '1', txt)
+            toast.success('Order status details sent!')
+            
+            // Refresh messages locally
+            const { data } = await supabase
+                .from('daraz_chat_messages')
+                .select('*')
+                .eq('session_id', activeSessionId)
+                .order('send_time', { ascending: true })
+            if (data) setMessages(data)
+        } catch (err: any) {
+            toast.error(err.message || 'Failed to send guide link')
+        }
+    }
+
+    const handleCopyText = (text: string) => {
+        navigator.clipboard.writeText(text)
+        toast.success('Copied to clipboard!')
+    }
+
     // Helper: Parse content string to JSON or keep text
     const parseMsgContent = (content: string) => {
         try {
@@ -575,8 +713,8 @@ export default function ChatAiDashboard() {
                         </div>
                     </div>
 
-                    {/* Right: Active Chat Window */}
-                    <div className="flex-1 bg-zinc-50 dark:bg-zinc-950 flex flex-col min-w-0 h-full">
+                    {/* Middle: Active Chat Window */}
+                    <div className="flex-1 bg-zinc-50 dark:bg-zinc-950 flex flex-col min-w-0 h-full border-r border-zinc-200 dark:border-zinc-800">
                         {activeSession ? (
                             <>
                                 {/* Chat Header */}
@@ -647,7 +785,7 @@ export default function ChatAiDashboard() {
                                                                 <div className="flex items-center gap-2 text-xs font-bold text-blue-500 uppercase">
                                                                     <ShoppingBag size={12} /> Order Card
                                                                 </div>
-                                                                <div className="bg-zinc-100 dark:bg-zinc-800 p-2 rounded-lg text-xs font-bold text-zinc-700 dark:text-zinc-300">
+                                                                <div className="bg-zinc-100 dark:bg-zinc-800 p-2 rounded-lg text-xs font-bold text-zinc-700 dark:text-zinc-350">
                                                                     Order ID: {parsed.orderId || parsed.order_id || 'N/A'}
                                                                 </div>
                                                                 <p className="text-xs text-zinc-400 mt-1">Order details shared in conversation.</p>
@@ -764,6 +902,215 @@ export default function ChatAiDashboard() {
                             </div>
                         )}
                     </div>
+
+                    {/* Right Column: Customer Info & Orders Sidebar (Daraz-like) */}
+                    {activeSession && (
+                        <div className="w-80 border-l border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 flex flex-col shrink-0 h-full overflow-hidden">
+                            {/* Profile details */}
+                            <div className="p-4 border-b border-zinc-200 dark:border-zinc-800 flex flex-col items-center text-center space-y-2 shrink-0">
+                                <div className="h-16 w-16 rounded-full flex items-center justify-center bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-300 font-bold text-xl shadow-inner border border-blue-200/50 dark:border-blue-800/50">
+                                    {activeSession.title.substring(0, 2).toUpperCase()}
+                                </div>
+                                <div className="space-y-0.5">
+                                    <h3 className="text-sm font-bold text-zinc-800 dark:text-zinc-100 flex items-center gap-1.5 justify-center">
+                                        <User size={14} className="text-zinc-400" />
+                                        {activeSession.title}
+                                    </h3>
+                                    <p className="text-[10px] text-zinc-400">Buyer ID: {activeSession.buyer_id}</p>
+                                </div>
+                                
+                                {/* Assign & Note buttons */}
+                                <div className="flex gap-1.5 w-full pt-1.5">
+                                    <button className="flex-1 text-center py-1 bg-zinc-50 hover:bg-zinc-100 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-[10px] font-bold text-zinc-700 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-700 rounded-md">
+                                        Assign
+                                    </button>
+                                    <button className="flex items-center justify-center p-1 bg-zinc-50 hover:bg-zinc-100 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-550 border border-zinc-200 dark:border-zinc-700 rounded-md">
+                                        <Star size={12} className="text-zinc-400" />
+                                    </button>
+                                    <button className="flex items-center justify-center p-1 bg-zinc-50 hover:bg-zinc-100 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-550 border border-zinc-200 dark:border-zinc-700 rounded-md text-[10px] font-bold px-1.5">
+                                        ···
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Tab Switcher */}
+                            <div className="flex border-b border-zinc-200 dark:border-zinc-800 text-center text-xs font-semibold shrink-0 bg-zinc-50/50 dark:bg-zinc-900/30">
+                                {(['order', 'product', 'voucher'] as const).map((tab) => (
+                                    <button
+                                        key={tab}
+                                        onClick={() => setActiveRightTab(tab)}
+                                        className={`flex-1 py-2.5 border-b-2 capitalize transition-all ${
+                                            activeRightTab === tab
+                                                ? 'border-orange-500 text-orange-500 font-bold bg-white dark:bg-zinc-900'
+                                                : 'border-transparent text-zinc-550 hover:text-zinc-700 dark:hover:text-zinc-300'
+                                        }`}
+                                    >
+                                        {tab}
+                                    </button>
+                                ))}
+                            </div>
+
+                            {/* Scrollable Content Tab Views */}
+                            <div className="flex-1 overflow-y-auto bg-zinc-50/50 dark:bg-zinc-950/20 p-3">
+                                {activeRightTab === 'order' && (
+                                    <div className="space-y-3">
+                                        {/* Order Search bar */}
+                                        <div className="relative shrink-0">
+                                            <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-zinc-450" />
+                                            <input
+                                                type="text"
+                                                placeholder="Search orders..."
+                                                value={ordersSearchQuery}
+                                                onChange={(e) => setOrdersSearchQuery(e.target.value)}
+                                                className="pl-8 pr-3 py-1.5 w-full text-xs bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 text-zinc-700 dark:text-zinc-200 placeholder:text-zinc-400"
+                                            />
+                                        </div>
+
+                                        {/* List of Orders */}
+                                        {loadingOrders ? (
+                                            <div className="py-8 text-center text-zinc-500 text-xs">
+                                                <RefreshCw className="animate-spin h-4 w-4 mx-auto mb-1.5 text-zinc-400" />
+                                                Loading orders...
+                                            </div>
+                                        ) : filteredOrders.length === 0 ? (
+                                            <div className="py-8 text-center text-zinc-455 text-[11px] px-4">
+                                                {ordersSearchQuery.trim() !== '' 
+                                                    ? 'No matching orders found.' 
+                                                    : 'No matching orders found automatically. Search by order number or name above.'}
+                                            </div>
+                                        ) : (
+                                            filteredOrders.map((order) => {
+                                                const formattedDate = order.order_date 
+                                                    ? new Date(order.order_date).toLocaleString([], { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+                                                    : ''
+                                                
+                                                // Map Daraz status to Tailwind/Vanilla CSS badges
+                                                const status = order.order_status?.toLowerCase() || 'pending'
+                                                let statusColor = 'bg-zinc-100 text-zinc-800 border-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:border-zinc-700'
+                                                if (['delivered', 'completed'].includes(status)) {
+                                                    statusColor = 'bg-green-50 text-green-700 border-green-200/50 dark:bg-green-950/20 dark:text-green-400 dark:border-green-900/30'
+                                                } else if (['shipped', 'ready_to_ship', 'packed'].includes(status)) {
+                                                    statusColor = 'bg-orange-50 text-orange-600 border-orange-200/50 dark:bg-orange-950/20 dark:text-orange-400 dark:border-orange-900/30'
+                                                } else if (['canceled', 'cancelled', 'cancel', 'failed'].includes(status)) {
+                                                    statusColor = 'bg-red-50 text-red-650 border-red-200/50 dark:bg-red-950/20 dark:text-red-400 dark:border-red-900/30'
+                                                }
+
+                                                return (
+                                                    <div 
+                                                        key={order.id} 
+                                                        className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-sm p-3 space-y-2.5 text-xs text-zinc-700 dark:text-zinc-300 animate-fadeIn"
+                                                    >
+                                                        {/* Header: Status and ID */}
+                                                        <div className="flex justify-between items-center border-b border-zinc-100 dark:border-zinc-800 pb-2">
+                                                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${statusColor}`}>
+                                                                {order.order_status}
+                                                            </span>
+                                                            <button 
+                                                                onClick={() => handleCopyText(order.order_number)}
+                                                                className="flex items-center gap-1 text-[10px] text-zinc-400 hover:text-blue-500 font-medium transition-colors"
+                                                                title="Copy Order ID"
+                                                            >
+                                                                <span>ID: {order.order_number}</span>
+                                                                <Copy size={10} />
+                                                            </button>
+                                                        </div>
+
+                                                        {/* Items */}
+                                                        <div className="space-y-2">
+                                                            {order.daraz_order_items?.map((item: any) => {
+                                                                const imgUrl = item.products?.image_url
+                                                                return (
+                                                                    <div key={item.id} className="flex gap-2">
+                                                                        {/* Product image */}
+                                                                        <div className="h-10 w-10 bg-zinc-100 dark:bg-zinc-800 rounded border border-zinc-200/50 dark:border-zinc-750 flex items-center justify-center shrink-0 overflow-hidden">
+                                                                            {imgUrl ? (
+                                                                                <img 
+                                                                                    src={imgUrl} 
+                                                                                    alt={item.product_name} 
+                                                                                    className="h-full w-full object-cover" 
+                                                                                />
+                                                                            ) : (
+                                                                                <ShoppingBag size={14} className="text-zinc-400" />
+                                                                            )}
+                                                                        </div>
+                                                                        
+                                                                        {/* Product details */}
+                                                                        <div className="flex-1 min-w-0">
+                                                                            <h4 className="font-medium text-zinc-800 dark:text-zinc-200 text-[11px] leading-tight line-clamp-2" title={item.product_name}>
+                                                                                {item.product_name}
+                                                                            </h4>
+                                                                            <div className="flex justify-between items-center mt-1 text-[10px] text-zinc-400">
+                                                                                <span>Qty: {item.quantity}</span>
+                                                                                <span className="font-semibold text-zinc-700 dark:text-zinc-300">
+                                                                                    NPR {item.amount}
+                                                                                </span>
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                )
+                                                            })}
+                                                        </div>
+
+                                                        {/* Order details summary */}
+                                                        <div className="pt-2 border-t border-zinc-150 dark:border-zinc-800/80 space-y-1 text-[10px] text-zinc-500 dark:text-zinc-400">
+                                                            <div className="flex justify-between">
+                                                                <span>Order time:</span>
+                                                                <span>{formattedDate}</span>
+                                                            </div>
+                                                            {order.tracking_number && (
+                                                                <div className="flex justify-between">
+                                                                    <span>Logistics:</span>
+                                                                    <span className="text-blue-500 dark:text-blue-400 font-medium">
+                                                                        In Transit ({order.tracking_number.split(',')[0]})
+                                                                    </span>
+                                                                </div>
+                                                            )}
+                                                            <div className="flex justify-between items-baseline pt-1">
+                                                                <span className="text-xs font-bold text-zinc-850 dark:text-zinc-200">Total Price:</span>
+                                                                <span className="text-sm font-extrabold text-orange-500 dark:text-orange-400">
+                                                                    NPR {order.price}
+                                                                </span>
+                                                            </div>
+                                                        </div>
+
+                                                        {/* Action Buttons */}
+                                                        <div className="flex gap-2 pt-1">
+                                                            <button 
+                                                                onClick={() => handleSendGuideLink(order.order_number, order.order_status, order.tracking_number)}
+                                                                className="flex-1 py-1.5 border border-orange-500 text-orange-500 hover:bg-orange-50/50 dark:hover:bg-orange-950/10 text-[10px] font-bold rounded transition-colors text-center"
+                                                            >
+                                                                Send Guide Link
+                                                            </button>
+                                                            <button 
+                                                                onClick={() => handleSendOrderCard(order.order_id)}
+                                                                className="flex-1 py-1.5 bg-orange-500 hover:bg-orange-600 text-white text-[10px] font-bold rounded transition-colors text-center shadow-sm"
+                                                            >
+                                                                Send
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                )
+                                            })
+                                        )}
+                                    </div>
+                                )}
+
+                                {activeRightTab === 'product' && (
+                                    <div className="py-12 text-center text-zinc-400 text-xs">
+                                        <ShoppingBag size={24} className="mx-auto mb-2 text-zinc-300 dark:text-zinc-700" />
+                                        <span>No products shared yet.</span>
+                                    </div>
+                                )}
+
+                                {activeRightTab === 'voucher' && (
+                                    <div className="py-12 text-center text-zinc-400 text-xs">
+                                        <Tag size={24} className="mx-auto mb-2 text-zinc-300 dark:text-zinc-700" />
+                                        <span>No vouchers available for this store.</span>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
                 </div>
             ) : (
                 /* ----------------- SETTINGS & AUTOMATION WORKSPACE ----------------- */
