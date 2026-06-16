@@ -80,7 +80,7 @@ export async function syncDarazChatSessions(storeId: string) {
         params.sign = signRequest(apiPath, params, appSecret)
 
         console.log(`[ChatSync] Syncing sessions for store ${storeId}...`)
-        const response = await axios.get(`${API_URL}${apiPath}`, { params })
+        const response = await axios.get(`${API_URL}${apiPath}`, { params, timeout: 10000 })
 
         if (response.data.code !== "0" && response.data.code !== 0) {
             throw new Error(`Daraz API Error: ${response.data.message || response.data.msg}`)
@@ -146,7 +146,7 @@ export async function syncDarazChatMessages(storeId: string, sessionId: string) 
         const apiPath = '/im/message/list'
         params.sign = signRequest(apiPath, params, appSecret)
 
-        const response = await axios.get(`${API_URL}${apiPath}`, { params })
+        const response = await axios.get(`${API_URL}${apiPath}`, { params, timeout: 10000 })
 
         if (response.data.code !== "0" && response.data.code !== 0) {
             throw new Error(`Daraz API Error: ${response.data.message || response.data.msg}`)
@@ -245,7 +245,7 @@ export async function sendChatMessage(
         params.sign = signRequest(apiPath, params, appSecret)
 
         console.log(`[ChatSync] Sending message (template ${templateId}) to session ${sessionId}...`)
-        const response = await axios.post(`${API_URL}${apiPath}`, null, { params })
+        const response = await axios.post(`${API_URL}${apiPath}`, null, { params, timeout: 10000 })
 
         if (response.data.code !== "0" && response.data.code !== 0) {
             throw new Error(`Daraz API Error: ${response.data.message || response.data.msg}`)
@@ -314,7 +314,7 @@ export async function openSessionByOrderId(storeId: string, orderId: string): Pr
         params.sign = signRequest(apiPath, params, appSecret)
 
         console.log(`[ChatSync] Opening conversation for Order ID: ${orderId}...`)
-        const response = await axios.post(`${API_URL}${apiPath}`, null, { params })
+        const response = await axios.post(`${API_URL}${apiPath}`, null, { params, timeout: 10000 })
 
         if (response.data.code !== "0" && response.data.code !== 0) {
             throw new Error(`Daraz API Error: ${response.data.message || response.data.msg}`)

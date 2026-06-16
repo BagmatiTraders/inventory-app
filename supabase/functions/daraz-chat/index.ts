@@ -281,11 +281,18 @@ Deno.serve(async (req) => {
         });
     }
 
-    const appKey = Deno.env.get('DARAZ_APP_KEY')?.trim() || '';
-    const appSecret = Deno.env.get('DARAZ_APP_SECRET')?.trim() || '';
+    const appKeyOrder = Deno.env.get('DARAZ_APP_KEY')?.trim() || '';
+    const appSecretOrder = Deno.env.get('DARAZ_APP_SECRET')?.trim() || '';
+
+    const appKeyChat = Deno.env.get('DARAZ_CHAT_APP_KEY')?.trim() || appKeyOrder;
+    const appSecretChat = Deno.env.get('DARAZ_CHAT_APP_SECRET')?.trim() || appSecretOrder;
     const geminiApiKey = Deno.env.get('GEMINI_API_KEY')?.trim() || '';
 
-    if (!appKey || !appSecret) {
+    // Maintain backwards compatibility for references to appKey and appSecret in this function
+    const appKey = appKeyChat;
+    const appSecret = appSecretChat;
+
+    if (!appKeyOrder || !appSecretOrder) {
         console.error('[EdgeFunction] Environment credentials missing (DARAZ_APP_KEY / DARAZ_APP_SECRET)');
         return new Response(JSON.stringify({ error: 'Server configuration error' }), {
             status: 500,
@@ -293,15 +300,29 @@ Deno.serve(async (req) => {
         });
     }
 
-    // Verify HMAC-SHA256 signature
-    const isValid = await verifySignature(appKey, rawBody, appSecret, authorization || '');
+    // Verify HMAC-SHA256 signature using both Order and Chat app credentials
+    let isValid = false;
+    let verifiedAppKey = '';
+
+    if (appKeyOrder && appSecretOrder) {
+        isValid = await verifySignature(appKeyOrder, rawBody, appSecretOrder, authorization || '');
+        if (isValid) verifiedAppKey = appKeyOrder;
+    }
+
+    if (!isValid && appKeyChat && appSecretChat) {
+        isValid = await verifySignature(appKeyChat, rawBody, appSecretChat, authorization || '');
+        if (isValid) verifiedAppKey = appKeyChat;
+    }
+
     if (!isValid) {
-        console.error('[EdgeFunction] Invalid webhook signature');
+        console.error('[EdgeFunction] Invalid webhook signature (tried both Order and Chat credentials)');
         return new Response(JSON.stringify({ error: 'Invalid signature' }), {
             status: 401,
             headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         });
     }
+
+    console.log(`[EdgeFunction] Signature verified successfully using App Key: ${verifiedAppKey}`);
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;

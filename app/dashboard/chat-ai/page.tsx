@@ -97,6 +97,7 @@ function ChatAiDashboardContent() {
     
     // UI filters
     const [searchQuery, setSearchQuery] = useState('')
+    const [sessionFilter, setSessionFilter] = useState<'all' | 'unread'>('all')
     const [replyText, setReplyText] = useState('')
     
     // Settings state
@@ -203,7 +204,7 @@ function ChatAiDashboardContent() {
         loadStoreConfig()
     }, [activeStoreId])
 
-    // 3. Fetch Sessions when active store or settings change
+    // 3. Fetch Sessions when active store changes & subscribe to real-time updates
     useEffect(() => {
         if (!activeStoreId) return
         
@@ -226,7 +227,45 @@ function ChatAiDashboardContent() {
             setLoadingSessions(false)
         }
         fetchSessions()
-    }, [activeStoreId, activeSessionId])
+
+        // Realtime Subscription for Session List updates
+        const channel = supabase
+            .channel(`realtime:sessions:${activeStoreId}`)
+            .on('postgres_changes', {
+                event: '*',
+                schema: 'public',
+                table: 'daraz_chat_sessions',
+                filter: `store_id=eq.${activeStoreId}`
+            }, (payload) => {
+                if (payload.eventType === 'INSERT') {
+                    setSessions(prev => {
+                        if (prev.some(s => s.session_id === payload.new.session_id)) return prev
+                        const newSession = payload.new as ChatSession
+                        return [newSession, ...prev].sort((a, b) => {
+                            const timeA = a.last_message_time ? new Date(a.last_message_time).getTime() : 0
+                            const timeB = b.last_message_time ? new Date(b.last_message_time).getTime() : 0
+                            return timeB - timeA
+                        })
+                    })
+                } else if (payload.eventType === 'UPDATE') {
+                    setSessions(prev => {
+                        const updated = prev.map(s => s.session_id === payload.new.session_id ? { ...s, ...payload.new } as ChatSession : s)
+                        return updated.sort((a, b) => {
+                            const timeA = a.last_message_time ? new Date(a.last_message_time).getTime() : 0
+                            const timeB = b.last_message_time ? new Date(b.last_message_time).getTime() : 0
+                            return timeB - timeA
+                        })
+                    })
+                } else if (payload.eventType === 'DELETE') {
+                    setSessions(prev => prev.filter(s => s.session_id !== payload.old.session_id))
+                }
+            })
+            .subscribe()
+
+        return () => {
+            supabase.removeChannel(channel)
+        }
+    }, [activeStoreId])
 
     // 4. Fetch messages for active session & subscribe to real-time additions
     useEffect(() => {
@@ -286,7 +325,7 @@ function ChatAiDashboardContent() {
         return storeSettings[storeId]?.messaging_enabled !== false
     }
 
-    // Filter sessions based on search, tags, and connection status
+    // Filter sessions based on search, tags, connection status, and unread filter
     const filteredSessions = sessions.filter(session => {
         // Hide sessions if store is disconnected
         if (!isStoreConnected(session.store_id)) return false
@@ -294,7 +333,13 @@ function ChatAiDashboardContent() {
         const matchesSearch = session.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
             (session.last_message_summary && session.last_message_summary.toLowerCase().includes(searchQuery.toLowerCase()))
         
-        return matchesSearch
+        if (!matchesSearch) return false
+
+        if (sessionFilter === 'unread') {
+            return session.unread_count > 0
+        }
+
+        return true
     })
 
     // Sync chats manual trigger
@@ -454,6 +499,9 @@ function ChatAiDashboardContent() {
                         customer_name,
                         shipping_name,
                         tracking_number,
+                        customer_first_name,
+                        customer_last_name,
+                        items_detail,
                         daraz_order_items (
                             id,
                             product_name,
@@ -488,18 +536,40 @@ function ChatAiDashboardContent() {
     const activeSession = sessions.find(s => s.session_id === activeSessionId)
     const currentStoreSettings = storeSettings[activeStoreId] || {}
 
-    // Filter customer orders based on active session's title (username) or manual search query
+    // Filter customer orders based on active session's title (username), buyer_id, or manual search query
     const filteredOrders = customerOrders.filter(order => {
         if (!activeSession) return false
 
         const title = activeSession.title?.toLowerCase() || ''
+        const buyerId = activeSession.buyer_id ? String(activeSession.buyer_id) : ''
+        
         const custName = order.customer_name?.toLowerCase() || ''
         const shipName = order.shipping_name?.toLowerCase() || ''
+        const firstName = order.customer_first_name?.toLowerCase() || ''
+        const lastName = order.customer_last_name?.toLowerCase() || ''
+        const fullName = `${firstName} ${lastName}`.trim()
         const orderNum = order.order_number?.toLowerCase() || ''
         const orderId = order.order_id?.toLowerCase() || ''
 
-        // Exact or partial matches for the customer's name
-        const matchesAuto = title && (custName.includes(title) || shipName.includes(title) || title.includes(custName))
+        // Check if buyer_id matches inside the items_detail list of the order
+        let matchesBuyerId = false
+        if (buyerId && Array.isArray(order.items_detail)) {
+            matchesBuyerId = order.items_detail.some((item: any) => 
+                item && String(item.buyer_id) === buyerId
+            )
+        }
+
+        // Exact or partial matches for the customer's name, first/last name, or buyer ID
+        const matchesAuto = matchesBuyerId || (title && (
+            custName.includes(title) || 
+            shipName.includes(title) || 
+            title.includes(custName) ||
+            firstName.includes(title) ||
+            lastName.includes(title) ||
+            title.includes(firstName) ||
+            fullName.includes(title) ||
+            title.includes(fullName)
+        ))
 
         if (ordersSearchQuery.trim() !== '') {
             const query = ordersSearchQuery.toLowerCase().trim()
@@ -507,6 +577,8 @@ function ChatAiDashboardContent() {
                 shipName.includes(query) || 
                 orderNum.includes(query) || 
                 orderId.includes(query) ||
+                firstName.includes(query) ||
+                lastName.includes(query) ||
                 order.daraz_order_items?.some((item: any) => 
                     item.product_name?.toLowerCase().includes(query) || 
                     item.seller_sku?.toLowerCase().includes(query)
@@ -554,6 +626,26 @@ function ChatAiDashboardContent() {
             if (data) setMessages(data)
         } catch (err: any) {
             toast.error(err.message || 'Failed to send guide link')
+        }
+    }
+
+    // Handler to send follow invitation to the conversation
+    const handleSendFollowInvitation = async () => {
+        if (!activeStoreId || !activeSessionId) return
+        toast.info('Sending follow invitation...')
+        try {
+            await sendChatMessage(activeStoreId, activeSessionId, '10010')
+            toast.success('Follow invitation sent successfully!')
+            
+            // Refresh messages locally
+            const { data } = await supabase
+                .from('daraz_chat_messages')
+                .select('*')
+                .eq('session_id', activeSessionId)
+                .order('send_time', { ascending: true })
+            if (data) setMessages(data)
+        } catch (err: any) {
+            toast.error(err.message || 'Failed to send follow invitation')
         }
     }
 
@@ -645,7 +737,7 @@ function ChatAiDashboardContent() {
                     {/* Left Sidebar: Session Lists */}
                     <div className="w-80 border-r border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 flex flex-col shrink-0">
                         {/* Search and Filters */}
-                        <div className="p-4 border-b border-zinc-100 dark:border-zinc-800">
+                        <div className="p-4 border-b border-zinc-100 dark:border-zinc-800 space-y-3">
                             <div className="relative">
                                 <Search className="absolute left-3 top-2.5 h-4 w-4 text-zinc-400" />
                                 <input
@@ -655,6 +747,30 @@ function ChatAiDashboardContent() {
                                     onChange={(e) => setSearchQuery(e.target.value)}
                                     className="pl-9 pr-4 py-2 w-full text-sm bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 text-zinc-700 dark:text-zinc-200"
                                 />
+                            </div>
+
+                            {/* Filter Pills */}
+                            <div className="flex gap-2 text-xs">
+                                <button
+                                    onClick={() => setSessionFilter('all')}
+                                    className={`px-3 py-1 rounded-full font-semibold transition-all ${
+                                        sessionFilter === 'all'
+                                            ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 shadow-sm'
+                                            : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-700'
+                                    }`}
+                                >
+                                    All ({sessions.filter(s => isStoreConnected(s.store_id)).length})
+                                </button>
+                                <button
+                                    onClick={() => setSessionFilter('unread')}
+                                    className={`px-3 py-1 rounded-full font-semibold transition-all flex items-center gap-1.5 ${
+                                        sessionFilter === 'unread'
+                                            ? 'bg-red-600 text-white shadow-sm'
+                                            : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-700'
+                                    }`}
+                                >
+                                    Unread ({sessions.filter(s => isStoreConnected(s.store_id) && s.unread_count > 0).length})
+                                </button>
                             </div>
                         </div>
 
@@ -678,15 +794,39 @@ function ChatAiDashboardContent() {
                             ) : (
                                 filteredSessions.map((session) => {
                                     const isActive = session.session_id === activeSessionId
-                                    const formattedTime = session.last_message_time
-                                        ? new Date(session.last_message_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                                        : ''
+                                    
+                                    // Format time like Daraz
+                                    const getFormattedSessionTime = (timeStr?: string | null) => {
+                                        if (!timeStr) return ''
+                                        const date = new Date(timeStr)
+                                        const now = new Date()
+                                        
+                                        // Check if today
+                                        if (date.toDateString() === now.toDateString()) {
+                                            return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                                        }
+                                        
+                                        // Check if yesterday
+                                        const yesterday = new Date(now)
+                                        yesterday.setDate(now.getDate() - 1)
+                                        if (date.toDateString() === yesterday.toDateString()) {
+                                            return 'yesterday'
+                                        }
+                                        
+                                        // Otherwise DD/MM
+                                        const day = String(date.getDate()).padStart(2, '0')
+                                        const month = String(date.getMonth() + 1).padStart(2, '0')
+                                        return `${day}/${month}`
+                                    }
+
+                                    const formattedTime = getFormattedSessionTime(session.last_message_time)
+
                                     return (
                                         <button
                                             key={session.session_id}
                                             onClick={() => setActiveSessionId(session.session_id)}
                                             className={`w-full p-4 flex gap-3 text-left transition-all hover:bg-zinc-50 dark:hover:bg-zinc-800/40 ${
-                                                isActive ? 'bg-blue-50/70 dark:bg-blue-950/20 border-l-4 border-blue-600' : ''
+                                                isActive ? 'bg-blue-50/70 dark:bg-blue-955/20 border-l-4 border-blue-600' : ''
                                             }`}
                                         >
                                             {/* Avatar placeholder */}
@@ -696,23 +836,23 @@ function ChatAiDashboardContent() {
 
                                             {/* Details */}
                                             <div className="flex-1 min-w-0">
-                                                <div className="flex justify-between items-baseline mb-0.5">
-                                                    <h3 className="text-sm font-semibold text-zinc-800 dark:text-zinc-200 truncate">
-                                                        {session.title}
-                                                    </h3>
-                                                    <span className="text-[10px] text-zinc-400">{formattedTime}</span>
-                                                </div>
-                                                <p className="text-xs text-zinc-500 dark:text-zinc-400 truncate">
+                                                <h3 className="text-sm font-semibold text-zinc-800 dark:text-zinc-200 truncate mb-1">
+                                                    {session.title}
+                                                </h3>
+                                                <p className="text-xs text-zinc-555 truncate">
                                                     {session.last_message_summary || 'No message history'}
                                                 </p>
                                             </div>
 
-                                            {/* Unread count */}
-                                            {session.unread_count > 0 && (
-                                                <div className="self-center shrink-0 h-5 min-w-5 px-1.5 rounded-full bg-orange-500 text-white text-[10px] font-bold flex items-center justify-center">
-                                                    {session.unread_count}
-                                                </div>
-                                            )}
+                                            {/* Time & Unread Badges Column */}
+                                            <div className="flex flex-col items-end justify-between shrink-0 h-10">
+                                                <span className="text-[10px] text-zinc-400">{formattedTime}</span>
+                                                {session.unread_count > 0 && (
+                                                    <div className="h-5 min-w-5 px-1.5 rounded-full bg-red-600 text-white text-[10px] font-bold flex items-center justify-center shadow-sm">
+                                                        {session.unread_count}
+                                                    </div>
+                                                )}
+                                            </div>
                                         </button>
                                     )
                                 })
@@ -764,6 +904,7 @@ function ChatAiDashboardContent() {
                                             // Render product/order card details if templates match
                                             const isProductCard = String(message.template_id) === '10006'
                                             const isOrderCard = String(message.template_id) === '10007'
+                                            const isFollowCard = String(message.template_id) === '10010'
 
                                             return (
                                                 <div
@@ -785,7 +926,7 @@ function ChatAiDashboardContent() {
                                                                 <div className="bg-zinc-100 dark:bg-zinc-800 p-2 rounded-lg text-xs font-semibold text-zinc-700 dark:text-zinc-300">
                                                                     Item ID: {parsed.itemId || parsed.item_id || 'N/A'}
                                                                 </div>
-                                                                <p className="text-xs text-zinc-400 mt-1">This message contains a product card attachment from Daraz.</p>
+                                                                <p className="text-xs text-zinc-405 mt-1">This message contains a product card attachment from Daraz.</p>
                                                             </div>
                                                         ) : isOrderCard ? (
                                                             <div className="flex flex-col gap-2 p-1 min-w-[200px]">
@@ -795,7 +936,17 @@ function ChatAiDashboardContent() {
                                                                 <div className="bg-zinc-100 dark:bg-zinc-800 p-2 rounded-lg text-xs font-bold text-zinc-700 dark:text-zinc-350">
                                                                     Order ID: {parsed.orderId || parsed.order_id || 'N/A'}
                                                                 </div>
-                                                                <p className="text-xs text-zinc-400 mt-1">Order details shared in conversation.</p>
+                                                                <p className="text-xs text-zinc-405 mt-1">Order details shared in conversation.</p>
+                                                            </div>
+                                                        ) : isFollowCard ? (
+                                                            <div className="flex flex-col gap-2 p-1 min-w-[200px]">
+                                                                <div className="flex items-center gap-2 text-xs font-bold text-orange-550 uppercase">
+                                                                    <User size={12} /> Store Follow Invitation
+                                                                </div>
+                                                                <div className="bg-orange-50 dark:bg-orange-950/20 border border-orange-200/50 dark:border-orange-900/30 p-2.5 rounded-lg text-xs font-bold text-orange-600 dark:text-orange-350 flex items-center justify-center gap-1.5 shadow-sm">
+                                                                    <Store size={14} className="text-orange-500" /> Follow Our Store
+                                                                </div>
+                                                                <p className="text-[10px] text-zinc-405 mt-0.5">An invitation to follow our store was shared in conversation.</p>
                                                             </div>
                                                         ) : (
                                                             // Regular text
@@ -926,16 +1077,14 @@ function ChatAiDashboardContent() {
                                     <p className="text-[10px] text-zinc-400">Buyer ID: {activeSession.buyer_id}</p>
                                 </div>
                                 
-                                {/* Assign & Note buttons */}
-                                <div className="flex gap-1.5 w-full pt-1.5">
-                                    <button className="flex-1 text-center py-1 bg-zinc-50 hover:bg-zinc-100 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-[10px] font-bold text-zinc-700 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-700 rounded-md">
-                                        Assign
-                                    </button>
-                                    <button className="flex items-center justify-center p-1 bg-zinc-50 hover:bg-zinc-100 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-550 border border-zinc-200 dark:border-zinc-700 rounded-md">
-                                        <Star size={12} className="text-zinc-400" />
-                                    </button>
-                                    <button className="flex items-center justify-center p-1 bg-zinc-50 hover:bg-zinc-100 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-550 border border-zinc-200 dark:border-zinc-700 rounded-md text-[10px] font-bold px-1.5">
-                                        ···
+                                {/* Follow Invitation button */}
+                                <div className="w-full pt-1.5">
+                                    <button 
+                                        onClick={handleSendFollowInvitation}
+                                        className="w-full py-2 bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-650 hover:to-red-600 active:scale-95 text-xs font-bold text-white shadow rounded-lg transition-all flex items-center justify-center gap-1.5"
+                                    >
+                                        <User size={14} />
+                                        Send Follow Invitation
                                     </button>
                                 </div>
                             </div>
@@ -952,7 +1101,7 @@ function ChatAiDashboardContent() {
                                                 : 'border-transparent text-zinc-550 hover:text-zinc-700 dark:hover:text-zinc-300'
                                         }`}
                                     >
-                                        {tab}
+                                        {tab === 'order' ? `Order (${filteredOrders.length})` : tab}
                                     </button>
                                 ))}
                             </div>

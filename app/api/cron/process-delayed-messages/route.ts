@@ -44,6 +44,9 @@ export async function GET(request: NextRequest) {
                         await sendChatMessage(task.store_id, sessionId, '1', task.txt, undefined, undefined, true)
                     }
 
+                    // B. Send follow store button invitation (Template 10010)
+                    await sendChatMessage(task.store_id, sessionId, '10010', undefined, undefined, undefined, true)
+
                     // Mark as sent
                     await supabase
                         .from('daraz_delayed_messages')
@@ -59,17 +62,44 @@ export async function GET(request: NextRequest) {
                 } catch (taskError: any) {
                     console.error(`[Cron] ❌ Failed processing task ${task.id} for order ${task.order_id}:`, taskError.message)
                     
-                    // Mark as failed
-                    await supabase
-                        .from('daraz_delayed_messages')
-                        .update({
-                            status: 'failed',
-                            error_message: taskError.message,
-                            updated_at: new Date().toISOString()
-                        })
-                        .eq('id', task.id)
+                    const isTemporaryError = taskError.message.includes('order not found') || 
+                                             taskError.message.includes('too many requests') || 
+                                             taskError.message.includes('timeout')
+                    
+                    // Parse retry count from previous error message if present
+                    let retryCount = 0
+                    if (task.error_message && task.error_message.includes('Retry:')) {
+                        const match = task.error_message.match(/Retry:\s*(\d+)/)
+                        if (match) {
+                            retryCount = parseInt(match[1], 10)
+                        }
+                    }
 
-                    results.push({ id: task.id, order_id: task.order_id, status: 'failed', error: taskError.message })
+                    if (isTemporaryError && retryCount < 3) {
+                        const nextRun = new Date(Date.now() + 3 * 60 * 1000).toISOString()
+                        await supabase
+                            .from('daraz_delayed_messages')
+                            .update({
+                                status: 'pending',
+                                error_message: `Retry: ${retryCount + 1} - ${taskError.message}`,
+                                scheduled_at: nextRun,
+                                updated_at: new Date().toISOString()
+                            })
+                            .eq('id', task.id)
+                        console.log(`[Cron] Rescheduled task ${task.id} for order ${task.order_id} to ${nextRun} (Retry ${retryCount + 1}/3)`)
+                        results.push({ id: task.id, order_id: task.order_id, status: 'rescheduled', error: taskError.message })
+                    } else {
+                        // Mark as failed permanently
+                        await supabase
+                            .from('daraz_delayed_messages')
+                            .update({
+                                status: 'failed',
+                                error_message: taskError.message,
+                                updated_at: new Date().toISOString()
+                            })
+                            .eq('id', task.id)
+                        results.push({ id: task.id, order_id: task.order_id, status: 'failed', error: taskError.message })
+                    }
                 }
             }
         }
