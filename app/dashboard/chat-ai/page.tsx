@@ -1163,7 +1163,7 @@ function ChatAiDashboardContent() {
                                                             </span>
                                                             <button 
                                                                 onClick={() => handleCopyText(order.order_number)}
-                                                                className="flex items-center gap-1 text-[10px] text-zinc-400 hover:text-blue-500 font-medium transition-colors"
+                                                                className="flex items-center gap-1 text-[10px] text-zinc-600 dark:text-zinc-300 hover:text-blue-500 font-bold transition-colors"
                                                                 title="Copy Order ID"
                                                             >
                                                                 <span>ID: {order.order_number}</span>
