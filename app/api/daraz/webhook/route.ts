@@ -39,21 +39,31 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
         }
 
-        const appKey = process.env.NEXT_PUBLIC_DARAZ_APP_KEY?.trim()
-        const appSecret = process.env.DARAZ_APP_SECRET?.trim()
+        const appKeyOrder = process.env.NEXT_PUBLIC_DARAZ_APP_KEY?.trim()
+        const appSecretOrder = process.env.DARAZ_APP_SECRET?.trim()
 
-        if (!appKey || !appSecret) {
-            console.error('[Webhook] Missing Daraz credentials')
-            return NextResponse.json({ error: 'Server configuration error' }, { status: 500 })
+        const appKeyChat = process.env.NEXT_PUBLIC_DARAZ_CHAT_APP_KEY?.trim() || process.env.NEXT_PUBLIC_DARAZ_APP_KEY?.trim()
+        const appSecretChat = process.env.DARAZ_CHAT_APP_SECRET?.trim() || process.env.DARAZ_APP_SECRET?.trim()
+
+        let isValid = false
+        let verifiedAppKey = ''
+
+        if (appKeyOrder && appSecretOrder) {
+            isValid = verifySignature(appKeyOrder, rawBody, appSecretOrder, authorization)
+            if (isValid) verifiedAppKey = appKeyOrder
         }
 
-        const isValid = verifySignature(appKey, rawBody, appSecret, authorization)
+        if (!isValid && appKeyChat && appSecretChat) {
+            isValid = verifySignature(appKeyChat, rawBody, appSecretChat, authorization)
+            if (isValid) verifiedAppKey = appKeyChat
+        }
+
         if (!isValid) {
-            console.error('[Webhook] Invalid signature')
+            console.error('[Webhook] Invalid signature (tried verification with both Order and Chat app credentials)')
             return NextResponse.json({ error: 'Invalid signature' }, { status: 401 })
         }
 
-        console.log('[Webhook] Signature verified successfully')
+        console.log(`[Webhook] Signature verified successfully using App Key: ${verifiedAppKey}`)
 
         // [RACE CONDITION FIX] Add a small random jitter delay (0-500ms)
         // This helps prevent parallel webhooks from hitting the DB at the exact same microsecond
@@ -119,10 +129,10 @@ export async function POST(request: NextRequest) {
                                 .select('id')
                                 .eq('store_id', store.id)
                                 .eq('order_id', String(tradeOrderId))
-                                .maybeSingle()
+                                .limit(1)
 
-                            if (!existingQueue) {
-                                await supabase
+                            if (!existingQueue || existingQueue.length === 0) {
+                                const { error: insertError } = await supabase
                                     .from('daraz_delayed_messages')
                                     .insert({
                                         store_id: store.id,
@@ -131,7 +141,18 @@ export async function POST(request: NextRequest) {
                                         scheduled_at: scheduledAt,
                                         status: 'pending'
                                     })
-                                console.log(`[Webhook] Queued delayed message for Order: ${tradeOrderId} at ${scheduledAt} (delay: ${delayMinutes} min)`)
+                                
+                                if (insertError) {
+                                    if (insertError.code === '23505') {
+                                        console.log(`[Webhook] Duplicate ignored: message already queued/sent for Order: ${tradeOrderId} (caught constraint violation)`)
+                                    } else {
+                                        throw insertError
+                                    }
+                                } else {
+                                    console.log(`[Webhook] Queued delayed message for Order: ${tradeOrderId} at ${scheduledAt} (delay: ${delayMinutes} min)`)
+                                }
+                            } else {
+                                console.log(`[Webhook] Duplicate ignored: message already queued/sent in database for Order: ${tradeOrderId}`)
                             }
                         }
                     } catch (queueErr: any) {

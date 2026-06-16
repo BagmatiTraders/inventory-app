@@ -12,6 +12,7 @@ export interface ChatSettings {
     auto_reply_on_new_order: boolean
     new_order_template: string
     new_order_delay_minutes: number
+    app_url?: string
     created_at?: string
     updated_at?: string
 }
@@ -336,6 +337,8 @@ export async function getChatSettings(storeId: string) {
         .eq('store_id', storeId)
         .maybeSingle()
 
+    const currentAppUrl = process.env.NEXT_PUBLIC_APP_URL?.trim() || ''
+
     if (!data) {
         // Create default settings
         const defaultSettings = {
@@ -344,7 +347,8 @@ export async function getChatSettings(storeId: string) {
             ai_enabled: false,
             auto_reply_on_new_order: false,
             new_order_template: 'Thank you for your order! We have received it and are preparing it. Please click below to follow our store for the latest updates!',
-            new_order_delay_minutes: 1
+            new_order_delay_minutes: 1,
+            app_url: currentAppUrl
         }
         const { data: inserted } = await supabase
             .from('daraz_chat_settings')
@@ -353,6 +357,21 @@ export async function getChatSettings(storeId: string) {
             .single()
         return inserted || defaultSettings
     }
+
+    // If local app_url is out of sync or missing in DB, update it dynamically
+    if (currentAppUrl && data.app_url !== currentAppUrl) {
+        console.log(`[ChatSettings] Dynamic self-healing: updating database app_url to "${currentAppUrl}"`)
+        const { data: updated } = await supabase
+            .from('daraz_chat_settings')
+            .update({ app_url: currentAppUrl, updated_at: new Date().toISOString() })
+            .eq('store_id', storeId)
+            .select()
+            .single()
+        if (updated) {
+            return updated
+        }
+    }
+
     return data
 }
 

@@ -44,9 +44,6 @@ export async function GET(request: NextRequest) {
                         await sendChatMessage(task.store_id, sessionId, '1', task.txt, undefined, undefined, true)
                     }
 
-                    // B. Send follow store button invitation (Template 10010)
-                    await sendChatMessage(task.store_id, sessionId, '10010', undefined, undefined, undefined, true)
-
                     // Mark as sent
                     await supabase
                         .from('daraz_delayed_messages')

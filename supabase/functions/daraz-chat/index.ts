@@ -303,21 +303,12 @@ Deno.serve(async (req) => {
         });
     }
 
-    const payload = JSON.parse(rawBody);
-    const { message_type, data, seller_id } = payload;
-
-    // We only process message_type 2 (Instant Messaging/Chat)
-    if (message_type !== 2 || !data) {
-        console.log(`[EdgeFunction] Ignoring message_type: ${message_type} (Next.js backend handles orders)`);
-        return new Response(JSON.stringify({ success: true, message: 'Non-messaging type ignored' }), {
-            status: 200,
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-        });
-    }
-
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    const payload = JSON.parse(rawBody);
+    const { message_type, data, seller_id } = payload;
 
     // Map seller_id to database store_id
     const { data: store, error: storeError } = await supabase
@@ -342,6 +333,46 @@ Deno.serve(async (req) => {
         .select('*')
         .eq('store_id', store.id)
         .maybeSingle();
+
+    // We only process message_type 2 (Instant Messaging/Chat) here.
+    // Non-messaging events (e.g. trade orders, returns) are routed to the Next.js backend.
+    if (message_type !== 2 || !data) {
+        const envAppUrl = Deno.env.get('NEXT_PUBLIC_APP_URL')?.trim() || Deno.env.get('APP_URL')?.trim();
+        const dbAppUrl = settings?.app_url?.trim();
+        const appUrl = envAppUrl || dbAppUrl || '';
+
+        if (appUrl) {
+            console.log(`[EdgeFunction] Routing non-messaging message_type: ${message_type} to Next.js backend at ${appUrl}/api/daraz/webhook...`);
+            try {
+                const response = await fetch(`${appUrl}/api/daraz/webhook`, {
+                    method: 'POST',
+                    headers: {
+                        'content-type': 'application/json',
+                        'authorization': authorization || ''
+                    },
+                    body: rawBody
+                });
+                const resText = await response.text();
+                console.log(`[EdgeFunction] Next.js backend response status: ${response.status}. Response: ${resText}`);
+                return new Response(resText, {
+                    status: response.status,
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                });
+            } catch (routingErr) {
+                console.error('[EdgeFunction] Failed routing to Next.js backend:', routingErr);
+                return new Response(JSON.stringify({ error: 'Failed to route to backend', details: routingErr.message }), {
+                    status: 500,
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                });
+            }
+        } else {
+            console.log(`[EdgeFunction] Ignoring message_type: ${message_type} (Next.js APP_URL is not configured in Supabase Secrets or Database settings)`);
+            return new Response(JSON.stringify({ success: true, message: 'Non-messaging type ignored (APP_URL not configured)' }), {
+                status: 200,
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+            });
+        }
+    }
 
     if (settings && settings.messaging_enabled === false) {
         console.log(`[EdgeFunction] Messaging disabled for store: ${store.id}`);

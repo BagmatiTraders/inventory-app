@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS public.daraz_chat_settings (
     auto_reply_on_new_order  BOOLEAN     NOT NULL DEFAULT FALSE,
     new_order_template       TEXT        NOT NULL DEFAULT 'Thank you for your order! We have received it and are preparing it. Please click below to follow our store for the latest updates!',
     new_order_delay_minutes  INT         NOT NULL DEFAULT 1 CHECK (new_order_delay_minutes >= 0),
+    app_url                  TEXT,
     created_at               TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at               TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -70,7 +71,8 @@ CREATE TABLE IF NOT EXISTS public.daraz_delayed_messages (
     status        TEXT        NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'processing', 'sent', 'failed')),
     error_message TEXT,
     created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (store_id, order_id)
 );
 
 -- Indexes for performance
