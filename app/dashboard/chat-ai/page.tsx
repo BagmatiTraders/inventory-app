@@ -553,23 +553,34 @@ function ChatAiDashboardContent() {
 
         // Check if buyer_id matches inside the items_detail list of the order
         let matchesBuyerId = false
-        if (buyerId && Array.isArray(order.items_detail)) {
+        let hasBuyerIdInOrder = false
+        if (buyerId && Array.isArray(order.items_detail) && order.items_detail.length > 0) {
+            hasBuyerIdInOrder = order.items_detail.some((item: any) => 
+                item && (item.buyer_id !== undefined && item.buyer_id !== null)
+            )
             matchesBuyerId = order.items_detail.some((item: any) => 
                 item && String(item.buyer_id) === buyerId
             )
         }
 
-        // Exact or partial matches for the customer's name, first/last name, or buyer ID
-        const matchesAuto = matchesBuyerId || (title && (
-            custName.includes(title) || 
-            shipName.includes(title) || 
-            title.includes(custName) ||
-            firstName.includes(title) ||
-            lastName.includes(title) ||
-            title.includes(firstName) ||
-            fullName.includes(title) ||
-            title.includes(fullName)
-        ))
+        // If the order has items with a valid buyer_id, we MUST match strictly by buyer_id
+        // to prevent false positives for common customer names (like "Shanti").
+        let matchesAuto = false
+        if (hasBuyerIdInOrder) {
+            matchesAuto = matchesBuyerId
+        } else {
+            // Fallback to name matching ONLY if the order has no buyer_id info
+            matchesAuto = !!(title && (
+                custName.includes(title) || 
+                shipName.includes(title) || 
+                title.includes(custName) ||
+                firstName.includes(title) ||
+                lastName.includes(title) ||
+                title.includes(firstName) ||
+                fullName.includes(title) ||
+                title.includes(fullName)
+            ))
+        }
 
         if (ordersSearchQuery.trim() !== '') {
             const query = ordersSearchQuery.toLowerCase().trim()

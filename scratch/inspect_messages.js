@@ -6,43 +6,36 @@ async function inspect() {
     const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY
     const supabase = createClient(supabaseUrl, supabaseKey)
 
-    // Let's get the active sessions
-    const { data: sessions, error: sessErr } = await supabase
-        .from('daraz_chat_sessions')
-        .select('*')
-        .order('last_message_time', { ascending: false })
-        .limit(5)
-
-    if (sessErr) {
-        console.error('Error fetching sessions:', sessErr)
+    // Check count of messages today vs yesterday
+    const { data: counts, error: countErr } = await supabase
+        .from('daraz_chat_messages')
+        .select('send_time')
+    
+    if (countErr) {
+        console.error('Error fetching message times:', countErr)
         return
     }
 
-    console.log('--- Last 5 Sessions ---')
-    console.log(sessions)
+    const stats = {}
+    counts.forEach(c => {
+        const dateStr = c.send_time.substring(0, 10)
+        stats[dateStr] = (stats[dateStr] || 0) + 1
+    })
 
-    for (const session of sessions) {
-        console.log(`\n--- Messages for Session: ${session.title} (${session.session_id}) ---`)
-        const { data: messages, error: msgErr } = await supabase
-            .from('daraz_chat_messages')
-            .select('*')
-            .eq('session_id', session.session_id)
-            .order('send_time', { ascending: true })
+    console.log('--- Messages Count by Date ---')
+    console.log(stats)
 
-        if (msgErr) {
-            console.error('Error fetching messages:', msgErr)
-            continue
-        }
-
-        console.table(messages.map(m => ({
-            message_id: m.message_id,
-            from_id: m.from_account_id,
-            from_type: m.from_account_type,
-            to_id: m.to_account_id,
-            to_type: m.to_account_type,
-            content: m.content.substring(0, 50),
-            send_time: m.send_time
-        })))
+    // Check if there are any errors or unprocessed entries in daraz_delayed_messages
+    const { data: delayed, error: delayedErr } = await supabase
+        .from('daraz_delayed_messages')
+        .select('*')
+        .limit(5)
+    
+    if (delayedErr) {
+        console.error('Error fetching delayed messages:', delayedErr)
+    } else {
+        console.log('\n--- daraz_delayed_messages ---')
+        console.log(delayed)
     }
 }
 
