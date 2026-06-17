@@ -29,7 +29,8 @@ import {
     Shield,
     User,
     Copy,
-    Star
+    Star,
+    ExternalLink
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui-shim'
@@ -929,16 +930,51 @@ function ChatAiDashboardContent() {
                                                             : 'bg-white dark:bg-zinc-900 text-zinc-800 dark:text-zinc-200 border border-zinc-200 dark:border-zinc-800 rounded-tl-none'
                                                     }`}>
                                                         {/* Render based on card type */}
-                                                        {isProductCard ? (
-                                                            <div className="flex flex-col gap-2 p-1 min-w-[200px]">
-                                                                <div className="flex items-center gap-2 text-xs font-bold text-orange-500 uppercase">
-                                                                    <ShoppingBag size={12} /> Product Inquiry
-                                                                </div>
-                                                                <div className="bg-zinc-100 dark:bg-zinc-800 p-2 rounded-lg text-xs font-semibold text-zinc-700 dark:text-zinc-300">
-                                                                    Item ID: {parsed.itemId || parsed.item_id || 'N/A'}
-                                                                </div>
-                                                                <p className="text-xs text-zinc-405 mt-1">This message contains a product card attachment from Daraz.</p>
-                                                            </div>
+                                                         {isProductCard ? (
+                                                             <div className="flex flex-col gap-3 p-1 min-w-[250px] max-w-[320px]">
+                                                                 <div className="flex items-center gap-1.5 text-xs font-bold text-orange-500 uppercase tracking-wide">
+                                                                     <ShoppingBag size={14} className="text-orange-500" />
+                                                                     <span>Product Inquiry</span>
+                                                                 </div>
+                                                                 <div className="flex gap-3 bg-zinc-50/90 dark:bg-zinc-800/80 p-2.5 rounded-xl border border-zinc-200/60 dark:border-zinc-700/50 shadow-sm">
+                                                                     {parsed.iconUrl && (
+                                                                         <div className="relative w-16 h-16 rounded-lg overflow-hidden flex-shrink-0 bg-white border border-zinc-200/60 dark:border-zinc-700/50 flex items-center justify-center">
+                                                                             <img 
+                                                                                 src={parsed.iconUrl} 
+                                                                                 alt={parsed.title || 'Product Image'} 
+                                                                                 className="object-cover w-full h-full"
+                                                                             />
+                                                                         </div>
+                                                                     )}
+                                                                     <div className="flex flex-col justify-center min-w-0 flex-1">
+                                                                         {parsed.title && (
+                                                                             <h4 className={`text-xs font-bold line-clamp-2 leading-snug mb-1 ${isSelf ? 'text-zinc-800 dark:text-zinc-200' : 'text-zinc-800 dark:text-zinc-200'}`}>
+                                                                                 {parsed.title}
+                                                                             </h4>
+                                                                         )}
+                                                                         {parsed.price && (
+                                                                             <span className="text-xs font-extrabold text-orange-600 dark:text-orange-400">
+                                                                                 {parsed.price}
+                                                                             </span>
+                                                                         )}
+                                                                     </div>
+                                                                 </div>
+                                                                 {parsed.actionUrl && (
+                                                                     <a 
+                                                                         href={parsed.actionUrl} 
+                                                                         target="_blank" 
+                                                                         rel="noopener noreferrer"
+                                                                         className="text-center bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold py-1.5 px-3 rounded-lg transition-colors shadow-sm flex items-center justify-center gap-1.5"
+                                                                     >
+                                                                         <span>View Product on Daraz</span>
+                                                                         <ExternalLink size={12} />
+                                                                     </a>
+                                                                 )}
+                                                                 <div className="flex items-center justify-between text-[9px] text-zinc-405 dark:text-zinc-500 font-semibold px-0.5">
+                                                                     <span>Item ID: {parsed.itemId || parsed.item_id || 'N/A'}</span>
+                                                                     {parsed.skuId && <span>SKU: {parsed.skuId}</span>}
+                                                                 </div>
+                                                             </div>
                                                         ) : isOrderCard ? (
                                                             <div className="flex flex-col gap-2 p-1 min-w-[200px]">
                                                                 <div className="flex items-center gap-2 text-xs font-bold text-blue-500 uppercase">
