@@ -72,6 +72,50 @@ interface ChatMessage {
     tags: string[]
 }
 
+// Parse raw Daraz message content to a human-readable summary for the sidebar
+function parseSummaryDisplay(summary: string | null | undefined): string {
+    if (!summary) return 'No message history'
+    try {
+        const parsed = JSON.parse(summary)
+        if (typeof parsed === 'object' && parsed !== null) {
+            // Follow store invitation (cardType 10010 or sellerId + action key)
+            if (parsed.cardType === 10010 || parsed.cardType === '10010' ||
+                parsed.action === 'followCard_follow' || parsed.sellerId) {
+                return 'Follow Invitation'
+            }
+            // Order card
+            if (parsed.cardType === 10007 || parsed.cardType === '10007' ||
+                parsed.orderId || parsed.order_id) {
+                return 'Order Card'
+            }
+            // Product card
+            if (parsed.cardType === 10006 || parsed.cardType === '10006' ||
+                parsed.itemId || parsed.item_id) {
+                return 'Product Card'
+            }
+            // Voucher card
+            if (parsed.cardType === 10008 || parsed.cardType === '10008' ||
+                parsed.promotionId || parsed.promotion_id) {
+                return 'Voucher Card'
+            }
+            // Template 10015 welcome message with txt field
+            if (parsed.txt) {
+                const txtVal = parsed.txt
+                try {
+                    const inner = JSON.parse(txtVal)
+                    return inner.en || inner.ne || txtVal
+                } catch {
+                    return typeof txtVal === 'string' ? txtVal.substring(0, 60) : 'Message'
+                }
+            }
+            return summary
+        }
+    } catch {
+        // Not JSON — return as-is
+    }
+    return summary
+}
+
 interface ChatRule {
     id: string
     store_id: string
@@ -885,7 +929,7 @@ function ChatAiDashboardContent() {
                                                     {session.title}
                                                 </h3>
                                                 <p className="text-xs text-zinc-555 truncate">
-                                                    {session.last_message_summary || 'No message history'}
+                                                    {parseSummaryDisplay(session.last_message_summary)}
                                                 </p>
                                             </div>
 

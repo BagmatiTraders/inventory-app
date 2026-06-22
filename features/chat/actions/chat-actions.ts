@@ -35,7 +35,9 @@ function parseSummary(content: string | null): string | null {
     try {
         const parsed = JSON.parse(content);
         if (typeof parsed === 'object' && parsed !== null) {
-            if (parsed.cardType === 10010 || parsed.cardType === '10010' || parsed.action === 'followCard_follow') {
+            // Follow store invitation — cardType 10010 OR action key OR contains sellerId (follow card)
+            if (parsed.cardType === 10010 || parsed.cardType === '10010' ||
+                parsed.action === 'followCard_follow' || parsed.sellerId) {
                 return 'Follow Invitation';
             }
             if (parsed.cardType === 10007 || parsed.cardType === '10007' || parsed.orderId || parsed.order_id) {
@@ -47,7 +49,17 @@ function parseSummary(content: string | null): string | null {
             if (parsed.cardType === 10008 || parsed.cardType === '10008' || parsed.promotionId || parsed.promotion_id) {
                 return 'Voucher Card';
             }
-            return parsed.txt || parsed.content || content;
+            // Template 10015: welcome message with nested txt JSON
+            if (parsed.txt) {
+                const txtVal = parsed.txt;
+                try {
+                    const inner = JSON.parse(txtVal);
+                    return inner.en || inner.ne || txtVal;
+                } catch {
+                    return typeof txtVal === 'string' ? txtVal.substring(0, 80) : content;
+                }
+            }
+            return parsed.content || content;
         }
     } catch {
         // Not JSON
