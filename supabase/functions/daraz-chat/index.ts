@@ -425,53 +425,86 @@ Deno.serve(async (req) => {
     let buyerId = isBuyer ? String(data.from_account_id) : String(data.to_account_id);
     let sellerId = isBuyer ? String(data.to_account_id) : String(data.from_account_id);
     
-    // Parse session_id for self-healing of buyerId and sellerId if they are undefined
-    const parts = String(data.session_id || '').split('_');
-    if (parts.length >= 4) {
-        const p0 = parts[0], p1 = parts[1], p2 = parts[2], p3 = parts[3];
-        if (p1 === '1') buyerId = p0;
-        else if (p3 === '1') buyerId = p2;
-        
-        if (p1 === '2') sellerId = p0;
-        else if (p3 === '2') sellerId = p2;
+    // Parse session_id for self-healing of buyerId and sellerId if they are undefined/wrong
+    // Session format: {account_id}_{account_type}_{account_id}_{account_type}_{platform}
+    // Example: 900151167013_2_900260032246_1_103 -> seller=900151167013, buyer=900260032246
+    if (!buyerId || buyerId === 'undefined') {
+        const parts = String(data.session_id || '').split('_');
+        // Handle both 4-part and 5-part session IDs
+        // Find the part with type '1' (buyer) 
+        for (let pi = 0; pi < parts.length - 1; pi++) {
+            if (parts[pi + 1] === '1') {
+                buyerId = parts[pi];
+            }
+            if (parts[pi + 1] === '2') {
+                sellerId = parts[pi];
+            }
+        }
     }
 
     // Retrieve or create session
     const { data: existingSession } = await supabase
         .from('daraz_chat_sessions')
-        .select('title, unread_count')
+        .select('title, unread_count, buyer_id')
         .eq('session_id', data.session_id)
         .maybeSingle();
 
-    // Resolve real customer name from order history if title is missing, generic, or undefined
+    // Preserve existing good title — only re-resolve if currently generic/missing
     let sessionTitle = existingSession?.title || '';
-    const isGenericTitle = !sessionTitle || sessionTitle === 'undefined' || sessionTitle === 'Buyer undefined' || sessionTitle.startsWith('Buyer ');
+    const isGenericTitle = !sessionTitle 
+        || sessionTitle === 'undefined' 
+        || sessionTitle === 'Buyer undefined' 
+        || /^Buyer\s+\d+$/.test(sessionTitle)
+        || sessionTitle.startsWith('Buyer ');
     
-    if (isGenericTitle && buyerId && buyerId !== 'undefined') {
+    // Use existing buyer_id from DB as fallback if current extraction failed
+    const resolvedBuyerId = (buyerId && buyerId !== 'undefined') ? buyerId : (existingSession?.buyer_id || buyerId);
+    
+    if (isGenericTitle && resolvedBuyerId && resolvedBuyerId !== 'undefined') {
+        // Attempt 1: contains() query with buyer_id as number
         const { data: orderData } = await supabase
             .from('daraz_orders')
             .select('customer_name, shipping_name, customer_first_name, customer_last_name')
-            .contains('items_detail', JSON.stringify([{ buyer_id: Number(buyerId) }]))
+            .contains('items_detail', JSON.stringify([{ buyer_id: Number(resolvedBuyerId) }]))
             .limit(1)
             .maybeSingle();
 
         if (orderData) {
             const resolvedName = orderData.customer_name || orderData.shipping_name || `${orderData.customer_first_name} ${orderData.customer_last_name}`.trim();
-            if (resolvedName) {
-                sessionTitle = resolvedName;
+            if (resolvedName && resolvedName.trim()) {
+                sessionTitle = resolvedName.trim();
+            }
+        }
+
+        // Attempt 2: If still generic, try text search in items_detail JSON column
+        if (!sessionTitle || isGenericTitle || /^Buyer\s+\d+$/.test(sessionTitle)) {
+            const { data: orderData2 } = await supabase
+                .from('daraz_orders')
+                .select('customer_name, shipping_name')
+                .filter('items_detail', 'cs', `[{"buyer_id":${resolvedBuyerId}}]`)
+                .limit(1)
+                .maybeSingle();
+            if (orderData2) {
+                const resolvedName2 = orderData2.customer_name || orderData2.shipping_name;
+                if (resolvedName2 && resolvedName2.trim()) {
+                    sessionTitle = resolvedName2.trim();
+                }
             }
         }
     }
 
-    if (!sessionTitle || sessionTitle === 'undefined') {
-        sessionTitle = `Buyer ${buyerId}`;
+    if (!sessionTitle || sessionTitle === 'undefined' || sessionTitle.trim() === '') {
+        sessionTitle = `Buyer ${resolvedBuyerId}`;
     }
+
+    // Build upsert payload — only include title in update if it was improved (never downgrade good title to generic)
+    const finalTitle = (existingSession?.title && !isGenericTitle) ? existingSession.title : sessionTitle;
 
     const sessionPayload = {
         session_id: data.session_id,
         store_id: store.id,
-        buyer_id: buyerId,
-        title: sessionTitle,
+        buyer_id: resolvedBuyerId,
+        title: finalTitle,
         unread_count: isBuyer ? (existingSession?.unread_count || 0) + 1 : 0,
         last_message_id: data.message_id,
         last_message_time: data.send_time ? parseTimestamp(data.send_time) : new Date().toISOString(),

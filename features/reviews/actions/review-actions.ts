@@ -295,8 +295,132 @@ export async function syncDarazReviews(storeId: string) {
         const settings = await getReviewSettings(storeId)
         let reviewsSyncedCount = 0
 
-        // Fetch reviews for each active product
-        for (const itemId of activeProductIds) {
+        // Step A: Fetch review IDs for all active products in the last 7 days
+        // Strategy: First try a seller-wide query (no item_id) to get all reviews at once.
+        // Fallback: per-product queries with rate-limiting (max 3 concurrent, 1.2s delay between batches).
+        const allReviewIds = new Set<string>()
+        const itemIdMap = new Map<string, string>() // maps review_id -> item_id
+        
+        const endTime = Date.now()
+        const sevenDaysAgo = endTime - 7 * 24 * 3600 * 1000
+
+        // Helper: sleep for ms milliseconds
+        const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
+
+        // --- Attempt 1: Seller-wide history fetch (no item_id) ---
+        // The API may return all reviews for the seller account without needing per-product requests
+        let sellerWideSuccess = false
+        try {
+            const timestamp = Date.now().toString()
+            const sellerWideParams: Record<string, unknown> = {
+                app_key: appKey,
+                access_token: accessToken,
+                timestamp,
+                sign_method: 'sha256',
+                start_time: sevenDaysAgo,
+                end_time: endTime,
+                page_size: 50,
+                current: 1
+            }
+            const apiPath = '/review/seller/history/list'
+            sellerWideParams.sign = signRequest(apiPath, sellerWideParams, appSecret)
+
+            console.log(`[ReviewSync] Attempting seller-wide review history fetch...`)
+            const sellerWideResp = await axios.get(`${API_URL}${apiPath}`, { params: sellerWideParams, timeout: 10000 })
+
+            if (sellerWideResp.data.code === "0" || sellerWideResp.data.code === 0) {
+                const idList = sellerWideResp.data.data?.id_list || []
+                console.log(`[ReviewSync] Seller-wide fetch returned ${idList.length} review IDs.`)
+                for (const rId of idList) allReviewIds.add(String(rId))
+                sellerWideSuccess = true
+
+                // Paginate if needed (total > page_size)
+                const total = Number(sellerWideResp.data.data?.total || 0)
+                const pageSize = 50
+                if (total > pageSize) {
+                    const pages = Math.ceil(total / pageSize)
+                    for (let page = 2; page <= pages; page++) {
+                        await sleep(500)
+                        const pgParams: Record<string, unknown> = {
+                            app_key: appKey, access_token: accessToken,
+                            timestamp: Date.now().toString(), sign_method: 'sha256',
+                            start_time: sevenDaysAgo, end_time: endTime,
+                            page_size: pageSize, current: page
+                        }
+                        pgParams.sign = signRequest(apiPath, pgParams, appSecret)
+                        const pgResp = await axios.get(`${API_URL}${apiPath}`, { params: pgParams, timeout: 10000 })
+                        if (pgResp.data.code === "0" || pgResp.data.code === 0) {
+                            for (const rId of (pgResp.data.data?.id_list || [])) allReviewIds.add(String(rId))
+                        }
+                    }
+                }
+            } else {
+                const msg = sellerWideResp.data.message || sellerWideResp.data.msg || ''
+                console.log(`[ReviewSync] Seller-wide fetch failed (${msg}). Falling back to per-product queries.`)
+            }
+        } catch (swErr: any) {
+            console.log(`[ReviewSync] Seller-wide fetch error: ${swErr.message}. Falling back to per-product queries.`)
+        }
+
+        // --- Attempt 2: Fallback per-product queries with rate limiting ---
+        if (!sellerWideSuccess) {
+            console.log(`[ReviewSync] Fetching review IDs per-product with rate limiting (batch=3, delay=1.5s)...`)
+            
+            const batchSize = 3  // Max 3 concurrent requests to avoid rate limiting
+            for (let i = 0; i < activeProductIds.length; i += batchSize) {
+                const batch = activeProductIds.slice(i, i + batchSize)
+                await Promise.all(batch.map(async (itemId) => {
+                    try {
+                        const timestamp = Date.now().toString()
+                        const params: Record<string, unknown> = {
+                            app_key: appKey,
+                            access_token: accessToken,
+                            timestamp,
+                            sign_method: 'sha256',
+                            item_id: itemId,
+                            start_time: sevenDaysAgo,
+                            end_time: endTime,
+                            page_size: 50,
+                            current: 1
+                        }
+
+                        const apiPath = '/review/seller/history/list'
+                        params.sign = signRequest(apiPath, params, appSecret)
+
+                        const response = await axios.get(`${API_URL}${apiPath}`, { params, timeout: 10000 })
+
+                        if (response.data.code === "0" || response.data.code === 0) {
+                            const idList = response.data.data?.id_list || []
+                            for (const rId of idList) {
+                                const strId = String(rId)
+                                allReviewIds.add(strId)
+                                itemIdMap.set(strId, String(itemId))
+                            }
+                        } else {
+                            const msg = response.data.message || response.data.msg || ''
+                            // Only log non-rate-limit warnings to avoid log spam
+                            if (!msg.includes('frequency') && !msg.includes('limit')) {
+                                console.warn(`[ReviewSync] History API warning for item ${itemId}: ${msg}`)
+                            }
+                        }
+                    } catch (itemErr: any) {
+                        console.error(`[ReviewSync] Error calling history API for item ${itemId}:`, itemErr.message)
+                    }
+                }))
+                // Wait 1.5s between batches to respect Daraz rate limit
+                if (i + batchSize < activeProductIds.length) {
+                    await sleep(1500)
+                }
+            }
+        }
+
+        const reviewIdsArray = Array.from(allReviewIds)
+        console.log(`[ReviewSync] Found a total of ${reviewIdsArray.length} review IDs. Retrieving details...`)
+
+        // Step B: Batch query /review/seller/list/v2 to fetch full review contents
+        const detailBatchSize = 20
+        for (let j = 0; j < reviewIdsArray.length; j += detailBatchSize) {
+            const batchIds = reviewIdsArray.slice(j, j + detailBatchSize)
             try {
                 const timestamp = Date.now().toString()
                 const params: Record<string, unknown> = {
@@ -304,27 +428,39 @@ export async function syncDarazReviews(storeId: string) {
                     access_token: accessToken,
                     timestamp,
                     sign_method: 'sha256',
-                    item_id: itemId,
-                    page_size: 50,
-                    current: 1
+                    id_list: JSON.stringify(batchIds.map(Number))
                 }
 
-                const apiPath = '/review/seller/list'
+                const apiPath = '/review/seller/list/v2'
                 params.sign = signRequest(apiPath, params, appSecret)
 
-                console.log(`[ReviewSync] Fetching reviews for item ${itemId}...`)
+                console.log(`[ReviewSync] Fetching details for review batch [${batchIds.join(', ')}]...`)
                 const response = await axios.get(`${API_URL}${apiPath}`, { params, timeout: 10000 })
 
                 if (response.data.code !== "0" && response.data.code !== 0) {
-                    console.warn(`[ReviewSync] API warning for item ${itemId}: ${response.data.message || response.data.msg}`)
+                    console.warn(`[ReviewSync] Details API warning for batch: ${response.data.message || response.data.msg}`)
                     continue
                 }
 
                 const reviewList = response.data.data?.review_list || []
                 
                 for (const item of reviewList) {
+                    const reviewId = String(item.id || item.review_id)
+                    if (!reviewId) continue
+
                     const orderId = item.order_id ? String(item.order_id) : null
-                    const reviews = item.reviews || []
+                    const rating = item.ratings?.product_rating ? Number(item.ratings.product_rating) : 5
+                    const reviewContent = item.review_content || ''
+                    const replyContent = item.seller_reply || null
+                    const initialReplyStatus = replyContent ? 'replied' : 'pending'
+                    
+                    const createTimeNum = item.create_time ? Number(item.create_time) : null
+                    const submitTimeNum = item.submit_time ? Number(item.submit_time) : null
+                    const finalTimeNum = createTimeNum || submitTimeNum || Date.now()
+                    const createdAt = new Date(finalTimeNum).toISOString()
+
+                    // Resolve item_id
+                    const itemId = item.product_id ? String(item.product_id) : (item.item_id ? String(item.item_id) : itemIdMap.get(reviewId) || '')
 
                     // Resolve buyer name from daraz_orders
                     let buyerName = 'Buyer'
@@ -339,77 +475,68 @@ export async function syncDarazReviews(storeId: string) {
                         }
                     }
 
-                    for (const rev of reviews) {
-                        const reviewId = String(rev.id)
-                        const rating = rev.ratings?.product_rating ? Number(rev.ratings.product_rating) : 5
-                        const reviewContent = rev.review_content || ''
-                        const replyContent = rev.seller_reply || null
-                        const initialReplyStatus = replyContent ? 'replied' : 'pending'
-                        const createdAt = rev.create_time ? new Date(Number(rev.create_time)).toISOString() : new Date().toISOString()
+                    // Get product metadata
+                    const matchedProduct = products?.find(p => Number(p.product_id) === Number(itemId))
+                    const productName = matchedProduct?.product_name || 'Product'
+                    const productImage = matchedProduct?.image_url || null
 
-                        // Get product metadata
-                        const matchedProduct = products?.find(p => Number(p.product_id) === itemId)
-                        const productName = matchedProduct?.product_name || 'Product'
-                        const productImage = matchedProduct?.image_url || null
+                    // Check if review already exists
+                    const { data: existingReview } = await supabase
+                        .from('daraz_reviews')
+                        .select('review_id, reply_status')
+                        .eq('review_id', reviewId)
+                        .maybeSingle()
 
-                        // Check if review already exists
-                        const { data: existingReview } = await supabase
-                            .from('daraz_reviews')
-                            .select('review_id, reply_status')
-                            .eq('review_id', reviewId)
-                            .maybeSingle()
+                    const upsertPayload = {
+                        review_id: reviewId,
+                        store_id: storeId,
+                        order_id: orderId,
+                        item_id: String(itemId),
+                        product_name: productName,
+                        product_image: productImage,
+                        rating,
+                        review_content: reviewContent,
+                        buyer_name: buyerName,
+                        reply_content: replyContent,
+                        reply_status: existingReview?.reply_status === 'replied' ? 'replied' : initialReplyStatus,
+                        created_at: createdAt,
+                        synced_at: new Date().toISOString()
+                    }
 
-                        const upsertPayload = {
-                            review_id: reviewId,
-                            store_id: storeId,
-                            order_id: orderId,
-                            item_id: String(itemId),
-                            product_name: productName,
-                            product_image: productImage,
-                            rating,
-                            review_content: reviewContent,
-                            buyer_name: buyerName,
-                            reply_content: replyContent,
-                            reply_status: existingReview?.reply_status === 'replied' ? 'replied' : initialReplyStatus,
-                            created_at: createdAt,
-                            synced_at: new Date().toISOString()
-                        }
+                    await supabase
+                        .from('daraz_reviews')
+                        .upsert(upsertPayload, { onConflict: 'review_id' })
 
-                        await supabase
-                            .from('daraz_reviews')
-                            .upsert(upsertPayload, { onConflict: 'review_id' })
+                    reviewsSyncedCount++
 
-                        reviewsSyncedCount++
+                    // 7. AI Auto-Reply processing (Trigger only for newly inserted/unsent reviews)
+                    const isNewPending = (!existingReview && initialReplyStatus === 'pending') || (existingReview && existingReview.reply_status === 'pending' && !replyContent)
+                    
+                    if (isNewPending && settings.ai_reply_enabled && reviewContent.trim()) {
+                        const reviewCreatedAt = new Date(createdAt)
+                        const isAfterCutoff = !settings.cutoff_time || reviewCreatedAt >= new Date(settings.cutoff_time)
 
-                        // 7. AI Auto-Reply processing (Trigger only for newly inserted/unsent reviews)
-                        const isNewPending = (!existingReview && initialReplyStatus === 'pending') || (existingReview && existingReview.reply_status === 'pending' && !replyContent)
-                        
-                        if (isNewPending && settings.ai_reply_enabled && reviewContent.trim()) {
-                            const reviewCreatedAt = new Date(createdAt)
-                            const isAfterCutoff = !settings.cutoff_time || reviewCreatedAt >= new Date(settings.cutoff_time)
-
-                            if (isAfterCutoff) {
-                                console.log(`[ReviewSync] Review ${reviewId} qualifies for AI Auto-reply. Generating...`)
-                                const aiReply = await generateAiReviewReply(rating, reviewContent, store.seller_account, settings)
-                                if (aiReply && aiReply.trim()) {
-                                    // Submit reply to Daraz API and update status
-                                    const replyRes = await replyToReview(storeId, reviewId, aiReply)
-                                    if (replyRes.success) {
-                                        // Update auto_replied flag
-                                        await supabase
-                                            .from('daraz_reviews')
-                                            .update({ auto_replied: true })
-                                            .eq('review_id', reviewId)
-                                    }
+                        if (isAfterCutoff) {
+                            console.log(`[ReviewSync] Review ${reviewId} qualifies for AI Auto-reply. Generating...`)
+                            const aiReply = await generateAiReviewReply(rating, reviewContent, store.seller_account, settings)
+                            if (aiReply && aiReply.trim()) {
+                                // Submit reply to Daraz API and update status
+                                const replyRes = await replyToReview(storeId, reviewId, aiReply)
+                                if (replyRes.success) {
+                                    // Update auto_replied flag
+                                    await supabase
+                                        .from('daraz_reviews')
+                                        .update({ auto_replied: true })
+                                        .eq('review_id', reviewId)
                                 }
-                            } else {
-                                console.log(`[ReviewSync] Review ${reviewId} skipped by cutoff date filter. Created at: ${createdAt}, Cutoff: ${settings.cutoff_time}`)
                             }
+                        } else {
+                            console.log(`[ReviewSync] Review ${reviewId} skipped by cutoff date filter. Created at: ${createdAt}, Cutoff: ${settings.cutoff_time}`)
                         }
                     }
                 }
-            } catch (itemErr: any) {
-                console.error(`[ReviewSync] Error syncing reviews for item ${itemId}:`, itemErr.message)
+            } catch (batchErr: any) {
+                console.error(`[ReviewSync] Error syncing review details batch:`, batchErr.message)
             }
         }
 
