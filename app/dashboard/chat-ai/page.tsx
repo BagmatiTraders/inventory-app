@@ -15,6 +15,11 @@ import {
     type ChatSettings
 } from '@/features/chat/actions/chat-actions'
 import {
+    getReviewSettings,
+    updateReviewSettings,
+    type ReviewSettings
+} from '@/features/reviews/actions/review-actions'
+import {
     MessageSquare,
     Cpu,
     Send,
@@ -92,6 +97,7 @@ function ChatAiDashboardContent() {
     const [stores, setStores] = useState<Store[]>([])
     const [activeStoreId, setActiveStoreId] = useState<string>('')
     const [storeSettings, setStoreSettings] = useState<Record<string, ChatSettings>>({})
+    const [reviewSettings, setReviewSettings] = useState<Record<string, ReviewSettings>>({})
     const [sessions, setSessions] = useState<ChatSession[]>([])
     const [activeSessionId, setActiveSessionId] = useState<string | null>(null)
     const [messages, setMessages] = useState<ChatMessage[]>([])
@@ -194,6 +200,10 @@ function ChatAiDashboardContent() {
                 // Fetch Settings
                 const settings = await getChatSettings(activeStoreId)
                 setStoreSettings(prev => ({ ...prev, [activeStoreId]: settings }))
+
+                // Fetch Review Settings
+                const revSettings = await getReviewSettings(activeStoreId)
+                setReviewSettings(prev => ({ ...prev, [activeStoreId]: revSettings }))
 
                 // Fetch Rules
                 const ruleList = await getChatRules(activeStoreId)
@@ -441,6 +451,28 @@ function ChatAiDashboardContent() {
         }
     }
 
+    const handleSaveReviewSettings = async (payload: Partial<ReviewSettings>) => {
+        if (!activeStoreId) return
+        setSavingSettings(true)
+        try {
+            const res = await updateReviewSettings(activeStoreId, payload)
+            if (res.success) {
+                setReviewSettings(prev => ({
+                    ...prev,
+                    [activeStoreId]: { ...prev[activeStoreId], ...payload } as ReviewSettings
+                }))
+                toast.success('Review Settings updated successfully!')
+            } else {
+                toast.error(res.error || 'Failed to update review settings')
+            }
+        } catch (err) {
+            const errorMsg = err instanceof Error ? err.message : 'Failed to update settings'
+            toast.error(errorMsg)
+        } finally {
+            setSavingSettings(false)
+        }
+    }
+
     // Add Matching Rule
     const handleAddRule = async (e: React.FormEvent) => {
         e.preventDefault()
@@ -536,6 +568,7 @@ function ChatAiDashboardContent() {
 
     const activeSession = sessions.find(s => s.session_id === activeSessionId)
     const currentStoreSettings = storeSettings[activeStoreId] || {}
+    const currentReviewSettings = reviewSettings[activeStoreId] || {}
 
     // Filter customer orders based on active session's title (username), buyer_id, or manual search query
     const filteredOrders = customerOrders.filter(order => {
@@ -1422,6 +1455,92 @@ function ChatAiDashboardContent() {
                                         placeholder="Enter the template to send to new buyers..."
                                     />
                                     <p className="text-[10px] text-zinc-400">Note: The &quot;Follow Our Store&quot; invitation button will be appended automatically below this message.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* AI Review Automation settings block */}
+                    <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-5 shadow-sm space-y-5">
+                        <div className="flex items-center gap-2 border-b border-zinc-100 dark:border-zinc-800 pb-3">
+                            <Cpu className="text-purple-600" size={20} />
+                            <h2 className="text-base font-bold text-zinc-800 dark:text-zinc-100">AI Review Automation Settings</h2>
+                        </div>
+
+                        <div className="space-y-4">
+                            {/* Toggle switch */}
+                            <div className="flex justify-between items-center p-3.5 bg-zinc-50 dark:bg-zinc-800/30 rounded-lg border border-zinc-200/50 dark:border-zinc-700/30">
+                                <div>
+                                    <h3 className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">AI Review Auto-Reply</h3>
+                                    <p className="text-[11px] text-zinc-500">Automatically generate and post replies to customer product reviews using Gemini AI.</p>
+                                </div>
+                                <button
+                                    onClick={() => handleSaveReviewSettings({ ai_reply_enabled: !currentReviewSettings.ai_reply_enabled })}
+                                    disabled={savingSettings}
+                                    className={`px-4 py-1.5 rounded-lg text-xs font-bold shadow-sm transition-all border ${
+                                        currentReviewSettings.ai_reply_enabled
+                                            ? 'bg-purple-650 border-purple-650 text-white hover:bg-purple-700'
+                                            : 'bg-zinc-100 dark:bg-zinc-800 border-zinc-300 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200'
+                                    }`}
+                                >
+                                    {currentReviewSettings.ai_reply_enabled ? 'AI REVIEW ACTIVE' : 'AI REVIEW INACTIVE'}
+                                </button>
+                            </div>
+
+                            {/* Cutoff Date Picker */}
+                            <div className="space-y-1.5">
+                                <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider flex items-center gap-1.5">
+                                    <Clock size={12} /> Auto-Reply Cutoff Date & Time
+                                </label>
+                                <input
+                                    type="datetime-local"
+                                    value={currentReviewSettings.cutoff_time ? new Date(currentReviewSettings.cutoff_time).toLocaleString('sv').substring(0, 16).replace(' ', 'T') : ''}
+                                    onChange={(e) => handleSaveReviewSettings({ cutoff_time: e.target.value ? new Date(e.target.value).toISOString() : null })}
+                                    className="bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg px-3 py-1.5 text-sm w-full max-w-xs focus:outline-none focus:ring-1 focus:ring-purple-500 text-zinc-800 dark:text-zinc-100"
+                                />
+                                <p className="text-[10px] text-zinc-400">Ignore and immediately skip any customer reviews submitted before this date and time.</p>
+                            </div>
+
+                            {/* AI Prompt / Instruction */}
+                            <div className="space-y-1.5">
+                                <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider flex items-center gap-1.5">
+                                    AI Prompt / Instructions
+                                </label>
+                                <textarea
+                                    rows={3}
+                                    value={currentReviewSettings.ai_instruction || ''}
+                                    onChange={(e) => setReviewSettings(prev => ({
+                                        ...prev,
+                                        [activeStoreId]: { ...prev[activeStoreId], ai_instruction: e.target.value } as ReviewSettings
+                                    }))}
+                                    onBlur={() => handleSaveReviewSettings({ ai_instruction: currentReviewSettings.ai_instruction })}
+                                    className="w-full bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg p-3 text-xs focus:outline-none focus:ring-1 focus:ring-purple-500 text-zinc-800 dark:text-zinc-100"
+                                    placeholder="Enter additional instructions for the AI reviewer (e.g. Always respond in a warm tone, recommend checking our store for more products...)"
+                                />
+                            </div>
+
+                            {/* Star Templates Grid */}
+                            <div className="space-y-3 pt-2">
+                                <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-wider">Star Rating Default Templates</h3>
+                                <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+                                    {[1, 2, 3, 4, 5].map((star) => (
+                                        <div key={star} className="space-y-1">
+                                            <label className="text-[11px] font-bold text-zinc-550 flex items-center gap-1 font-semibold">
+                                                <Star size={10} className="fill-amber-400 text-amber-400" /> {star} Star Template
+                                            </label>
+                                            <textarea
+                                                rows={3}
+                                                value={(currentReviewSettings as any)[`star${star}_template`] || ''}
+                                                onChange={(e) => setReviewSettings(prev => ({
+                                                    ...prev,
+                                                    [activeStoreId]: { ...prev[activeStoreId], [`star${star}_template`]: e.target.value } as any
+                                                }))}
+                                                onBlur={() => handleSaveReviewSettings({ [`star${star}_template`]: (currentReviewSettings as any)[`star${star}_template`] })}
+                                                className="w-full bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg p-2 text-[11px] focus:outline-none focus:ring-1 focus:ring-purple-500 text-zinc-800 dark:text-zinc-100"
+                                                placeholder={`Default template for ${star} star`}
+                                            />
+                                        </div>
+                                    ))}
                                 </div>
                             </div>
                         </div>

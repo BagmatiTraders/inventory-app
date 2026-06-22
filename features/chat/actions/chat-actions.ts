@@ -29,6 +29,32 @@ function signRequest(apiName: string, params: Record<string, unknown>, appSecret
     return crypto.createHmac('sha256', appSecret).update(str).digest('hex').toUpperCase()
 }
 
+// Parse message text summary (resolves JSON cards to human-readable text)
+function parseSummary(content: string | null): string | null {
+    if (!content) return null;
+    try {
+        const parsed = JSON.parse(content);
+        if (typeof parsed === 'object' && parsed !== null) {
+            if (parsed.cardType === 10010 || parsed.cardType === '10010' || parsed.action === 'followCard_follow') {
+                return 'Follow Invitation';
+            }
+            if (parsed.cardType === 10007 || parsed.cardType === '10007' || parsed.orderId || parsed.order_id) {
+                return 'Order Card';
+            }
+            if (parsed.cardType === 10006 || parsed.cardType === '10006' || parsed.itemId || parsed.item_id) {
+                return 'Product Card';
+            }
+            if (parsed.cardType === 10008 || parsed.cardType === '10008' || parsed.promotionId || parsed.promotion_id) {
+                return 'Voucher Card';
+            }
+            return parsed.txt || parsed.content || content;
+        }
+    } catch {
+        // Not JSON
+    }
+    return content;
+}
+
 // 1. Get Store Tokens & App Config
 async function getStoreTokenAndSecret(storeId: string) {
     const appKey = process.env.NEXT_PUBLIC_DARAZ_CHAT_APP_KEY?.trim()
@@ -90,17 +116,51 @@ export async function syncDarazChatSessions(storeId: string) {
         console.log(`[ChatSync] Retrieved ${sessionList.length} sessions from Daraz.`)
 
         for (const session of sessionList) {
+            // Self-heal buyer ID from session ID if undefined
+            let buyerId = String(session.buyer_id || '');
+            if (!buyerId || buyerId === 'undefined') {
+                const parts = String(session.session_id || '').split('_');
+                if (parts.length >= 4) {
+                    if (parts[1] === '1') buyerId = parts[0];
+                    else if (parts[3] === '1') buyerId = parts[2];
+                }
+            }
+
+            // Resolve buyer's real name from order history if title is generic
+            let sessionTitle = session.title || '';
+            const isGenericTitle = !sessionTitle || sessionTitle === 'undefined' || sessionTitle === 'Buyer undefined' || sessionTitle.startsWith('Buyer ');
+            
+            if (isGenericTitle && buyerId && buyerId !== 'undefined') {
+                const { data: orderData } = await supabase
+                    .from('daraz_orders')
+                    .select('customer_name, shipping_name, customer_first_name, customer_last_name')
+                    .contains('items_detail', JSON.stringify([{ buyer_id: Number(buyerId) }]))
+                    .limit(1)
+                    .maybeSingle();
+
+                if (orderData) {
+                    const resolvedName = orderData.customer_name || orderData.shipping_name || `${orderData.customer_first_name} ${orderData.customer_last_name}`.trim();
+                    if (resolvedName) {
+                        sessionTitle = resolvedName;
+                    }
+                }
+            }
+
+            if (!sessionTitle || sessionTitle === 'undefined') {
+                sessionTitle = `Buyer ${buyerId}`;
+            }
+
             // Upsert session details
             const sessionPayload = {
                 session_id: session.session_id,
                 store_id: storeId,
-                buyer_id: String(session.buyer_id),
-                title: session.title || `Buyer ${session.buyer_id}`,
+                buyer_id: buyerId,
+                title: sessionTitle,
                 head_url: session.head_url || null,
                 unread_count: parseInt(session.unread_count || '0'),
                 last_message_id: session.last_message_id || null,
                 last_message_time: session.last_message_time ? new Date(parseInt(session.last_message_time)).toISOString() : null,
-                last_message_summary: session.summary || null,
+                last_message_summary: parseSummary(session.summary),
                 updated_at: new Date().toISOString()
             }
 
@@ -152,6 +212,18 @@ export async function syncDarazChatMessages(storeId: string, sessionId: string) 
             throw new Error(`Daraz API Error: ${response.data.message || response.data.msg}`)
         }
 
+        // Extract buyer and seller IDs from sessionId for self-healing
+        let sessionBuyerId = '';
+        let sessionSellerId = '';
+        const parts = String(sessionId || '').split('_');
+        if (parts.length >= 4) {
+            if (parts[1] === '1') sessionBuyerId = parts[0];
+            else if (parts[3] === '1') sessionBuyerId = parts[2];
+            
+            if (parts[1] === '2') sessionSellerId = parts[0];
+            else if (parts[3] === '2') sessionSellerId = parts[2];
+        }
+
         const messageList = response.data.data?.message_list || []
         
         let newMessagesCached = 0
@@ -167,13 +239,26 @@ export async function syncDarazChatMessages(storeId: string, sessionId: string) 
 
             if (existingMsg) continue // Skip if already cached
 
+            const fromType = String(msg.from_account_type);
+            const toType = String(msg.to_account_type);
+            
+            let fromAccountId = String(msg.from_account_id || '');
+            let toAccountId = String(msg.to_account_id || '');
+            
+            if (!fromAccountId || fromAccountId === 'undefined') {
+                fromAccountId = fromType === '1' ? sessionBuyerId : sessionSellerId;
+            }
+            if (!toAccountId || toAccountId === 'undefined') {
+                toAccountId = toType === '1' ? sessionBuyerId : sessionSellerId;
+            }
+
             const msgPayload = {
                 message_id: msg.message_id,
                 session_id: sessionId,
-                from_account_id: String(msg.from_account_id),
-                from_account_type: String(msg.from_account_type),
-                to_account_id: String(msg.to_account_id),
-                to_account_type: String(msg.to_account_type),
+                from_account_id: fromAccountId,
+                from_account_type: fromType,
+                to_account_id: toAccountId,
+                to_account_type: toType,
                 content: msg.content,
                 template_id: String(msg.template_id || '1'),
                 send_time: sendTime,
@@ -277,13 +362,25 @@ export async function sendChatMessage(
 
         await supabase.from('daraz_chat_messages').insert(msgPayload)
 
+        // Determine the best summary text to show based on the templateId
+        let summaryText = 'Interactive Template Message';
+        if (templateId === '1') {
+            summaryText = txt || '';
+        } else if (templateId === '10006') {
+            summaryText = 'Product Card';
+        } else if (templateId === '10007') {
+            summaryText = 'Order Card';
+        } else if (templateId === '10010') {
+            summaryText = 'Follow Invitation';
+        }
+
         // Update session last message summary
         await supabase
             .from('daraz_chat_sessions')
             .update({
                 last_message_id: messageId,
                 last_message_time: new Date().toISOString(),
-                last_message_summary: templateId === '1' ? txt : 'Interactive Template Message'
+                last_message_summary: summaryText
             })
             .eq('session_id', sessionId)
 

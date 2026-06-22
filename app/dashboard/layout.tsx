@@ -161,7 +161,8 @@ function DashboardLayout({
                                                 isCollapsed={isCollapsed}
                                                 subItems={[
                                                     { label: 'Chat', href: '/dashboard/chat-ai?tab=chat' },
-                                                    { label: 'AI & Automation', href: '/dashboard/chat-ai?tab=settings' }
+                                                    { label: 'AI & Automation', href: '/dashboard/chat-ai?tab=settings' },
+                                                    { label: 'Reviews', href: '/dashboard/chat-ai/reviews' }
                                                 ]}
                                             >
                                                 Chat & AI

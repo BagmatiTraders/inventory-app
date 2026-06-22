@@ -61,10 +61,25 @@ async function signRequest(apiName: string, params: Record<string, any>, appSecr
 function parseSummary(content: string): string {
     try {
         const parsed = JSON.parse(content);
-        return parsed.txt || parsed.content || content;
+        if (typeof parsed === 'object' && parsed !== null) {
+            if (parsed.cardType === 10010 || parsed.cardType === '10010' || parsed.action === 'followCard_follow') {
+                return 'Follow Invitation';
+            }
+            if (parsed.cardType === 10007 || parsed.cardType === '10007' || parsed.orderId || parsed.order_id) {
+                return 'Order Card';
+            }
+            if (parsed.cardType === 10006 || parsed.cardType === '10006' || parsed.itemId || parsed.item_id) {
+                return 'Product Card';
+            }
+            if (parsed.cardType === 10008 || parsed.cardType === '10008' || parsed.promotionId || parsed.promotion_id) {
+                return 'Voucher Card';
+            }
+            return parsed.txt || parsed.content || content;
+        }
     } catch {
-        return content;
+        // Not JSON
     }
+    return content;
 }
 
 // Helper: Parse timestamp securely to milliseconds
@@ -406,7 +421,20 @@ Deno.serve(async (req) => {
     // Determine sender roles
     const fromAccountType = String(data.from_account_type); // '2' = seller, '1' = buyer
     const isBuyer = fromAccountType === '1' || fromAccountType === 'buyer';
-    const buyerId = isBuyer ? String(data.from_account_id) : String(data.to_account_id);
+    
+    let buyerId = isBuyer ? String(data.from_account_id) : String(data.to_account_id);
+    let sellerId = isBuyer ? String(data.to_account_id) : String(data.from_account_id);
+    
+    // Parse session_id for self-healing of buyerId and sellerId if they are undefined
+    const parts = String(data.session_id || '').split('_');
+    if (parts.length >= 4) {
+        const p0 = parts[0], p1 = parts[1], p2 = parts[2], p3 = parts[3];
+        if (p1 === '1') buyerId = p0;
+        else if (p3 === '1') buyerId = p2;
+        
+        if (p1 === '2') sellerId = p0;
+        else if (p3 === '2') sellerId = p2;
+    }
 
     // Retrieve or create session
     const { data: existingSession } = await supabase
@@ -415,11 +443,35 @@ Deno.serve(async (req) => {
         .eq('session_id', data.session_id)
         .maybeSingle();
 
+    // Resolve real customer name from order history if title is missing, generic, or undefined
+    let sessionTitle = existingSession?.title || '';
+    const isGenericTitle = !sessionTitle || sessionTitle === 'undefined' || sessionTitle === 'Buyer undefined' || sessionTitle.startsWith('Buyer ');
+    
+    if (isGenericTitle && buyerId && buyerId !== 'undefined') {
+        const { data: orderData } = await supabase
+            .from('daraz_orders')
+            .select('customer_name, shipping_name, customer_first_name, customer_last_name')
+            .contains('items_detail', JSON.stringify([{ buyer_id: Number(buyerId) }]))
+            .limit(1)
+            .maybeSingle();
+
+        if (orderData) {
+            const resolvedName = orderData.customer_name || orderData.shipping_name || `${orderData.customer_first_name} ${orderData.customer_last_name}`.trim();
+            if (resolvedName) {
+                sessionTitle = resolvedName;
+            }
+        }
+    }
+
+    if (!sessionTitle || sessionTitle === 'undefined') {
+        sessionTitle = `Buyer ${buyerId}`;
+    }
+
     const sessionPayload = {
         session_id: data.session_id,
         store_id: store.id,
         buyer_id: buyerId,
-        title: existingSession?.title || `Buyer ${buyerId}`,
+        title: sessionTitle,
         unread_count: isBuyer ? (existingSession?.unread_count || 0) + 1 : 0,
         last_message_id: data.message_id,
         last_message_time: data.send_time ? parseTimestamp(data.send_time) : new Date().toISOString(),
@@ -433,9 +485,9 @@ Deno.serve(async (req) => {
     const msgPayload = {
         message_id: data.message_id,
         session_id: data.session_id,
-        from_account_id: String(data.from_account_id),
+        from_account_id: fromAccountType === '1' ? buyerId : sellerId,
         from_account_type: fromAccountType,
-        to_account_id: String(data.to_account_id),
+        to_account_id: fromAccountType === '1' ? sellerId : buyerId,
         to_account_type: String(data.to_account_type),
         content: data.content,
         template_id: String(data.template_id || '1'),
