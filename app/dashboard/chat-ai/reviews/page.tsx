@@ -175,17 +175,21 @@ export default function ReviewsDashboard() {
         })
     }
 
-    // Toggle select all visible reviews
+    // Toggle select all visible reviews (only actionable ones)
     const toggleSelectAll = (visibleReviews: Review[]) => {
-        const visibleIds = visibleReviews.map(r => r.review_id)
-        const allSelected = visibleIds.every(id => selectedIds.has(id))
+        const actionableIds = visibleReviews
+            .filter(r => r.reply_status !== 'replied' && r.review_content && r.review_content.trim())
+            .map(r => r.review_id)
+        if (actionableIds.length === 0) return
+
+        const allSelected = actionableIds.every(id => selectedIds.has(id))
 
         setSelectedIds(prev => {
             const next = new Set(prev)
             if (allSelected) {
-                visibleIds.forEach(id => next.delete(id))
+                actionableIds.forEach(id => next.delete(id))
             } else {
-                visibleIds.forEach(id => next.add(id))
+                actionableIds.forEach(id => next.add(id))
             }
             return next
         })
@@ -250,7 +254,14 @@ export default function ReviewsDashboard() {
         const matchesRating = ratingFilter === 'all' || rev.rating === ratingFilter
 
         // Status filter
-        const matchesStatus = statusFilter === 'all' || rev.reply_status === statusFilter
+        let matchesStatus = false
+        if (statusFilter === 'all') {
+            matchesStatus = true
+        } else if (statusFilter === 'pending') {
+            matchesStatus = rev.reply_status === 'pending' && !!(rev.review_content && rev.review_content.trim())
+        } else {
+            matchesStatus = rev.reply_status === statusFilter
+        }
 
         return matchesSearch && matchesRating && matchesStatus
     })
@@ -395,19 +406,23 @@ export default function ReviewsDashboard() {
                 ) : (
                     <div className="space-y-3">
                         {/* Select All Checkbox */}
-                        <div className="flex items-center gap-2 px-3 py-1 text-xs font-bold text-zinc-500">
-                            <button
-                                onClick={() => toggleSelectAll(filteredReviews)}
-                                className="flex items-center gap-1.5 hover:text-zinc-700 dark:hover:text-zinc-300 transition-colors"
-                            >
-                                {filteredReviews.every(r => selectedIds.has(r.review_id)) ? (
-                                    <CheckSquare size={16} className="text-purple-600" />
-                                ) : (
-                                    <Square size={16} />
-                                )}
-                                <span>Select All Visible ({filteredReviews.length})</span>
-                            </button>
-                        </div>
+                        {filteredReviews.some(r => r.reply_status !== 'replied' && r.review_content && r.review_content.trim()) && (
+                            <div className="flex items-center gap-2 px-3 py-1 text-xs font-bold text-zinc-500">
+                                <button
+                                    onClick={() => toggleSelectAll(filteredReviews)}
+                                    className="flex items-center gap-1.5 hover:text-zinc-700 dark:hover:text-zinc-300 transition-colors"
+                                >
+                                    {filteredReviews
+                                        .filter(r => r.reply_status !== 'replied' && r.review_content && r.review_content.trim())
+                                        .every(r => selectedIds.has(r.review_id)) ? (
+                                            <CheckSquare size={16} className="text-purple-600" />
+                                        ) : (
+                                            <Square size={16} />
+                                        )}
+                                    <span>Select All Actionable ({filteredReviews.filter(r => r.reply_status !== 'replied' && r.review_content && r.review_content.trim()).length})</span>
+                                </button>
+                            </div>
+                        )}
 
                         {/* List cards */}
                         {filteredReviews.map((rev) => {
@@ -425,16 +440,22 @@ export default function ReviewsDashboard() {
                                     }`}
                                 >
                                     {/* Select Box / Bullet */}
-                                    <button
-                                        onClick={() => toggleSelectReview(rev.review_id)}
-                                        className="shrink-0 self-start p-1 text-zinc-450 hover:text-purple-600 transition-colors"
-                                    >
-                                        {isSelected ? (
-                                            <CheckSquare size={18} className="text-purple-600" />
+                                    <div className="shrink-0 w-[26px]">
+                                        {rev.reply_status !== 'replied' && rev.review_content && rev.review_content.trim() ? (
+                                            <button
+                                                onClick={() => toggleSelectReview(rev.review_id)}
+                                                className="p-1 text-zinc-450 hover:text-purple-600 transition-colors"
+                                            >
+                                                {isSelected ? (
+                                                    <CheckSquare size={18} className="text-purple-600" />
+                                                ) : (
+                                                    <Square size={18} />
+                                                )}
+                                            </button>
                                         ) : (
-                                            <Square size={18} />
+                                            <div className="w-[26px] h-6" />
                                         )}
-                                    </button>
+                                    </div>
 
                                     {/* Product Details Section */}
                                     <div className="w-full md:w-56 shrink-0 flex flex-row md:flex-col gap-3">
@@ -492,11 +513,13 @@ export default function ReviewsDashboard() {
                                         </div>
 
                                         {/* Customer Review text */}
-                                        <div className="space-y-1">
-                                            <div className="text-xs text-zinc-700 dark:text-zinc-300 italic p-3 bg-zinc-50 dark:bg-zinc-800/30 rounded-lg border border-zinc-200/50 dark:border-zinc-800/50 min-h-[3rem]">
-                                                {rev.review_content ? `"${rev.review_content}"` : 'No comment text provided.'}
+                                        {rev.review_content && rev.review_content.trim() && (
+                                            <div className="space-y-1">
+                                                <div className="text-xs text-zinc-700 dark:text-zinc-300 italic p-3 bg-zinc-50 dark:bg-zinc-800/30 rounded-lg border border-zinc-200/50 dark:border-zinc-800/50 min-h-[3rem]">
+                                                    "{rev.review_content}"
+                                                </div>
                                             </div>
-                                        </div>
+                                        )}
 
                                         {/* Replied state or Input field */}
                                         {rev.reply_status === 'replied' ? (
@@ -521,43 +544,46 @@ export default function ReviewsDashboard() {
                                                 )}
                                             </div>
                                         ) : (
-                                            <div className="space-y-2">
-                                                <div className="flex gap-2">
-                                                    <textarea
-                                                        rows={2}
-                                                        placeholder="Write reply for this customer review..."
-                                                        value={replyContentInput}
-                                                        onChange={(e) => {
-                                                            const text = e.target.value
-                                                            setIndividualReplies(prev => ({
-                                                                ...prev,
-                                                                [rev.review_id]: text
-                                                            }))
-                                                        }}
-                                                        className="flex-1 bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg p-2.5 text-xs focus:outline-none focus:ring-1 focus:ring-purple-500 text-zinc-800 dark:text-zinc-100"
-                                                    />
-                                                    <button
-                                                        onClick={() => handleSubmitSingleReply(rev.review_id)}
-                                                        disabled={isIndividualSubmitting || !replyContentInput.trim()}
-                                                        className="px-4 bg-purple-600 hover:bg-purple-700 active:scale-95 text-white shadow rounded-lg flex items-center justify-center shrink-0 transition-all disabled:opacity-50"
-                                                        title="Send reply"
-                                                    >
-                                                        {isIndividualSubmitting ? (
-                                                            <RefreshCw size={14} className="animate-spin" />
-                                                        ) : (
-                                                            <Send size={14} />
-                                                        )}
-                                                    </button>
-                                                </div>
-                                                
-                                                {/* Error State display */}
-                                                {rev.reply_status === 'failed' && (
-                                                    <div className="flex items-center gap-1.5 text-[10px] text-red-500 font-semibold animate-pulse">
-                                                        <AlertCircle size={12} />
-                                                        <span>Previous reply failed to submit. Please try again.</span>
+                                            // Only show the write option if there is review content
+                                            rev.review_content && rev.review_content.trim() ? (
+                                                <div className="space-y-2">
+                                                    <div className="flex gap-2">
+                                                        <textarea
+                                                            rows={2}
+                                                            placeholder="Write reply for this customer review..."
+                                                            value={replyContentInput}
+                                                            onChange={(e) => {
+                                                                const text = e.target.value
+                                                                setIndividualReplies(prev => ({
+                                                                    ...prev,
+                                                                    [rev.review_id]: text
+                                                                }))
+                                                            }}
+                                                            className="flex-1 bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg p-2.5 text-xs focus:outline-none focus:ring-1 focus:ring-purple-500 text-zinc-800 dark:text-zinc-100"
+                                                        />
+                                                        <button
+                                                            onClick={() => handleSubmitSingleReply(rev.review_id)}
+                                                            disabled={isIndividualSubmitting || !replyContentInput.trim()}
+                                                            className="px-4 bg-purple-600 hover:bg-purple-700 active:scale-95 text-white shadow rounded-lg flex items-center justify-center shrink-0 transition-all disabled:opacity-50"
+                                                            title="Send reply"
+                                                        >
+                                                            {isIndividualSubmitting ? (
+                                                                <RefreshCw size={14} className="animate-spin" />
+                                                            ) : (
+                                                                <Send size={14} />
+                                                            )}
+                                                        </button>
                                                     </div>
-                                                )}
-                                            </div>
+                                                    
+                                                    {/* Error State display */}
+                                                    {rev.reply_status === 'failed' && (
+                                                        <div className="flex items-center gap-1.5 text-[10px] text-red-500 font-semibold animate-pulse">
+                                                            <AlertCircle size={12} />
+                                                            <span>Previous reply failed to submit. Please try again.</span>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            ) : null
                                         )}
                                     </div>
                                 </div>

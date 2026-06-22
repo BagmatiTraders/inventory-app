@@ -254,7 +254,7 @@ export async function bulkReplyToReviews(storeId: string, reviewIds: string[], r
 }
 
 // 6. Sync Reviews from Daraz API for all active products
-export async function syncDarazReviews(storeId: string) {
+export async function syncDarazReviews(storeId: string, daysLookback: number = 14) {
     try {
         const { appKey, appSecret, accessToken } = await getStoreTokenAndSecret(storeId)
         const supabase = await createAdminClient()
@@ -270,116 +270,126 @@ export async function syncDarazReviews(storeId: string) {
             throw new Error(`Store not found: ${storeId}`)
         }
 
-        // Fetch active products for this store
-        const { data: products, error: prodErr } = await supabase
-            .from('products')
-            .select('product_id, product_name, image_url')
-            .or(`seller_account1.eq."${store.seller_account}",seller_account2.eq."${store.seller_account}",seller_account3.eq."${store.seller_account}",seller_account4.eq."${store.seller_account}"`)
-            .eq('is_deleted', false)
-            .eq('status', 'Active')
+        console.log(`[ReviewSync] Fetching live products from Daraz API to extract real item IDs...`)
 
-        if (prodErr) {
-            throw new Error(`Failed to load store products: ${prodErr.message}`)
+        // Fetch all active products from Daraz API for this store
+        const productDetailsMap = new Map<string, { name: string; image: string; skus: string[] }>()
+        try {
+            const limit = 50
+            let offset = 0
+            let hasMore = true
+            while (hasMore) {
+                const params: Record<string, any> = {
+                    app_key: appKey,
+                    access_token: accessToken,
+                    timestamp: Date.now().toString(),
+                    sign_method: 'sha256',
+                    filter: 'live',
+                    limit,
+                    offset
+                }
+                const apiPath = '/products/get'
+                params.sign = signRequest(apiPath, params, appSecret)
+                
+                console.log(`[ReviewSync] Fetching live products page (offset=${offset})...`)
+                const res = await axios.get(`${API_URL}${apiPath}`, { params, timeout: 10000 })
+                if (res.data.code === '0' || res.data.code === 0) {
+                    const products = res.data?.data?.products || []
+                    for (const p of products) {
+                        const itemId = String(p.item_id)
+                        const name = p.attributes?.name || ''
+                        const image = p.images?.[0] || ''
+                        const skus = (p.skus || []).map((s: any) => s.SellerSku).filter(Boolean)
+                        productDetailsMap.set(itemId, { name, image, skus })
+                    }
+                    if (products.length < limit) {
+                        hasMore = false
+                    } else {
+                        offset += limit
+                    }
+                } else {
+                    console.error(`[ReviewSync] Failed to fetch products from Daraz API: ${res.data.message || res.data.msg}`)
+                    hasMore = false
+                }
+                await new Promise(r => setTimeout(r, 100))
+            }
+        } catch (err: any) {
+            console.error(`[ReviewSync] Error loading store products from Daraz API:`, err.message)
         }
 
-        const activeProductIds = Array.from(new Set(
-            (products || [])
-                .map(p => p.product_id)
-                .filter(Boolean)
-                .map(id => Number(id))
-        ))
+        // Fetch unique product IDs from orders in the last 90 days as backup/supplement
+        const orderItemIds = new Set<string>()
+        try {
+            const ninetyDaysAgo = new Date()
+            ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90)
+            
+            const { data: recentOrders } = await supabase
+                .from('daraz_orders')
+                .select('items_detail')
+                .eq('store_id', storeId)
+                .gte('order_date', ninetyDaysAgo.toISOString().split('T')[0])
 
-        console.log(`[ReviewSync] Found ${activeProductIds.length} active products to scan for store: ${store.seller_account}`)
+            for (const order of recentOrders || []) {
+                for (const item of order.items_detail || []) {
+                    const pid = item.product_id || item.ProductId
+                    if (pid && String(pid).length > 6) {
+                        orderItemIds.add(String(pid))
+                    }
+                }
+            }
+            console.log(`[ReviewSync] Found ${orderItemIds.size} unique product IDs in orders from last 90 days.`)
+        } catch (err: any) {
+            console.error(`[ReviewSync] Error loading product IDs from orders:`, err.message)
+        }
+
+        // Merge order-based IDs into our details map if not already present
+        for (const pid of orderItemIds) {
+            if (!productDetailsMap.has(pid)) {
+                productDetailsMap.set(pid, { name: 'Product', image: '', skus: [] })
+            }
+        }
+
+        const activeProductIds = Array.from(productDetailsMap.keys()).map(Number)
+        console.log(`[ReviewSync] Scanning reviews for ${activeProductIds.length} unique Daraz product IDs.`)
 
         // Fetch review settings
         const settings = await getReviewSettings(storeId)
         let reviewsSyncedCount = 0
 
-        // Step A: Fetch review IDs for all active products in the last 7 days
-        // Strategy: First try a seller-wide query (no item_id) to get all reviews at once.
-        // Fallback: per-product queries with rate-limiting (max 3 concurrent, 1.2s delay between batches).
+        // Step A: Fetch review IDs in chunked 7-day windows
         const allReviewIds = new Set<string>()
         const itemIdMap = new Map<string, string>() // maps review_id -> item_id
         
-        const endTime = Date.now()
-        const sevenDaysAgo = endTime - 7 * 24 * 3600 * 1000
+        const chunks: Array<{ start: number; end: number }> = []
+        const now = Date.now()
+        const chunkSizeMs = 7 * 24 * 3600 * 1000 // 7 days
 
-        // Helper: sleep for ms milliseconds
-        const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
-
-        // --- Attempt 1: Seller-wide history fetch (no item_id) ---
-        // The API may return all reviews for the seller account without needing per-product requests
-        let sellerWideSuccess = false
-        try {
-            const timestamp = Date.now().toString()
-            const sellerWideParams: Record<string, unknown> = {
-                app_key: appKey,
-                access_token: accessToken,
-                timestamp,
-                sign_method: 'sha256',
-                start_time: sevenDaysAgo,
-                end_time: endTime,
-                page_size: 50,
-                current: 1
-            }
-            const apiPath = '/review/seller/history/list'
-            sellerWideParams.sign = signRequest(apiPath, sellerWideParams, appSecret)
-
-            console.log(`[ReviewSync] Attempting seller-wide review history fetch...`)
-            const sellerWideResp = await axios.get(`${API_URL}${apiPath}`, { params: sellerWideParams, timeout: 10000 })
-
-            if (sellerWideResp.data.code === "0" || sellerWideResp.data.code === 0) {
-                const idList = sellerWideResp.data.data?.id_list || []
-                console.log(`[ReviewSync] Seller-wide fetch returned ${idList.length} review IDs.`)
-                for (const rId of idList) allReviewIds.add(String(rId))
-                sellerWideSuccess = true
-
-                // Paginate if needed (total > page_size)
-                const total = Number(sellerWideResp.data.data?.total || 0)
-                const pageSize = 50
-                if (total > pageSize) {
-                    const pages = Math.ceil(total / pageSize)
-                    for (let page = 2; page <= pages; page++) {
-                        await sleep(500)
-                        const pgParams: Record<string, unknown> = {
-                            app_key: appKey, access_token: accessToken,
-                            timestamp: Date.now().toString(), sign_method: 'sha256',
-                            start_time: sevenDaysAgo, end_time: endTime,
-                            page_size: pageSize, current: page
-                        }
-                        pgParams.sign = signRequest(apiPath, pgParams, appSecret)
-                        const pgResp = await axios.get(`${API_URL}${apiPath}`, { params: pgParams, timeout: 10000 })
-                        if (pgResp.data.code === "0" || pgResp.data.code === 0) {
-                            for (const rId of (pgResp.data.data?.id_list || [])) allReviewIds.add(String(rId))
-                        }
-                    }
-                }
-            } else {
-                const msg = sellerWideResp.data.message || sellerWideResp.data.msg || ''
-                console.log(`[ReviewSync] Seller-wide fetch failed (${msg}). Falling back to per-product queries.`)
-            }
-        } catch (swErr: any) {
-            console.log(`[ReviewSync] Seller-wide fetch error: ${swErr.message}. Falling back to per-product queries.`)
+        const numChunks = Math.ceil(daysLookback / 7)
+        for (let i = 0; i < numChunks; i++) {
+            const chunkEnd = now - i * chunkSizeMs
+            const chunkStart = Math.max(now - (i + 1) * chunkSizeMs, now - daysLookback * 24 * 3600 * 1000)
+            chunks.push({ start: Math.floor(chunkStart), end: Math.floor(chunkEnd) })
         }
 
-        // --- Attempt 2: Fallback per-product queries with rate limiting ---
-        if (!sellerWideSuccess) {
-            console.log(`[ReviewSync] Fetching review IDs per-product with rate limiting (batch=3, delay=1.5s)...`)
+        const batchSize = 5  // Max 5 concurrent requests to avoid rate limiting
+        const delayMs = 800  // Delay in milliseconds between batches
+        
+        for (let chunkIdx = 0; chunkIdx < chunks.length; chunkIdx++) {
+            const chunk = chunks[chunkIdx]
+            console.log(`[ReviewSync] Scanning chunk ${chunkIdx + 1}/${chunks.length} (${Math.floor((now - chunk.end) / 86400000)}-${Math.floor((now - chunk.start) / 86400000)} days ago)...`)
             
-            const batchSize = 3  // Max 3 concurrent requests to avoid rate limiting
             for (let i = 0; i < activeProductIds.length; i += batchSize) {
                 const batch = activeProductIds.slice(i, i + batchSize)
                 await Promise.all(batch.map(async (itemId) => {
                     try {
-                        const timestamp = Date.now().toString()
                         const params: Record<string, unknown> = {
                             app_key: appKey,
                             access_token: accessToken,
-                            timestamp,
+                            timestamp: Date.now().toString(),
                             sign_method: 'sha256',
                             item_id: itemId,
-                            start_time: sevenDaysAgo,
-                            end_time: endTime,
+                            start_time: chunk.start,
+                            end_time: chunk.end,
                             page_size: 50,
                             current: 1
                         }
@@ -407,9 +417,9 @@ export async function syncDarazReviews(storeId: string) {
                         console.error(`[ReviewSync] Error calling history API for item ${itemId}:`, itemErr.message)
                     }
                 }))
-                // Wait 1.5s between batches to respect Daraz rate limit
+                
                 if (i + batchSize < activeProductIds.length) {
-                    await sleep(1500)
+                    await new Promise(resolve => setTimeout(resolve, delayMs))
                 }
             }
         }
@@ -476,9 +486,28 @@ export async function syncDarazReviews(storeId: string) {
                     }
 
                     // Get product metadata
-                    const matchedProduct = products?.find(p => Number(p.product_id) === Number(itemId))
-                    const productName = matchedProduct?.product_name || 'Product'
-                    const productImage = matchedProduct?.image_url || null
+                    let productName = 'Product'
+                    let productImage = null
+
+                    const darazProd = productDetailsMap.get(itemId)
+                    if (darazProd && darazProd.name) {
+                        productName = darazProd.name
+                        productImage = darazProd.image || null
+                    } else if (orderId) {
+                        // Fallback: Resolve from daraz_orders items_detail
+                        const { data: orderData } = await supabase
+                            .from('daraz_orders')
+                            .select('items_detail')
+                            .eq('order_id', orderId)
+                            .maybeSingle()
+                        if (orderData && orderData.items_detail) {
+                            const matchedItem = orderData.items_detail.find((it: any) => String(it.product_id || it.ProductId) === itemId)
+                            if (matchedItem) {
+                                productName = matchedItem.name || 'Product'
+                                productImage = matchedItem.product_main_image || null
+                            }
+                        }
+                    }
 
                     // Check if review already exists
                     const { data: existingReview } = await supabase
@@ -509,7 +538,7 @@ export async function syncDarazReviews(storeId: string) {
 
                     reviewsSyncedCount++
 
-                    // 7. AI Auto-Reply processing (Trigger only for newly inserted/unsent reviews)
+                    // AI Auto-Reply processing (Trigger only for newly inserted/unsent reviews)
                     const isNewPending = (!existingReview && initialReplyStatus === 'pending') || (existingReview && existingReview.reply_status === 'pending' && !replyContent)
                     
                     if (isNewPending && settings.ai_reply_enabled && reviewContent.trim()) {
