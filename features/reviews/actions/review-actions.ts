@@ -10,11 +10,15 @@ export interface ReviewSettings {
     ai_reply_enabled: boolean
     cutoff_time: string | null
     ai_instruction: string | null
-    star1_template: string
-    star2_template: string
-    star3_template: string
-    star4_template: string
-    star5_template: string
+    ai_provider: string
+    openai_api_key: string | null
+    openai_model: string
+    positive_keywords: string[]
+    positive_templates: string[]
+    neutral_keywords: string[]
+    neutral_templates: string[]
+    negative_keywords: string[]
+    negative_templates: string[]
     created_at?: string
     updated_at?: string
 }
@@ -78,11 +82,15 @@ export async function getReviewSettings(storeId: string): Promise<ReviewSettings
         ai_reply_enabled: false,
         cutoff_time: null,
         ai_instruction: 'Please thank the customer for their review. Respond politely and concisely in the customer\'s language.',
-        star1_template: 'We are extremely sorry for the bad experience. We will investigate and improve this.',
-        star2_template: 'We apologize for the inconvenience. We are working to make it better.',
-        star3_template: 'Thank you for your feedback. We will work to improve our service.',
-        star4_template: 'Thank you for your rating! We hope you shop with us again.',
-        star5_template: 'Thank you so much for the 5-star review! We are thrilled to serve you.'
+        ai_provider: 'gemini',
+        openai_api_key: null,
+        openai_model: 'gpt-4o-mini',
+        positive_keywords: ['good', 'ramro xa', 'man paryo', 'great', 'nice', 'excellent', 'love', 'perfect', 'satisfied', 'happy', 'best', 'sweet'],
+        positive_templates: ['Thank you so much for the review! We are thrilled to serve you.'],
+        neutral_keywords: ['okay', 'thik thikai', 'average', 'medium', 'fair'],
+        neutral_templates: ['Thank you for your honest feedback. We will work to make it better.'],
+        negative_keywords: ['bad', 'poor', 'damage', 'broke', 'fake', 'late', 'worst', 'defect', 'waste', 'cheat', 'delay', 'slow', 'wrong'],
+        negative_templates: ['We are extremely sorry for the bad experience. We will investigate and improve this.']
     }
 
     // Insert defaults if not found
@@ -117,6 +125,7 @@ export async function updateReviewSettings(storeId: string, settings: Partial<Re
         if (error) throw error
 
         revalidatePath('/dashboard/chat-ai')
+        revalidatePath('/dashboard/chat-ai/reviews')
         return { success: true }
     } catch (err: any) {
         console.error('[ReviewSettings] Update failed:', err.message)
@@ -131,11 +140,20 @@ async function generateAiReviewReply(
     storeName: string,
     settings: ReviewSettings
 ): Promise<string | null> {
-    const apiKey = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY
+    const isOpenAi = settings.ai_provider === 'openai'
+    const apiKey = isOpenAi 
+        ? settings.openai_api_key 
+        : (process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY)
+
     if (!apiKey) {
-        console.warn('[ReviewAutoReply] GEMINI_API_KEY is missing in environment.')
+        console.warn(`[ReviewAutoReply] API key for provider ${settings.ai_provider || 'gemini'} is missing.`)
         return null
     }
+
+    const templateInfo = `Keyword-based Templates context:
+- Positive templates: ${JSON.stringify(settings.positive_templates)}
+- Neutral templates: ${JSON.stringify(settings.neutral_templates)}
+- Negative templates: ${JSON.stringify(settings.negative_templates)}`
 
     const systemPrompt = `You are an automated AI Customer Service Assistant for our store "${storeName}" on Daraz.
 We received a product review from a customer. Your job is to generate a polite, concise, and helpful reply to this review.
@@ -147,35 +165,115 @@ Review Details:
 AI Instructions / Guidelines:
 ${settings.ai_instruction || 'Please thank the customer and respond appropriately.'}
 
-Star-Specific Templates (Use this as inspiration or a baseline for your reply, but customize it to match the customer's comment if they left one):
-- 1 Star Template: ${settings.star1_template}
-- 2 Star Template: ${settings.star2_template}
-- 3 Star Template: ${settings.star3_template}
-- 4 Star Template: ${settings.star4_template}
-- 5 Star Template: ${settings.star5_template}
+Template Inspiration:
+${templateInfo}
 
-Please generate a reply that fits the rating and comment. If the customer didn't leave a comment, you can output a slightly customized version of the star-specific template. Keep the reply short (1-2 sentences) and polite. Do not include prefixes like "Response:" or "Reply:". Just output the clean reply text.
+Please generate a reply that fits the rating and comment. If customer didn't leave a comment, output a customized thank you or appropriate response based on the template inspiration. Keep the reply short (1-2 sentences) and polite. Do not include prefixes like "Response:" or "Reply:". Just output the clean reply text.
 Reply:`
 
     try {
-        const response = await axios.post(
-            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
-            {
-                contents: [{
-                    parts: [{ text: systemPrompt }]
-                }]
-            },
-            {
-                headers: { 'Content-Type': 'application/json' },
-                timeout: 10000
-            }
-        )
-
-        const replyText = response.data?.candidates?.[0]?.content?.parts?.[0]?.text
-        return replyText ? replyText.trim() : null
+        if (isOpenAi) {
+            console.log(`[ReviewAutoReply] Calling OpenAI API (${settings.openai_model || 'gpt-4o-mini'})...`)
+            const response = await axios.post(
+                'https://api.openai.com/v1/chat/completions',
+                {
+                    model: settings.openai_model || 'gpt-4o-mini',
+                    messages: [
+                        { role: 'user', content: systemPrompt }
+                    ],
+                    max_tokens: 150,
+                    temperature: 0.7
+                },
+                {
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${apiKey}`
+                    },
+                    timeout: 10000
+                }
+            )
+            const replyText = response.data?.choices?.[0]?.message?.content
+            return replyText ? replyText.trim() : null
+        } else {
+            console.log('[ReviewAutoReply] Calling Gemini API...')
+            const response = await axios.post(
+                `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+                {
+                    contents: [{
+                        parts: [{ text: systemPrompt }]
+                    }]
+                },
+                {
+                    headers: { 'Content-Type': 'application/json' },
+                    timeout: 10000
+                }
+            )
+            const replyText = response.data?.candidates?.[0]?.content?.parts?.[0]?.text
+            return replyText ? replyText.trim() : null
+        }
     } catch (err: any) {
-        console.error('[ReviewAutoReply] Gemini API call failed:', err.message)
+        console.error(`[ReviewAutoReply] AI API call failed (${settings.ai_provider}):`, err.message)
         return null
+    }
+}
+
+// 3.5 Generate Single Review Suggestion On-Demand
+export async function generateSingleReviewSuggestion(storeId: string, reviewId: string) {
+    try {
+        const supabase = await createAdminClient()
+        
+        // Fetch review details
+        const { data: review, error: revErr } = await supabase
+            .from('daraz_reviews')
+            .select('*')
+            .eq('review_id', reviewId)
+            .single()
+
+        if (revErr || !review) {
+            throw new Error(`Review not found: ${reviewId}`)
+        }
+
+        // Fetch store settings
+        const settings = await getReviewSettings(storeId)
+
+        // Fetch store info
+        const { data: store, error: storeErr } = await supabase
+            .from('online_stores')
+            .select('seller_account')
+            .eq('id', storeId)
+            .single()
+
+        if (storeErr || !store) {
+            throw new Error(`Store not found: ${storeId}`)
+        }
+
+        const reviewContent = review.review_content || ''
+        const rating = review.rating
+
+        console.log(`[ReviewSuggestion] Manually generating suggestion for review ${reviewId}...`)
+        const aiReply = await generateAiReviewReply(rating, reviewContent, store.seller_account, settings)
+
+        if (aiReply && aiReply.trim()) {
+            const cleanReply = aiReply.trim()
+            // Update review in DB
+            const { error: updErr } = await supabase
+                .from('daraz_reviews')
+                .update({
+                    suggested_reply: cleanReply,
+                    suggested_reply_source: 'ai'
+                })
+                .eq('review_id', reviewId)
+
+            if (updErr) throw updErr
+
+            revalidatePath('/dashboard/chat-ai/reviews')
+            return { success: true, suggested_reply: cleanReply }
+        } else {
+            throw new Error('AI failed to generate a suggestion.')
+        }
+    } catch (err: any) {
+        console.error(`[ReviewSuggestion] Manual generation failed for review ${reviewId}:`, err.message)
+        return { success: false, error: err.message }
     }
 }
 
@@ -191,15 +289,15 @@ export async function replyToReview(storeId: string, reviewId: string, replyCont
             access_token: accessToken,
             timestamp,
             sign_method: 'sha256',
-            review_id: Number(reviewId),
-            reply_content: replyContent
+            id: Number(reviewId),
+            content: replyContent
         }
 
         const apiPath = '/review/seller/reply/add'
         params.sign = signRequest(apiPath, params, appSecret)
 
         console.log(`[ReviewReply] Submitting reply for review ${reviewId}...`)
-        const response = await axios.post(`${API_URL}${apiPath}`, null, { params, timeout: 10000 })
+        const response = await axios.get(`${API_URL}${apiPath}`, { params, timeout: 10000 })
 
         if (response.data.code !== "0" && response.data.code !== 0) {
             throw new Error(`Daraz API Error: ${response.data.message || response.data.msg}`)
@@ -512,9 +610,12 @@ export async function syncDarazReviews(storeId: string, daysLookback: number = 1
                     // Check if review already exists
                     const { data: existingReview } = await supabase
                         .from('daraz_reviews')
-                        .select('review_id, reply_status')
+                        .select('review_id, reply_status, suggested_reply, suggested_reply_source')
                         .eq('review_id', reviewId)
                         .maybeSingle()
+
+                    let suggestedReply = existingReview?.suggested_reply || null
+                    let suggestedReplySource = existingReview?.suggested_reply_source || null
 
                     const upsertPayload = {
                         review_id: reviewId,
@@ -528,6 +629,8 @@ export async function syncDarazReviews(storeId: string, daysLookback: number = 1
                         buyer_name: buyerName,
                         reply_content: replyContent,
                         reply_status: existingReview?.reply_status === 'replied' ? 'replied' : initialReplyStatus,
+                        suggested_reply: suggestedReply,
+                        suggested_reply_source: suggestedReplySource,
                         created_at: createdAt,
                         synced_at: new Date().toISOString()
                     }
@@ -537,32 +640,6 @@ export async function syncDarazReviews(storeId: string, daysLookback: number = 1
                         .upsert(upsertPayload, { onConflict: 'review_id' })
 
                     reviewsSyncedCount++
-
-                    // AI Auto-Reply processing (Trigger only for newly inserted/unsent reviews)
-                    const isNewPending = (!existingReview && initialReplyStatus === 'pending') || (existingReview && existingReview.reply_status === 'pending' && !replyContent)
-                    
-                    if (isNewPending && settings.ai_reply_enabled && reviewContent.trim()) {
-                        const reviewCreatedAt = new Date(createdAt)
-                        const isAfterCutoff = !settings.cutoff_time || reviewCreatedAt >= new Date(settings.cutoff_time)
-
-                        if (isAfterCutoff) {
-                            console.log(`[ReviewSync] Review ${reviewId} qualifies for AI Auto-reply. Generating...`)
-                            const aiReply = await generateAiReviewReply(rating, reviewContent, store.seller_account, settings)
-                            if (aiReply && aiReply.trim()) {
-                                // Submit reply to Daraz API and update status
-                                const replyRes = await replyToReview(storeId, reviewId, aiReply)
-                                if (replyRes.success) {
-                                    // Update auto_replied flag
-                                    await supabase
-                                        .from('daraz_reviews')
-                                        .update({ auto_replied: true })
-                                        .eq('review_id', reviewId)
-                                }
-                            }
-                        } else {
-                            console.log(`[ReviewSync] Review ${reviewId} skipped by cutoff date filter. Created at: ${createdAt}, Cutoff: ${settings.cutoff_time}`)
-                        }
-                    }
                 }
             } catch (batchErr: any) {
                 console.error(`[ReviewSync] Error syncing review details batch:`, batchErr.message)

@@ -157,6 +157,7 @@ function ChatAiDashboardContent() {
     const [newRulePattern, setNewRulePattern] = useState('')
     const [newRuleReply, setNewRuleReply] = useState('')
     const [savingSettings, setSavingSettings] = useState(false)
+    const [settingsCategoryTab, setSettingsCategoryTab] = useState<'positive' | 'neutral' | 'negative'>('positive')
 
     // Loaders
     const [loadingSessions, setLoadingSessions] = useState(false)
@@ -1427,7 +1428,7 @@ function ChatAiDashboardContent() {
                                 {/* AI Toggle */}
                                 <div className="flex justify-between items-center p-3.5 bg-zinc-50 dark:bg-zinc-800/30 rounded-lg border border-zinc-200/50 dark:border-zinc-700/30">
                                     <div>
-                                        <h3 className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">Gemini AI Auto-Reply</h3>
+                                        <h3 className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">AI Chat Auto-Reply</h3>
                                         <p className="text-[11px] text-zinc-500">Automatically answer buyer FAQs using generative AI database checks.</p>
                                     </div>
                                     <button
@@ -1442,6 +1443,54 @@ function ChatAiDashboardContent() {
                                         {currentStoreSettings.ai_enabled ? 'AI ACTIVE' : 'AI INACTIVE'}
                                     </button>
                                 </div>
+
+                                {/* AI Provider selection */}
+                                {currentStoreSettings.ai_enabled && (
+                                    <div className="space-y-3.5 pt-3.5 border-t border-zinc-100 dark:border-zinc-800 animate-fadeIn">
+                                        <div className="flex justify-between items-center">
+                                            <label className="text-xs font-bold text-zinc-550 uppercase tracking-wider flex items-center gap-1">AI Model Provider</label>
+                                            <select
+                                                value={currentStoreSettings.ai_provider || 'gemini'}
+                                                onChange={(e) => handleSaveSettings({ ai_provider: e.target.value })}
+                                                className="bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 text-xs rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                            >
+                                                <option value="gemini">Google Gemini</option>
+                                                <option value="openai">OpenAI GPT</option>
+                                            </select>
+                                        </div>
+
+                                        {currentStoreSettings.ai_provider === 'openai' && (
+                                            <div className="space-y-3 animate-fadeIn">
+                                                <div className="space-y-1.5">
+                                                    <label className="text-xs font-bold text-zinc-550 uppercase tracking-wider">OpenAI API Key</label>
+                                                    <input
+                                                        type="password"
+                                                        placeholder="sk-..."
+                                                        value={currentStoreSettings.openai_api_key || ''}
+                                                        onChange={(e) => setStoreSettings(prev => ({
+                                                            ...prev,
+                                                            [activeStoreId]: { ...prev[activeStoreId], openai_api_key: e.target.value } as any
+                                                        }))}
+                                                        onBlur={() => handleSaveSettings({ openai_api_key: currentStoreSettings.openai_api_key })}
+                                                        className="w-full bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 text-zinc-800 dark:text-zinc-100"
+                                                    />
+                                                </div>
+                                                <div className="space-y-1.5">
+                                                    <label className="text-xs font-bold text-zinc-550 uppercase tracking-wider">OpenAI Model Name</label>
+                                                    <select
+                                                        value={currentStoreSettings.openai_model || 'gpt-4o-mini'}
+                                                        onChange={(e) => handleSaveSettings({ openai_model: e.target.value })}
+                                                        className="w-full bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 text-xs rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                                    >
+                                                        <option value="gpt-4o-mini">gpt-4o-mini (Recommended)</option>
+                                                        <option value="gpt-4o">gpt-4o (Premium)</option>
+                                                        <option value="gpt-3.5-turbo">gpt-3.5-turbo (Legacy)</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
                             </div>
                         </div>
 
@@ -1502,9 +1551,7 @@ function ChatAiDashboardContent() {
                                 </div>
                             </div>
                         </div>
-                    </div>
-
-                    {/* AI Review Automation settings block */}
+                    </div>                    {/* AI Review Automation settings block */}
                     <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-5 shadow-sm space-y-5">
                         <div className="flex items-center gap-2 border-b border-zinc-100 dark:border-zinc-800 pb-3">
                             <Cpu className="text-purple-600" size={20} />
@@ -1515,8 +1562,8 @@ function ChatAiDashboardContent() {
                             {/* Toggle switch */}
                             <div className="flex justify-between items-center p-3.5 bg-zinc-50 dark:bg-zinc-800/30 rounded-lg border border-zinc-200/50 dark:border-zinc-700/30">
                                 <div>
-                                    <h3 className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">AI Review Auto-Reply</h3>
-                                    <p className="text-[11px] text-zinc-500">Automatically generate and post replies to customer product reviews using Gemini AI.</p>
+                                    <h3 className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">AI Review Reply Suggestion</h3>
+                                    <p className="text-[11px] text-zinc-500">Automatically generate review reply suggestions (does not post directly). Approve them in the Reviews tab.</p>
                                 </div>
                                 <button
                                     onClick={() => handleSaveReviewSettings({ ai_reply_enabled: !currentReviewSettings.ai_reply_enabled })}
@@ -1530,6 +1577,56 @@ function ChatAiDashboardContent() {
                                     {currentReviewSettings.ai_reply_enabled ? 'AI REVIEW ACTIVE' : 'AI REVIEW INACTIVE'}
                                 </button>
                             </div>
+
+                            {/* AI provider and models for reviews */}
+                            {currentReviewSettings.ai_reply_enabled && (
+                                <div className="space-y-3.5 pt-3 border-t border-zinc-100 dark:border-zinc-800 animate-fadeIn">
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                        <div className="space-y-1">
+                                            <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider flex items-center gap-1">AI Model Provider</label>
+                                            <select
+                                                value={currentReviewSettings.ai_provider || 'gemini'}
+                                                onChange={(e) => handleSaveReviewSettings({ ai_provider: e.target.value })}
+                                                className="w-full bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 text-xs rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-purple-500"
+                                            >
+                                                <option value="gemini">Google Gemini</option>
+                                                <option value="openai">OpenAI GPT</option>
+                                            </select>
+                                        </div>
+
+                                        {currentReviewSettings.ai_provider === 'openai' && (
+                                            <>
+                                                <div className="space-y-1">
+                                                    <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider flex items-center gap-1">OpenAI API Key</label>
+                                                    <input
+                                                        type="password"
+                                                        placeholder="sk-..."
+                                                        value={currentReviewSettings.openai_api_key || ''}
+                                                        onChange={(e) => setReviewSettings(prev => ({
+                                                            ...prev,
+                                                            [activeStoreId]: { ...prev[activeStoreId], openai_api_key: e.target.value } as ReviewSettings
+                                                        }))}
+                                                        onBlur={() => handleSaveReviewSettings({ openai_api_key: currentReviewSettings.openai_api_key })}
+                                                        className="w-full bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-purple-500 text-zinc-850 dark:text-zinc-100"
+                                                    />
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider flex items-center gap-1">OpenAI Model Name</label>
+                                                    <select
+                                                        value={currentReviewSettings.openai_model || 'gpt-4o-mini'}
+                                                        onChange={(e) => handleSaveReviewSettings({ openai_model: e.target.value })}
+                                                        className="w-full bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 text-xs rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-purple-500"
+                                                    >
+                                                        <option value="gpt-4o-mini">gpt-4o-mini (Recommended)</option>
+                                                        <option value="gpt-4o">gpt-4o (Premium)</option>
+                                                        <option value="gpt-3.5-turbo">gpt-3.5-turbo (Legacy)</option>
+                                                    </select>
+                                                </div>
+                                            </>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
 
                             {/* Cutoff Date Picker */}
                             <div className="space-y-1.5">
@@ -1563,28 +1660,181 @@ function ChatAiDashboardContent() {
                                 />
                             </div>
 
-                            {/* Star Templates Grid */}
-                            <div className="space-y-3 pt-2">
-                                <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-wider">Star Rating Default Templates</h3>
-                                <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
-                                    {[1, 2, 3, 4, 5].map((star) => (
-                                        <div key={star} className="space-y-1">
-                                            <label className="text-[11px] font-bold text-zinc-550 flex items-center gap-1 font-semibold">
-                                                <Star size={10} className="fill-amber-400 text-amber-400" /> {star} Star Template
-                                            </label>
-                                            <textarea
-                                                rows={3}
-                                                value={(currentReviewSettings as any)[`star${star}_template`] || ''}
-                                                onChange={(e) => setReviewSettings(prev => ({
-                                                    ...prev,
-                                                    [activeStoreId]: { ...prev[activeStoreId], [`star${star}_template`]: e.target.value } as any
-                                                }))}
-                                                onBlur={() => handleSaveReviewSettings({ [`star${star}_template`]: (currentReviewSettings as any)[`star${star}_template`] })}
-                                                className="w-full bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg p-2 text-[11px] focus:outline-none focus:ring-1 focus:ring-purple-500 text-zinc-800 dark:text-zinc-100"
-                                                placeholder={`Default template for ${star} star`}
-                                            />
+                            {/* Keyword-based templates editor */}
+                            <div className="space-y-4 pt-4 border-t border-zinc-100 dark:border-zinc-800">
+                                <div>
+                                    <h3 className="text-sm font-bold text-zinc-800 dark:text-zinc-100">Keyword-Based Template Settings</h3>
+                                    <p className="text-[11px] text-zinc-550 mt-0.5">Define keywords that trigger suggested reply templates for reviews matching that sentiment.</p>
+                                </div>
+
+                                {/* Category Tabs */}
+                                <div className="flex gap-2 border-b border-zinc-200 dark:border-zinc-800 pb-1 text-xs font-semibold shrink-0">
+                                    {(['positive', 'neutral', 'negative'] as const).map((cat) => {
+                                        const isActive = settingsCategoryTab === cat
+                                        let activeStyles = 'border-purple-500 text-purple-650 dark:text-purple-400 font-bold bg-purple-500/[0.03]'
+                                        if (cat === 'neutral') activeStyles = 'border-blue-500 text-blue-600 dark:text-blue-400 font-bold bg-blue-550/[0.03]'
+                                        if (cat === 'negative') activeStyles = 'border-red-500 text-red-650 dark:text-red-400 font-bold bg-red-500/[0.03]'
+                                        
+                                        return (
+                                            <button
+                                                key={cat}
+                                                type="button"
+                                                onClick={() => setSettingsCategoryTab(cat)}
+                                                className={`px-4 py-2 border-b-2 capitalize transition-all rounded-t-lg ${
+                                                    isActive
+                                                        ? activeStyles
+                                                        : 'border-transparent text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-350'
+                                                }`}
+                                            >
+                                                {cat} Category
+                                            </button>
+                                        )
+                                    })}
+                                </div>
+
+                                {/* Keywords and Templates Editor for active category */}
+                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 pt-2">
+                                    {/* Keywords Column */}
+                                    <div className="space-y-3 bg-zinc-50/50 dark:bg-zinc-800/10 p-4 rounded-xl border border-zinc-200/60 dark:border-zinc-800/60">
+                                        <div className="flex justify-between items-center">
+                                            <h4 className="text-xs font-bold text-zinc-700 dark:text-zinc-300 uppercase tracking-wider flex items-center gap-1.5">
+                                                Trigger Keywords ({settingsCategoryTab})
+                                            </h4>
                                         </div>
-                                    ))}
+                                        
+                                        {/* Keywords list */}
+                                        <div className="flex flex-wrap gap-1.5 min-h-[4rem] p-2 bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg items-start">
+                                            {((currentReviewSettings as any)[`${settingsCategoryTab}_keywords`] || []).length === 0 ? (
+                                                <span className="text-zinc-400 text-xs italic m-auto self-center">No keywords configured.</span>
+                                            ) : (
+                                                ((currentReviewSettings as any)[`${settingsCategoryTab}_keywords`] || []).map((keyword: string, idx: number) => (
+                                                    <span
+                                                        key={`${keyword}-${idx}`}
+                                                        className="bg-zinc-100 dark:bg-zinc-850 text-zinc-800 dark:text-zinc-200 text-xs px-2.5 py-1 rounded-full flex items-center gap-1.5 border border-zinc-200/50 dark:border-zinc-800"
+                                                    >
+                                                        <span>{keyword}</span>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                const list = [...((currentReviewSettings as any)[`${settingsCategoryTab}_keywords`] || [])]
+                                                                list.splice(idx, 1)
+                                                                handleSaveReviewSettings({ [`${settingsCategoryTab}_keywords`]: list })
+                                                            }}
+                                                            className="text-zinc-400 hover:text-red-500 transition-colors"
+                                                        >
+                                                            <X size={10} />
+                                                        </button>
+                                                    </span>
+                                                ))
+                                            )}
+                                        </div>
+
+                                        {/* Add Keyword Form */}
+                                        <div className="flex gap-2">
+                                            <input
+                                                id={`new-keyword-input-${settingsCategoryTab}`}
+                                                type="text"
+                                                placeholder="Type keyword and press Enter..."
+                                                onKeyDown={(e) => {
+                                                    if (e.key === 'Enter') {
+                                                        e.preventDefault()
+                                                        const target = e.currentTarget
+                                                        const val = target.value.trim().toLowerCase()
+                                                        if (val) {
+                                                            const list = [...((currentReviewSettings as any)[`${settingsCategoryTab}_keywords`] || [])]
+                                                            if (!list.includes(val)) {
+                                                                list.push(val)
+                                                                handleSaveReviewSettings({ [`${settingsCategoryTab}_keywords`]: list })
+                                                            }
+                                                            target.value = ''
+                                                        }
+                                                    }
+                                                }}
+                                                className="flex-1 bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-purple-500 text-zinc-800 dark:text-zinc-200"
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    const input = document.getElementById(`new-keyword-input-${settingsCategoryTab}`) as HTMLInputElement
+                                                    const val = input?.value.trim().toLowerCase()
+                                                    if (val) {
+                                                        const list = [...((currentReviewSettings as any)[`${settingsCategoryTab}_keywords`] || [])]
+                                                        if (!list.includes(val)) {
+                                                            list.push(val)
+                                                            handleSaveReviewSettings({ [`${settingsCategoryTab}_keywords`]: list })
+                                                        }
+                                                        input.value = ''
+                                                    }
+                                                }}
+                                                className="px-3.5 py-1.5 bg-zinc-900 dark:bg-zinc-100 hover:bg-zinc-800 dark:hover:bg-zinc-200 text-white dark:text-zinc-900 font-bold text-xs rounded-lg transition-all active:scale-95"
+                                            >
+                                                Add
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {/* Templates Column */}
+                                    <div className="space-y-3 bg-zinc-50/50 dark:bg-zinc-800/10 p-4 rounded-xl border border-zinc-200/60 dark:border-zinc-800/60">
+                                        <h4 className="text-xs font-bold text-zinc-700 dark:text-zinc-300 uppercase tracking-wider">
+                                            Reply Templates ({settingsCategoryTab})
+                                        </h4>
+
+                                        {/* Templates list */}
+                                        <div className="space-y-2 max-h-[14rem] overflow-y-auto pr-1">
+                                            {((currentReviewSettings as any)[`${settingsCategoryTab}_templates`] || []).length === 0 ? (
+                                                <p className="text-zinc-400 text-xs italic text-center py-6">No reply templates configured. Add one below.</p>
+                                            ) : (
+                                                ((currentReviewSettings as any)[`${settingsCategoryTab}_templates`] || []).map((template: string, idx: number) => (
+                                                    <div
+                                                        key={`${template}-${idx}`}
+                                                        className="bg-white dark:bg-zinc-955 border border-zinc-200 dark:border-zinc-800 rounded-lg p-3 flex gap-3 shadow-sm items-start relative group border-zinc-200 dark:border-zinc-800"
+                                                    >
+                                                        <p className="text-xs text-zinc-700 dark:text-zinc-300 flex-1 whitespace-pre-wrap">{template}</p>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                const list = [...((currentReviewSettings as any)[`${settingsCategoryTab}_templates`] || [])]
+                                                                list.splice(idx, 1)
+                                                                handleSaveReviewSettings({ [`${settingsCategoryTab}_templates`]: list })
+                                                            }}
+                                                            className="text-zinc-400 hover:text-red-500 transition-colors p-1"
+                                                            title="Delete Template"
+                                                        >
+                                                            <Trash2 size={13} />
+                                                        </button>
+                                                    </div>
+                                                ))
+                                            )}
+                                        </div>
+
+                                        {/* Add Template Area */}
+                                        <div className="space-y-2">
+                                            <textarea
+                                                id={`new-template-textarea-${settingsCategoryTab}`}
+                                                rows={2}
+                                                placeholder="Write a new template to add to this category..."
+                                                className="w-full bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg p-2.5 text-xs focus:outline-none focus:ring-1 focus:ring-purple-500 text-zinc-800 dark:text-zinc-200"
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    const textar = document.getElementById(`new-template-textarea-${settingsCategoryTab}`) as HTMLTextAreaElement
+                                                    const val = textar?.value.trim()
+                                                    if (val) {
+                                                        const list = [...((currentReviewSettings as any)[`${settingsCategoryTab}_templates`] || [])]
+                                                        if (!list.includes(val)) {
+                                                            list.push(val)
+                                                            handleSaveReviewSettings({ [`${settingsCategoryTab}_templates`]: list })
+                                                        }
+                                                        textar.value = ''
+                                                    }
+                                                }}
+                                                className="w-full py-2 bg-zinc-900 dark:bg-zinc-100 hover:bg-zinc-800 dark:hover:bg-zinc-200 text-white dark:text-zinc-900 font-bold text-xs rounded-lg transition-all active:scale-95 text-center"
+                                            >
+                                                Add Template
+                                            </button>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>

@@ -193,7 +193,7 @@ async function sendDarazMessage(
     console.log(`[EdgeFunction] Auto-reply message successfully sent and saved.`);
 }
 
-// 3. AI Reply Generation (Gemini API)
+// 3. AI Reply Generation (OpenAI / Gemini API)
 async function handleAiAutoReply(
     storeId: string,
     sessionId: string,
@@ -201,9 +201,11 @@ async function handleAiAutoReply(
     supabase: any,
     appKey: string,
     appSecret: string,
-    geminiApiKey: string
+    geminiApiKey: string,
+    settings: any
 ) {
-    console.log(`[EdgeFunction] Triggering Gemini AI for message: "${userText}"`);
+    const aiProvider = settings?.ai_provider || 'gemini';
+    console.log(`[EdgeFunction] Triggering AI auto-reply: "${userText}" (Provider: ${aiProvider})`);
 
     // Fetch active products context
     const { data: products } = await supabase
@@ -254,23 +256,65 @@ ${historyContext}
 Generate a friendly response in English or Nepali based on the customer's language. Do not make up facts. If you do not know the answer (e.g. tracking code details not in context), politely tell the customer that a human support agent will review and reply shortly.
 Response:`;
 
-    try {
-        const response = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiApiKey}`,
-            {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    contents: [{
-                        parts: [{ text: systemPrompt }]
-                    }]
-                })
-            }
-        );
+    let replyText = '';
 
-        const resData = await response.json();
-        const replyText = resData?.candidates?.[0]?.content?.parts?.[0]?.text;
-        
+    try {
+        if (aiProvider === 'openai') {
+            const openaiApiKey = settings?.openai_api_key;
+            if (!openaiApiKey) {
+                console.error('[EdgeFunction] OpenAI API Key is missing, falling back to Gemini.');
+                throw new Error('OpenAI key missing');
+            }
+            const openaiModel = settings?.openai_model || 'gpt-4o-mini';
+            console.log(`[EdgeFunction] Calling OpenAI API (${openaiModel})...`);
+            const response = await fetch(
+                'https://api.openai.com/v1/chat/completions',
+                {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${openaiApiKey}`
+                    },
+                    body: JSON.stringify({
+                        model: openaiModel,
+                        messages: [
+                            { role: 'user', content: systemPrompt }
+                        ],
+                        temperature: 0.7
+                    })
+                }
+            );
+
+            const resData = await response.json();
+            if (resData.error) {
+                console.error('[EdgeFunction] OpenAI API Error:', resData.error);
+                throw new Error(resData.error.message || 'OpenAI error');
+            }
+            replyText = resData?.choices?.[0]?.message?.content || '';
+        } else {
+            // Default/Fallback: Gemini
+            if (!geminiApiKey) {
+                console.error('[EdgeFunction] Gemini API Key is missing.');
+                return;
+            }
+            console.log('[EdgeFunction] Calling Gemini API...');
+            const response = await fetch(
+                `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiApiKey}`,
+                {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        contents: [{
+                            parts: [{ text: systemPrompt }]
+                        }]
+                    })
+                }
+            );
+
+            const resData = await response.json();
+            replyText = resData?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        }
+
         if (replyText && replyText.trim()) {
             const cleanReply = replyText.replace(/AI Assistant:/gi, '').trim();
             console.log(`[EdgeFunction] AI response generated: "${cleanReply}"`);
@@ -278,6 +322,34 @@ Response:`;
         }
     } catch (e) {
         console.error('[EdgeFunction] AI generation failed:', e);
+        // Fallback to Gemini if OpenAI call failed and we have Gemini Key
+        if (aiProvider === 'openai' && geminiApiKey) {
+            console.log('[EdgeFunction] Attempting fallback to Gemini API after OpenAI failure...');
+            try {
+                const response = await fetch(
+                    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiApiKey}`,
+                    {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            contents: [{
+                                parts: [{ text: systemPrompt }]
+                            }]
+                        })
+                    }
+                );
+
+                const resData = await response.json();
+                replyText = resData?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+                if (replyText && replyText.trim()) {
+                    const cleanReply = replyText.replace(/AI Assistant:/gi, '').trim();
+                    console.log(`[EdgeFunction] AI fallback response generated: "${cleanReply}"`);
+                    await sendDarazMessage(storeId, sessionId, cleanReply, supabase, appKey, appSecret);
+                }
+            } catch (geminiErr) {
+                console.error('[EdgeFunction] Gemini fallback also failed:', geminiErr);
+            }
+        }
     }
 }
 
@@ -583,9 +655,13 @@ Deno.serve(async (req) => {
                 });
             }
 
-            // C. Check Gemini AI Auto-Reply
-            if (settings?.ai_enabled && geminiApiKey) {
-                await handleAiAutoReply(store.id, data.session_id, userText, supabase, appKey, appSecret, geminiApiKey);
+            // C. Check AI Auto-Reply
+            if (settings?.ai_enabled) {
+                const hasGemini = !!geminiApiKey;
+                const hasOpenAi = settings?.ai_provider === 'openai' && !!settings?.openai_api_key;
+                if (hasGemini || hasOpenAi) {
+                    await handleAiAutoReply(store.id, data.session_id, userText, supabase, appKey, appSecret, geminiApiKey, settings);
+                }
             }
         }
     }

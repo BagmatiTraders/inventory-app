@@ -12,6 +12,9 @@ export interface ChatSettings {
     auto_reply_on_new_order: boolean
     new_order_template: string
     new_order_delay_minutes: number
+    ai_provider: string
+    openai_api_key: string | null
+    openai_model: string
     app_url?: string
     created_at?: string
     updated_at?: string
@@ -457,6 +460,9 @@ export async function getChatSettings(storeId: string) {
             auto_reply_on_new_order: false,
             new_order_template: 'Thank you for your order! We have received it and are preparing it. Please click below to follow our store for the latest updates!',
             new_order_delay_minutes: 1,
+            ai_provider: 'gemini',
+            openai_api_key: null,
+            openai_model: 'gpt-4o-mini',
             app_url: currentAppUrl
         }
         const { data: inserted } = await supabase
@@ -591,15 +597,19 @@ export async function processIncomingMessageAutoReply(storeId: string, sessionId
             return
         }
 
-        // C. AI Auto-Reply (Gemini API)
+        // C. AI Auto-Reply (Supports Gemini and OpenAI)
         if (settings.ai_enabled) {
-            const apiKey = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY
+            const isOpenAi = settings.ai_provider === 'openai'
+            const apiKey = isOpenAi 
+                ? settings.openai_api_key 
+                : (process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY)
+
             if (!apiKey) {
-                console.warn('[AutoReply] AI enabled but GEMINI_API_KEY is missing in environment.')
+                console.warn(`[AutoReply] AI enabled but API key for provider ${settings.ai_provider || 'gemini'} is missing.`)
                 return
             }
 
-            console.log(`[AutoReply] Triggering Gemini AI for message: "${userText}"`)
+            console.log(`[AutoReply] Triggering AI (${settings.ai_provider || 'gemini'}) for message: "${userText}"`)
 
             // Context gathering: Fetch some active products to give stock context
             const { data: products } = await supabase
@@ -650,19 +660,44 @@ ${historyContext}
 Generate a friendly response in English or Nepali based on the customer's language. Do not make up facts. If you do not know the answer (e.g. tracking code details not in context), politely tell the customer that a human support agent will review and reply shortly.
 Response:`
 
-            const response = await axios.post(
-                `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
-                {
-                    contents: [{
-                        parts: [{ text: systemPrompt }]
-                    }]
-                },
-                {
-                    headers: { 'Content-Type': 'application/json' }
-                }
-            )
+            let replyText = null
+            if (isOpenAi) {
+                console.log(`[AutoReply] Calling OpenAI API (${settings.openai_model || 'gpt-4o-mini'})...`)
+                const response = await axios.post(
+                    'https://api.openai.com/v1/chat/completions',
+                    {
+                        model: settings.openai_model || 'gpt-4o-mini',
+                        messages: [
+                            { role: 'user', content: systemPrompt }
+                        ],
+                        max_tokens: 150,
+                        temperature: 0.7
+                    },
+                    {
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${apiKey}`
+                        },
+                        timeout: 10000
+                    }
+                )
+                replyText = response.data?.choices?.[0]?.message?.content
+            } else {
+                console.log('[AutoReply] Calling Gemini API...')
+                const response = await axios.post(
+                    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+                    {
+                        contents: [{
+                            parts: [{ text: systemPrompt }]
+                        }]
+                    },
+                    {
+                        headers: { 'Content-Type': 'application/json' }
+                    }
+                )
+                replyText = response.data?.candidates?.[0]?.content?.parts?.[0]?.text
+            }
 
-            const replyText = response.data?.candidates?.[0]?.content?.parts?.[0]?.text
             if (replyText && replyText.trim()) {
                 const cleanReply = replyText.replace(/AI Assistant:/gi, '').trim()
                 console.log(`[AutoReply] AI response generated: "${cleanReply}"`)
