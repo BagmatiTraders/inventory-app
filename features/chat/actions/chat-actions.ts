@@ -322,7 +322,7 @@ export async function sendChatMessage(
     itemId?: string,
     orderId?: string,
     autoReply = false
-) {
+): Promise<{ success: boolean; messageId?: string; error?: string }> {
     try {
         const { appKey, appSecret, accessToken } = await getStoreTokenAndSecret(storeId)
         const supabase = await createAdminClient()
@@ -404,7 +404,7 @@ export async function sendChatMessage(
     } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error)
         console.error(`[ChatSync] Send message failed:`, errorMessage)
-        throw new Error(errorMessage || 'Failed to send message')
+        return { success: false, error: errorMessage || 'Failed to send message' }
     }
 }
 

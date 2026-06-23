@@ -447,6 +447,9 @@ function ChatAiDashboardContent() {
                     setMessages(data)
                     setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 50)
                 }
+            } else {
+                toast.error(result.error || 'Failed to send message')
+                setReplyText(textToSend) // Restore text on failure
             }
         } catch (err) {
             const errorMsg = err instanceof Error ? err.message : 'Failed to send message'
@@ -683,7 +686,10 @@ function ChatAiDashboardContent() {
         if (!activeStoreId || !activeSessionId) return
         toast.info('Sending order card...')
         try {
-            await sendChatMessage(activeStoreId, activeSessionId, '10007', undefined, undefined, orderId)
+            const result = await sendChatMessage(activeStoreId, activeSessionId, '10007', undefined, undefined, orderId)
+            if (!result.success) {
+                throw new Error(result.error || 'Failed to send order card')
+            }
             toast.success('Order card sent successfully!')
             
             // Refresh messages locally
@@ -704,7 +710,10 @@ function ChatAiDashboardContent() {
         toast.info('Sending order guide link...')
         try {
             const txt = `Order Status Details:\nOrder Number: ${orderNumber}\nStatus: ${status}\nTracking Number: ${trackingNumber || 'Pending / In Processing'}`
-            await sendChatMessage(activeStoreId, activeSessionId, '1', txt)
+            const result = await sendChatMessage(activeStoreId, activeSessionId, '1', txt)
+            if (!result.success) {
+                throw new Error(result.error || 'Failed to send guide link')
+            }
             toast.success('Order status details sent!')
             
             // Refresh messages locally
@@ -724,7 +733,10 @@ function ChatAiDashboardContent() {
         if (!activeStoreId || !activeSessionId) return
         toast.info('Sending follow invitation...')
         try {
-            await sendChatMessage(activeStoreId, activeSessionId, '10010')
+            const result = await sendChatMessage(activeStoreId, activeSessionId, '10010')
+            if (!result.success) {
+                throw new Error(result.error || 'Failed to send follow invitation')
+            }
             toast.success('Follow invitation sent successfully!')
             
             // Refresh messages locally

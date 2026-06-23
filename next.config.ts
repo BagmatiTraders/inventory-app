@@ -6,6 +6,8 @@ const allowedOrigins: string[] = [
   "localhost:3000",
   "localhost:3001",
   "localhost:3002",
+  "daraz.bagmati.shop",
+  "bagmati.shop",
 ];
 
 const addOrigin = (originStr: string | undefined) => {

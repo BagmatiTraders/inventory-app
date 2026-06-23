@@ -41,11 +41,17 @@ export async function GET(request: NextRequest) {
 
                     // A. Send confirmation text message
                     if (task.txt) {
-                        await sendChatMessage(task.store_id, sessionId, '1', task.txt, undefined, undefined, true)
+                        const res = await sendChatMessage(task.store_id, sessionId, '1', task.txt, undefined, undefined, true)
+                        if (!res.success) {
+                            throw new Error(res.error || 'Failed to send confirmation text message')
+                        }
                     }
 
                     // B. Send follow store button invitation (Template 10010)
-                    await sendChatMessage(task.store_id, sessionId, '10010', undefined, undefined, undefined, true)
+                    const resFollow = await sendChatMessage(task.store_id, sessionId, '10010', undefined, undefined, undefined, true)
+                    if (!resFollow.success) {
+                        throw new Error(resFollow.error || 'Failed to send follow store invitation')
+                    }
 
                     // Mark as sent
                     await supabase
