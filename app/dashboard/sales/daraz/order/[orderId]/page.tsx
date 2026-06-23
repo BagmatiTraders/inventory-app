@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
 import { getDarazOrderById } from '@/features/sales/actions/daraz-actions'
@@ -34,6 +34,13 @@ export default function DarazOrderViewPage() {
         staleTime: 2 * 60 * 1000,
         gcTime: 5 * 60 * 1000
     })
+
+    // Extract customer email from items_detail
+    const customerEmail = useMemo(() => {
+        if (!order || !order.items_detail || !Array.isArray(order.items_detail)) return null
+        const itemWithEmail = order.items_detail.find((item: any) => item.digital_delivery_info && item.digital_delivery_info.trim())
+        return itemWithEmail ? itemWithEmail.digital_delivery_info.trim() : null
+    }, [order])
 
     // Set header
     useEffect(() => {
@@ -168,12 +175,28 @@ export default function DarazOrderViewPage() {
                                     <p className="font-medium text-sm md:text-base">{order.customer_name}</p>
                                 </div>
                                 <div className="grid grid-cols-2 md:block gap-4 md:gap-0 border-b md:border-none pb-2 md:pb-0">
+                                    <p className="text-xs text-gray-500 mb-1">Customer Phone</p>
+                                    {order.shipping_phone ? (
+                                        <p className="font-medium text-sm md:text-base font-mono select-all text-blue-600 dark:text-blue-400" title="Double click to select phone number">{order.shipping_phone}</p>
+                                    ) : (
+                                        <p className="text-gray-400 text-sm md:text-base font-mono">-</p>
+                                    )}
+                                </div>
+                                <div className="grid grid-cols-2 md:block gap-4 md:gap-0 border-b md:border-none pb-2 md:pb-0">
+                                    <p className="text-xs text-gray-500 mb-1">Customer Email</p>
+                                    {customerEmail ? (
+                                        <p className="font-medium text-sm md:text-base font-mono select-all text-blue-600 dark:text-blue-400" title="Double click to select email address">{customerEmail}</p>
+                                    ) : (
+                                        <p className="text-gray-400 text-sm md:text-base font-mono">-</p>
+                                    )}
+                                </div>
+                                <div className="grid grid-cols-2 md:block gap-4 md:gap-0 border-b md:border-none pb-2 md:pb-0">
                                     <p className="text-xs text-gray-500 mb-1">Order Date</p>
                                     <p className="font-medium text-sm md:text-base">
                                         {new Date(order.daraz_created_at || order.created_at).toLocaleString()}
                                     </p>
                                 </div>
-                                <div className="grid grid-cols-2 md:block gap-4 md:gap-0">
+                                <div className="grid grid-cols-2 md:block gap-4 md:gap-0 border-b md:border-none pb-2 md:pb-0">
                                     <p className="text-xs text-gray-500 mb-1">Status</p>
                                     <span className={`inline-block px-3 py-1 text-sm font-medium rounded ${order.order_status === 'Pending' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-200' :
                                         order.order_status === 'Shipped' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-200' :
@@ -183,7 +206,7 @@ export default function DarazOrderViewPage() {
                                         {order.order_status}
                                     </span>
                                 </div>
-                                <div className="grid grid-cols-2 md:block gap-4 md:gap-0 pt-2 md:pt-0 border-t md:border-none">
+                                <div className="grid grid-cols-2 md:block gap-4 md:gap-0">
                                     <p className="text-xs text-gray-500 mb-1">Remarks</p>
                                     <p className="font-medium text-sm md:text-base">{order.remarks || '-'}</p>
                                 </div>

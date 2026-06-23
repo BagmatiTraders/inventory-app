@@ -1,6 +1,6 @@
 'use client'
 
-import { FileText, Package, BarChart2, TrendingUp, ArrowLeft, RefreshCw, ShoppingCart } from 'lucide-react'
+import { FileText, Package, BarChart2, TrendingUp, ArrowLeft, RefreshCw, ShoppingCart, User } from 'lucide-react'
 import Link from 'next/link'
 import { Card } from '@/components/ui-shim'
 import { usePermissions } from '@/lib/permissions/PermissionContext'
@@ -53,7 +53,16 @@ const ALL_DARAZ_MODULES = [
         check: (hasPermission: (m: string, s?: string) => boolean) =>
             hasPermission('Daraz', 'Order List'), // Reusing Order List permission for now
     },
+    {
+        name: 'Daraz Customer Details',
+        icon: User,
+        href: '/dashboard/sales/daraz/customer-details',
+        color: 'bg-teal-500',
+        check: (hasPermission: (m: string, s?: string) => boolean) =>
+            hasPermission('Daraz', 'Order List'), // Reusing Order List permission
+    },
 ]
+
 
 export default function DarazSalesMenuPage() {
     const { userRole, hasPermission, isLoading } = usePermissions()

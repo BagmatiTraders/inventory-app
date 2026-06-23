@@ -2471,3 +2471,62 @@ export async function getProductReportData(params: GetProductReportParams) {
     }
 }
 
+// Get Daraz customer details (names, phones, orders, statuses) for the customer list subpage
+export async function getDarazCustomerDetails(params: {
+    page?: number
+    limit?: number
+    search?: string
+    sellerAccount?: string
+    status?: string
+    all?: boolean
+}) {
+    const supabase = await createClient()
+    const { page = 1, limit = 50, search, sellerAccount, status, all = false } = params
+
+    try {
+        let query = supabase
+            .from('daraz_orders_with_totals')
+            .select('id, customer_name, order_number, order_id, seller_account, shipping_phone, order_status, order_date, items_detail', { count: 'exact' })
+            .not('shipping_phone', 'is', null)
+            .or('deleted.is.null,deleted.eq.false')
+
+        if (sellerAccount && sellerAccount !== 'all') {
+            query = query.eq('seller_account', sellerAccount)
+        }
+
+        if (status && status !== 'all') {
+            query = query.eq('order_status', status)
+        }
+
+        if (search && search.trim()) {
+            const term = search.trim()
+            query = query.or(`customer_name.ilike.%${term}%,shipping_phone.ilike.%${term}%,order_number.ilike.%${term}%`)
+        }
+
+        // Apply pagination if we aren't exporting all
+        if (!all) {
+            const from = (page - 1) * limit
+            const to = from + limit - 1
+            query = query.range(from, to)
+        }
+
+        const { data, error, count } = await query.order('order_date', { ascending: false })
+
+        if (error) throw error
+
+        return {
+            customers: data || [],
+            pagination: {
+                page,
+                limit,
+                total: count || 0,
+                totalPages: Math.ceil((count || 0) / limit)
+            }
+        }
+    } catch (error: any) {
+        console.error('Error fetching Daraz customer details:', error)
+        throw new Error(error.message || 'Failed to fetch customer details')
+    }
+}
+
+

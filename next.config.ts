@@ -2,8 +2,48 @@ import type { NextConfig } from "next";
 // @ts-ignore - next-pwa doesn't have types
 import withPWA from 'next-pwa';
 
+const allowedOrigins: string[] = [
+  "localhost:3000",
+  "localhost:3001",
+  "localhost:3002",
+];
+
+const addOrigin = (originStr: string | undefined) => {
+  if (!originStr) return;
+  const trimmed = originStr.trim();
+  if (!trimmed) return;
+  
+  try {
+    const urlStr = trimmed.includes('://') ? trimmed : `https://${trimmed}`;
+    const url = new URL(urlStr);
+    if (url.host && !allowedOrigins.includes(url.host)) {
+      allowedOrigins.push(url.host);
+    }
+  } catch (e) {
+    const cleaned = trimmed.replace(/^https?:\/\//, '').split('/')[0];
+    if (cleaned && !allowedOrigins.includes(cleaned)) {
+      allowedOrigins.push(cleaned);
+    }
+  }
+};
+
+// Add origins from environment variables
+addOrigin(process.env.NEXT_PUBLIC_APP_URL);
+addOrigin(process.env.NEXT_PUBLIC_MESSENGER_APP_URL);
+addOrigin(process.env.VERCEL_URL);
+
+// Support a comma-separated list of allowed origins from env for dynamic Vercel configurations
+if (process.env.NEXT_PUBLIC_ALLOWED_ORIGINS) {
+  process.env.NEXT_PUBLIC_ALLOWED_ORIGINS.split(',').forEach(origin => {
+    addOrigin(origin);
+  });
+}
+
 const nextConfig: NextConfig = {
   experimental: {
+    serverActions: {
+      allowedOrigins,
+    },
     optimizePackageImports: [
       'lucide-react', 
       'date-fns', 
