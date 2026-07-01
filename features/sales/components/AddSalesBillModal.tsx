@@ -1,12 +1,12 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { X, Plus, Trash2, Search, AlertTriangle } from 'lucide-react'
+import { X, Plus, Trash2, Search, AlertTriangle, Calendar, Hash, User, MapPin, CreditCard, CheckCircle2, FileText } from 'lucide-react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useDashboard } from '@/app/dashboard/context'
 import { getCompanyDetails } from '@/features/settings/actions/company-details-actions'
 import { getStockAnalysisData } from '@/features/stock-analysis/actions/stock-analysis-actions'
-import { updateSalesBill, createSalesBill, type SalesBillItem, type SalesBill } from '@/features/sales/actions/sales-bill-actions'
+import { updateSalesBill, createSalesBill, getNextSuggestedInvoiceNo, checkDuplicateInvoice, type SalesBillItem, type SalesBill } from '@/features/sales/actions/sales-bill-actions'
 import { adToBS, bsToAD, formatNepaliCurrency } from '@/lib/utils/date-converter'
 
 interface AddSalesBillModalProps {
@@ -68,6 +68,20 @@ export function AddSalesBillModal({ onClose, billToEdit }: AddSalesBillModalProp
 
     const [isSubmitting, setIsSubmitting] = useState(false)
     const [error, setError] = useState('')
+    const [shouldCloseOnSave, setShouldCloseOnSave] = useState(true)
+    const [suggestedInvoiceNo, setSuggestedInvoiceNo] = useState('')
+    const [fetchTrigger, setFetchTrigger] = useState(0)
+
+    // Fetch suggested invoice number
+    useEffect(() => {
+        if (!isEditing && formData.bill_date_ad) {
+            getNextSuggestedInvoiceNo(formData.bill_date_ad)
+                .then((suggested) => {
+                    setSuggestedInvoiceNo(suggested)
+                })
+                .catch((err) => console.error(err))
+        }
+    }, [formData.bill_date_ad, isEditing, fetchTrigger])
 
     // Fetch Sellers (Our Companies)
     const { data: sellers = [] } = useQuery({
@@ -209,6 +223,13 @@ export function AddSalesBillModal({ onClose, billToEdit }: AddSalesBillModalProp
             return
         }
 
+        // Check duplicate invoice number
+        const isDuplicate = await checkDuplicateInvoice(formData.invoice_no, formData.bill_date_ad, billToEdit?.id)
+        if (isDuplicate) {
+            setError('Invoice number Duplicate')
+            return
+        }
+
         // Stock & Item Validation
         if (lineItems.length === 0) {
             setError('At least one item is required')
@@ -257,7 +278,24 @@ export function AddSalesBillModal({ onClose, billToEdit }: AddSalesBillModalProp
             }
 
             queryClient.invalidateQueries({ queryKey: ['sales-bills'] })
-            onClose()
+            
+            if (shouldCloseOnSave) {
+                onClose()
+            } else {
+                setFormData(prev => ({
+                    ...prev,
+                    invoice_no: '',
+                    customer_name: '',
+                    customer_address: '',
+                    customer_pan_vat: '',
+                }))
+                setLineItems([
+                    { hs_code: '', particulars: '', quantity: 0, rate: 0, amount: 0, line_order: 0 }
+                ])
+                setActiveRowIndex(null)
+                setParticularSearch('')
+                setFetchTrigger(prev => prev + 1)
+            }
         } catch (err: any) {
             setError(err.message || 'Failed to save sales bill')
         } finally {
@@ -266,68 +304,111 @@ export function AddSalesBillModal({ onClose, billToEdit }: AddSalesBillModalProp
     }
 
     return (
-        <div className={`fixed inset-0 z-[100] overflow-y-auto bg-gray-50 dark:bg-zinc-950 transition-all duration-300 ${isCollapsed ? 'md:ml-16' : 'md:ml-64'}`}>
-            <div className="min-h-screen">
+        <div className={`fixed inset-0 z-[100] overflow-y-auto bg-slate-50/98 dark:bg-zinc-950/98 backdrop-blur-md transition-all duration-300 ${isCollapsed ? 'md:ml-16' : 'md:ml-64'}`}>
+            <div className="min-h-screen flex flex-col">
                 {/* Header */}
-                <div className="sticky top-0 z-10 bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 px-4 py-3">
-                    <div className="flex items-center justify-between">
-                        <h2 className="text-xl font-bold">{isEditing ? 'Edit Sales Bill' : 'Add Sales Bill'}</h2>
-                        <button
-                            onClick={onClose}
-                            className="p-2 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-md transition-colors"
-                        >
-                            <X className="h-5 w-5" />
-                        </button>
+                <div className="sticky top-0 z-50 bg-white/80 dark:bg-zinc-900/80 backdrop-blur-md border-b border-slate-100 dark:border-zinc-800/80 px-6 py-4 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                        <div className="p-2.5 bg-indigo-50 dark:bg-indigo-950/40 rounded-xl text-indigo-600 dark:text-indigo-400">
+                            <FileText className="h-6 w-6" />
+                        </div>
+                        <div>
+                            <h2 className="text-xl font-bold tracking-tight">{isEditing ? 'Edit Sales Bill' : 'Create Sales Invoice'}</h2>
+                            <p className="text-xs text-slate-500 dark:text-zinc-400 mt-0.5">Fill in the details below to generate a VAT / PAN sales bill</p>
+                        </div>
                     </div>
+                    <button
+                        onClick={onClose}
+                        className="p-2 hover:bg-slate-100 dark:hover:bg-zinc-800 text-slate-400 hover:text-slate-600 dark:hover:text-zinc-200 rounded-xl transition-all duration-200 hover:rotate-90"
+                    >
+                        <X className="h-5 w-5" />
+                    </button>
                 </div>
 
-                <form onSubmit={handleSubmit} className="p-4 space-y-4 max-w-7xl mx-auto">
+                <form onSubmit={handleSubmit} className="flex-1 p-6 space-y-6 max-w-7xl w-full mx-auto pb-10">
                     {error && (
-                        <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md text-red-600 dark:text-red-400 text-sm flex items-center gap-2">
-                            <AlertTriangle className="h-4 w-4" />
-                            {error}
+                        <div className="p-4 bg-red-50 dark:bg-red-950/20 border border-red-150 dark:border-red-900/30 rounded-2xl text-red-600 dark:text-red-400 text-sm flex items-center gap-2.5 shadow-sm">
+                            <AlertTriangle className="h-5 w-5 shrink-0" />
+                            <span className="font-medium">{error}</span>
                         </div>
                     )}
 
-                    {/* Row 1: Date, Invoice, Supplier */}
-                    <div className="bg-white dark:bg-zinc-900 rounded-lg border dark:border-zinc-800 p-4">
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {/* Section 1: Billing Info */}
+                    <div className="bg-white dark:bg-zinc-900/90 rounded-2xl border border-slate-100 dark:border-zinc-800/80 p-6 shadow-sm hover:shadow-md transition-shadow duration-200 relative overflow-hidden">
+                        <div className="absolute top-0 left-0 w-1.5 h-full bg-indigo-500"></div>
+                        <div className="flex items-center gap-2 mb-5">
+                            <span className="flex items-center justify-center w-5 h-5 rounded-full bg-indigo-50 dark:bg-indigo-950/50 text-[11px] font-bold text-indigo-600 dark:text-indigo-400">1</span>
+                            <h3 className="text-sm font-semibold tracking-wide text-slate-700 dark:text-zinc-300 uppercase">Billing Details</h3>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
                             {/* Dates */}
-                            <div className="space-y-2">
-                                <div>
-                                    <label className="block text-xs text-gray-500 mb-1">Date (AD)</label>
+                            <div>
+                                <label className="block text-xs font-semibold text-slate-500 dark:text-zinc-400 mb-2 uppercase tracking-wider">Date (AD)</label>
+                                <div className="relative">
+                                    <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400 dark:text-zinc-500">
+                                        <Calendar className="h-4 w-4" />
+                                    </span>
                                     <input
                                         type="date"
                                         value={formData.bill_date_ad}
                                         onChange={(e) => handleADDateChange(e.target.value)}
-                                        className="w-full px-3 py-2 border dark:border-zinc-700 rounded-md bg-white dark:bg-zinc-800"
+                                        className="w-full pl-9 pr-3 py-2.5 border border-slate-200 dark:border-zinc-800 rounded-xl bg-white dark:bg-zinc-900 text-sm focus:outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all duration-200 text-slate-700 dark:text-zinc-300"
                                     />
                                 </div>
-                                <div>
-                                    {/* Additional Date Picker handled by browser input type='date' for AD, 
-                                        BS is auto-calculated usually or text input */}
-                                    {/* Since user asked for "Date Picker", the AD date input covers it. */}
+                            </div>
+
+                            {/* Date (BS) */}
+                            <div>
+                                <label className="block text-xs font-semibold text-slate-500 dark:text-zinc-400 mb-2 uppercase tracking-wider">Date (BS)</label>
+                                <div className="relative">
+                                    <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400 dark:text-zinc-500">
+                                        <Calendar className="h-4 w-4" />
+                                    </span>
+                                    <input
+                                        type="text"
+                                        placeholder="YYYY-MM-DD"
+                                        value={formData.bill_date_bs}
+                                        onChange={(e) => handleBSDateChange(e.target.value)}
+                                        className="w-full pl-9 pr-3 py-2.5 border border-slate-200 dark:border-zinc-800 rounded-xl bg-white dark:bg-zinc-900 text-sm focus:outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all duration-200 text-slate-700 dark:text-zinc-300"
+                                    />
                                 </div>
+                                <span className="text-[10px] text-slate-400 dark:text-zinc-500 mt-1 block">Auto-converts from AD date</span>
                             </div>
 
                             {/* Invoice No */}
                             <div>
-                                <label className="block text-sm font-medium mb-1">Invoice No</label>
-                                <input
-                                    type="text"
-                                    value={formData.invoice_no}
-                                    onChange={(e) => setFormData({ ...formData, invoice_no: e.target.value })}
-                                    className="w-full px-3 py-2 border dark:border-zinc-700 rounded-md bg-white dark:bg-zinc-800"
-                                />
+                                <label className="block text-xs font-semibold text-slate-500 dark:text-zinc-400 mb-2 uppercase tracking-wider">Invoice Number</label>
+                                <div className="relative">
+                                    <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400 dark:text-zinc-500">
+                                        <Hash className="h-4 w-4" />
+                                    </span>
+                                    <input
+                                        type="text"
+                                        placeholder="Enter Invoice No"
+                                        value={formData.invoice_no}
+                                        onChange={(e) => setFormData({ ...formData, invoice_no: e.target.value })}
+                                        className="w-full pl-9 pr-3 py-2.5 border border-slate-200 dark:border-zinc-800 rounded-xl bg-white dark:bg-zinc-900 text-sm focus:outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all duration-200 text-slate-700 dark:text-zinc-300"
+                                    />
+                                </div>
+                                {!isEditing && suggestedInvoiceNo && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setFormData(prev => ({ ...prev, invoice_no: suggestedInvoiceNo }))}
+                                        className="mt-1.5 text-[11px] font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 transition-colors flex items-center gap-1.5"
+                                    >
+                                        <span>Suggest:</span>
+                                        <span className="bg-indigo-50 dark:bg-indigo-950/40 px-1.5 py-0.5 rounded font-bold border border-indigo-100/50 dark:border-indigo-950/80">{suggestedInvoiceNo}</span>
+                                    </button>
+                                )}
                             </div>
 
                             {/* Seller (Supplier/Company) */}
                             <div>
-                                <label className="block text-sm font-medium mb-1">Seller (Our Company) <span className="text-red-500">*</span></label>
+                                <label className="block text-xs font-semibold text-slate-500 dark:text-zinc-400 mb-2 uppercase tracking-wider">Seller (Our Company) <span className="text-red-500">*</span></label>
                                 <select
                                     value={formData.seller_company_id}
                                     onChange={(e) => setFormData({ ...formData, seller_company_id: e.target.value })}
-                                    className="w-full px-3 py-2 border dark:border-zinc-700 rounded-md bg-white dark:bg-zinc-800"
+                                    className="w-full px-3 py-2.5 border border-slate-200 dark:border-zinc-800 rounded-xl bg-white dark:bg-zinc-900 text-sm focus:outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all duration-200 text-slate-700 dark:text-zinc-300"
                                 >
                                     <option value="">Select Company</option>
                                     {sellers.map((s: any) => (
@@ -338,144 +419,186 @@ export function AddSalesBillModal({ onClose, billToEdit }: AddSalesBillModalProp
                         </div>
                     </div>
 
-                    {/* Row 2: Customer Info */}
-                    <div className="bg-white dark:bg-zinc-900 rounded-lg border dark:border-zinc-800 p-4">
-                        <h3 className="text-sm font-semibold mb-3 text-gray-500">Customer Details</h3>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {/* Section 2: Customer Details */}
+                    <div className="bg-white dark:bg-zinc-900/90 rounded-2xl border border-slate-100 dark:border-zinc-800/80 p-6 shadow-sm hover:shadow-md transition-shadow duration-200 relative overflow-hidden">
+                        <div className="absolute top-0 left-0 w-1.5 h-full bg-emerald-500"></div>
+                        <div className="flex items-center gap-2 mb-5">
+                            <span className="flex items-center justify-center w-5 h-5 rounded-full bg-emerald-50 dark:bg-emerald-950/50 text-[11px] font-bold text-emerald-600 dark:text-emerald-400">2</span>
+                            <h3 className="text-sm font-semibold tracking-wide text-slate-700 dark:text-zinc-300 uppercase">Customer Details</h3>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
                             <div>
-                                <label className="block text-sm font-medium mb-1">Customer Name <span className="text-red-500">*</span></label>
-                                <input
-                                    type="text"
-                                    value={formData.customer_name}
-                                    onChange={(e) => setFormData({ ...formData, customer_name: e.target.value })}
-                                    className="w-full px-3 py-2 border dark:border-zinc-700 rounded-md bg-white dark:bg-zinc-800"
-                                    required
-                                />
+                                <label className="block text-xs font-semibold text-slate-500 dark:text-zinc-400 mb-2 uppercase tracking-wider">Customer Name <span className="text-red-500">*</span></label>
+                                <div className="relative">
+                                    <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400 dark:text-zinc-500">
+                                        <User className="h-4 w-4" />
+                                    </span>
+                                    <input
+                                        type="text"
+                                        placeholder="Walk-in Customer / Client Name"
+                                        value={formData.customer_name}
+                                        onChange={(e) => setFormData({ ...formData, customer_name: e.target.value })}
+                                        className="w-full pl-9 pr-3 py-2.5 border border-slate-200 dark:border-zinc-800 rounded-xl bg-white dark:bg-zinc-900 text-sm focus:outline-none focus:ring-4 focus:ring-emerald-500/10 focus:border-emerald-500 transition-all duration-200 text-slate-700 dark:text-zinc-300"
+                                        required
+                                    />
+                                </div>
                             </div>
                             <div>
-                                <label className="block text-sm font-medium mb-1">Address</label>
-                                <input
-                                    type="text"
-                                    value={formData.customer_address}
-                                    onChange={(e) => setFormData({ ...formData, customer_address: e.target.value })}
-                                    className="w-full px-3 py-2 border dark:border-zinc-700 rounded-md bg-white dark:bg-zinc-800"
-                                />
+                                <label className="block text-xs font-semibold text-slate-500 dark:text-zinc-400 mb-2 uppercase tracking-wider">Address</label>
+                                <div className="relative">
+                                    <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400 dark:text-zinc-500">
+                                        <MapPin className="h-4 w-4" />
+                                    </span>
+                                    <input
+                                        type="text"
+                                        placeholder="City, Country"
+                                        value={formData.customer_address}
+                                        onChange={(e) => setFormData({ ...formData, customer_address: e.target.value })}
+                                        className="w-full pl-9 pr-3 py-2.5 border border-slate-200 dark:border-zinc-800 rounded-xl bg-white dark:bg-zinc-900 text-sm focus:outline-none focus:ring-4 focus:ring-emerald-500/10 focus:border-emerald-500 transition-all duration-200 text-slate-700 dark:text-zinc-300"
+                                    />
+                                </div>
                             </div>
                             <div>
-                                <label className="block text-sm font-medium mb-1">Pan/Vat</label>
-                                <input
-                                    type="number"
-                                    value={formData.customer_pan_vat}
-                                    onChange={(e) => setFormData({ ...formData, customer_pan_vat: e.target.value })}
-                                    className="w-full px-3 py-2 border dark:border-zinc-700 rounded-md bg-white dark:bg-zinc-800"
-                                />
+                                <label className="block text-xs font-semibold text-slate-500 dark:text-zinc-400 mb-2 uppercase tracking-wider">PAN / VAT Number</label>
+                                <div className="relative">
+                                    <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400 dark:text-zinc-500">
+                                        <CreditCard className="h-4 w-4" />
+                                    </span>
+                                    <input
+                                        type="number"
+                                        placeholder="9-digit PAN/VAT"
+                                        value={formData.customer_pan_vat}
+                                        onChange={(e) => setFormData({ ...formData, customer_pan_vat: e.target.value })}
+                                        className="w-full pl-9 pr-3 py-2.5 border border-slate-200 dark:border-zinc-800 rounded-xl bg-white dark:bg-zinc-900 text-sm focus:outline-none focus:ring-4 focus:ring-emerald-500/10 focus:border-emerald-500 transition-all duration-200 text-slate-700 dark:text-zinc-300"
+                                    />
+                                </div>
                             </div>
                         </div>
                     </div>
 
-                    {/* Row 3: Items */}
-                    <div className="bg-white dark:bg-zinc-900 rounded-lg border dark:border-zinc-800 p-4">
-                        <div className="overflow-x-auto min-h-[300px]">
-                            <table className="w-full">
-                                <thead className="bg-gray-50 dark:bg-zinc-800 text-xs text-left">
+                    {/* Section 3: Line Items */}
+                    <div className="bg-white dark:bg-zinc-900/90 rounded-2xl border border-slate-100 dark:border-zinc-800/80 p-6 shadow-sm hover:shadow-md transition-shadow duration-200 relative overflow-hidden">
+                        <div className="absolute top-0 left-0 w-1.5 h-full bg-violet-500"></div>
+                        <div className="flex items-center justify-between mb-5">
+                            <div className="flex items-center gap-2">
+                                <span className="flex items-center justify-center w-5 h-5 rounded-full bg-violet-50 dark:bg-violet-950/50 text-[11px] font-bold text-violet-600 dark:text-violet-400">3</span>
+                                <h3 className="text-sm font-semibold tracking-wide text-slate-700 dark:text-zinc-300 uppercase">Line Items</h3>
+                            </div>
+                        </div>
+
+                        <div className="overflow-x-auto rounded-xl border border-slate-100 dark:border-zinc-800">
+                            <table className="w-full border-collapse">
+                                <thead className="bg-slate-50 dark:bg-zinc-850/60 text-xs font-semibold text-slate-500 dark:text-zinc-400 uppercase tracking-wider text-left border-b border-slate-100 dark:border-zinc-800">
                                     <tr>
-                                        <th className="px-3 py-2 w-24">H.S Code</th>
-                                        <th className="px-3 py-2 min-w-[200px]">Particulars <span className="text-red-500">*</span></th>
-                                        <th className="px-3 py-2 w-32">Qty <span className="text-red-500">*</span></th>
-                                        <th className="px-3 py-2 w-32">Rate (Rs)</th>
-                                        <th className="px-3 py-2 w-32">Amount</th>
-                                        <th className="px-3 py-2 w-10"></th>
+                                        <th className="px-4 py-3.5 w-28 text-[11px]">H.S Code</th>
+                                        <th className="px-4 py-3.5 min-w-[240px] text-[11px]">Particulars <span className="text-red-500">*</span></th>
+                                        <th className="px-4 py-3.5 w-36 text-[11px]">Qty <span className="text-red-500">*</span></th>
+                                        <th className="px-4 py-3.5 w-36 text-[11px]">Rate (Rs)</th>
+                                        <th className="px-4 py-3.5 w-40 text-[11px]">Amount</th>
+                                        <th className="px-4 py-3.5 w-12"></th>
                                     </tr>
                                 </thead>
-                                <tbody className="divide-y divide-gray-100 dark:divide-zinc-800">
+                                <tbody className="divide-y divide-slate-100 dark:divide-zinc-800/80">
                                     {lineItems.map((item, index) => (
-                                        <tr key={index} className="vt-align-top">
-                                            <td className="px-3 py-2">
+                                        <tr key={index} className="hover:bg-slate-50/40 dark:hover:bg-zinc-900/40 transition-colors duration-150 align-top">
+                                            <td className="px-4 py-3">
                                                 <input
                                                     type="text"
                                                     value={item.hs_code || ''}
                                                     readOnly
-                                                    className="w-full px-2 py-1 bg-gray-50 dark:bg-zinc-800/50 border dark:border-zinc-700 rounded text-sm text-gray-500"
+                                                    className="w-full px-3 py-2 bg-slate-50 dark:bg-zinc-850/40 border border-slate-150 dark:border-zinc-800 rounded-xl text-sm text-slate-400 dark:text-zinc-500 font-mono"
                                                 />
                                             </td>
-                                            <td className="px-3 py-2 relative">
+                                            <td className="px-4 py-3 relative">
                                                 <div
                                                     className="relative"
                                                     onClick={(e) => e.stopPropagation()}
                                                 >
-                                                    <input
-                                                        type="text"
-                                                        value={activeRowIndex === index ? particularSearch : item.particulars}
-                                                        onChange={(e) => {
-                                                            setParticularSearch(e.target.value)
-                                                            if (activeRowIndex !== index) setActiveRowIndex(index)
-                                                        }}
-                                                        onFocus={() => {
-                                                            setActiveRowIndex(index)
-                                                            setParticularSearch(item.particulars)
-                                                        }}
-                                                        placeholder="Search particular..."
-                                                        className="w-full px-2 py-1 border dark:border-zinc-700 rounded text-sm bg-white dark:bg-zinc-800 focus:ring-2 focus:ring-blue-500"
-                                                    />
+                                                    <div className="relative">
+                                                        <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400 dark:text-zinc-500">
+                                                            <Search className="h-4 w-4" />
+                                                        </span>
+                                                        <input
+                                                            type="text"
+                                                            value={activeRowIndex === index ? particularSearch : item.particulars}
+                                                            onChange={(e) => {
+                                                                setParticularSearch(e.target.value)
+                                                                if (activeRowIndex !== index) setActiveRowIndex(index)
+                                                            }}
+                                                            onFocus={() => {
+                                                                setActiveRowIndex(index)
+                                                                setParticularSearch(item.particulars)
+                                                            }}
+                                                            placeholder="Search stock item..."
+                                                            className="w-full pl-9 pr-3 py-2 border border-slate-200 dark:border-zinc-800 rounded-xl text-sm bg-white dark:bg-zinc-900 focus:outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all duration-200 text-slate-700 dark:text-zinc-300"
+                                                        />
+                                                    </div>
 
                                                     {/* Dropdown */}
                                                     {activeRowIndex === index && (
-                                                        <div className="absolute top-full left-0 z-50 w-full mt-1 bg-white dark:bg-zinc-800 border dark:border-zinc-700 rounded shadow-lg max-h-48 overflow-y-auto">
+                                                        <div className="absolute top-full left-0 z-50 w-full mt-1 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md border border-slate-200 dark:border-zinc-800 rounded-2xl shadow-xl max-h-56 overflow-y-auto divide-y divide-slate-100 dark:divide-zinc-800/80">
                                                             {filteredStock.length > 0 ? (
                                                                 filteredStock.map((stockItem, idx) => (
                                                                     <div
                                                                         key={idx}
                                                                         onClick={() => selectParticular(index, stockItem)}
-                                                                        className="px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-zinc-700 cursor-pointer flex justify-between"
+                                                                        className="px-4 py-3 text-sm hover:bg-slate-50 dark:hover:bg-zinc-800/80 cursor-pointer flex justify-between items-center transition-colors duration-150"
                                                                     >
-                                                                        <span>{stockItem.particulars}</span>
-                                                                        <span className="text-xs text-gray-500">
-                                                                            Stock: {stockItem.running_stock}
-                                                                        </span>
+                                                                        <div className="flex flex-col">
+                                                                            <span className="font-medium text-slate-800 dark:text-zinc-200">{stockItem.particulars}</span>
+                                                                            <span className="text-[10px] text-slate-400 dark:text-zinc-500 mt-0.5">HS: {stockItem.hs_code || 'N/A'}</span>
+                                                                        </div>
+                                                                        <div className="flex items-center gap-1.5">
+                                                                            <span className="text-[11px] font-semibold bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 px-2 py-1 rounded-full">
+                                                                                Stock: {stockItem.running_stock}
+                                                                            </span>
+                                                                        </div>
                                                                     </div>
                                                                 ))
                                                             ) : (
-                                                                <div className="px-3 py-2 text-sm text-gray-500">No Match</div>
+                                                                <div className="px-4 py-3 text-sm text-slate-400 dark:text-zinc-500 text-center">No matching stock items</div>
                                                             )}
                                                         </div>
                                                     )}
                                                 </div>
                                             </td>
-                                            <td className="px-3 py-2">
+                                            <td className="px-4 py-3">
                                                 <div className="flex flex-col">
                                                     <input
                                                         type="number"
                                                         step="0.01"
-                                                        value={item.quantity}
+                                                        value={item.quantity || ''}
                                                         onChange={(e) => handleItemChange(index, 'quantity', e.target.value)}
-                                                        className={`w-full px-2 py-1 border rounded text-sm bg-white dark:bg-zinc-800 ${item.quantity > getRunningStock(item.particulars)
-                                                            ? 'border-red-500 focus:ring-red-500'
-                                                            : 'dark:border-zinc-700 focus:ring-blue-500'
+                                                        className={`w-full px-3 py-2 border rounded-xl text-sm bg-white dark:bg-zinc-900 focus:outline-none focus:ring-4 transition-all duration-200 ${item.quantity > getRunningStock(item.particulars)
+                                                            ? 'border-red-500 focus:ring-red-500/10 focus:border-red-500'
+                                                            : 'border-slate-200 dark:border-zinc-800 focus:ring-indigo-500/10 focus:border-indigo-500'
                                                             }`}
                                                     />
-                                                    <span className={`text-[10px] mt-0.5 ${item.quantity > getRunningStock(item.particulars) ? 'text-red-500 font-bold' : 'text-gray-500'
+                                                    <span className={`text-[10px] mt-1.5 px-2 py-0.5 rounded-md w-fit font-medium ${item.quantity > getRunningStock(item.particulars) 
+                                                        ? 'bg-red-50 dark:bg-red-950/20 text-red-500' 
+                                                        : 'bg-slate-50 dark:bg-zinc-850 text-slate-500'
                                                         }`}>
                                                         Available: {getRunningStock(item.particulars)}
                                                     </span>
                                                 </div>
                                             </td>
-                                            <td className="px-3 py-2">
+                                            <td className="px-4 py-3">
                                                 <input
                                                     type="number"
                                                     step="0.01"
-                                                    value={item.rate}
+                                                    value={item.rate || ''}
                                                     onChange={(e) => handleItemChange(index, 'rate', e.target.value)}
-                                                    className="w-full px-2 py-1 border dark:border-zinc-700 rounded text-sm bg-white dark:bg-zinc-800"
+                                                    className="w-full px-3 py-2 border border-slate-200 dark:border-zinc-800 rounded-xl text-sm bg-white dark:bg-zinc-900 focus:outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all duration-200 text-slate-700 dark:text-zinc-300"
                                                 />
                                             </td>
-                                            <td className="px-3 py-2">
-                                                <div className="px-2 py-1 text-sm font-medium">
+                                            <td className="px-4 py-3">
+                                                <div className="px-3 py-2 text-sm font-semibold text-slate-700 dark:text-zinc-300 bg-slate-50/50 dark:bg-zinc-850/20 rounded-xl border border-dashed border-slate-150 dark:border-zinc-800">
                                                     {formatNepaliCurrency(item.amount)}
                                                 </div>
                                             </td>
-                                            <td className="px-3 py-2 text-center">
+                                            <td className="px-4 py-3 text-center">
                                                 {lineItems.length > 1 && (
-                                                    <button onClick={() => removeLineItem(index)} className="text-red-500 hover:text-red-700">
+                                                    <button type="button" onClick={() => removeLineItem(index)} className="mt-2 text-red-400 hover:text-red-600 dark:text-red-500 dark:hover:text-red-400 p-1.5 hover:bg-red-50 dark:hover:bg-red-950/20 rounded-lg transition-colors">
                                                         <Trash2 className="h-4 w-4" />
                                                     </button>
                                                 )}
@@ -484,53 +607,86 @@ export function AddSalesBillModal({ onClose, billToEdit }: AddSalesBillModalProp
                                     ))}
                                 </tbody>
                             </table>
-                            <button
-                                type="button"
-                                onClick={addLineItem}
-                                className="mt-2 flex items-center gap-1 text-blue-600 hover:text-blue-800 text-sm font-medium px-2"
-                            >
-                                <Plus className="h-4 w-4" /> Add Item
-                            </button>
-                        </div>
-                    </div>
-
-                    {/* Footer Totals & Actions */}
-                    <div className="flex justify-end gap-8 bg-white dark:bg-zinc-900 rounded-lg border dark:border-zinc-800 p-4">
-                        <div className="w-64 space-y-2">
-                            <div className="flex justify-between text-sm">
-                                <span className="text-gray-500">Sub Total Amount</span>
-                                <span className="font-medium">{formatNepaliCurrency(subTotalAmount)}</span>
-                            </div>
-                            <div className="flex justify-between text-sm">
-                                <span className="text-gray-500">13% VAT</span>
-                                <span className="font-medium">{formatNepaliCurrency(vatAmount)}</span>
-                            </div>
-                            <div className="border-t dark:border-zinc-700 pt-2 flex justify-between text-base font-bold">
-                                <span>Total Amount</span>
-                                <span className="text-blue-600">{formatNepaliCurrency(totalAmount)}</span>
+                            <div className="px-4 py-3 bg-slate-50/30 dark:bg-zinc-850/10 border-t border-slate-100 dark:border-zinc-800">
+                                <button
+                                    type="button"
+                                    onClick={addLineItem}
+                                    className="flex items-center gap-1.5 text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 text-sm font-semibold px-3 py-2 bg-indigo-50/50 dark:bg-indigo-950/20 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 rounded-xl transition-all duration-200"
+                                >
+                                    <Plus className="h-4 w-4" /> Add Item Row
+                                </button>
                             </div>
                         </div>
                     </div>
 
-                    <div className="sticky bottom-0 bg-gray-50 dark:bg-zinc-950 pt-4 pb-2 border-t dark:border-zinc-800 flex justify-end gap-3 px-4">
+                    {/* Totals & Actions Footer */}
+                    <div className="flex justify-end bg-white dark:bg-zinc-900/90 rounded-2xl border border-slate-100 dark:border-zinc-800/80 p-6 shadow-sm">
+                        <div className="w-80 space-y-3.5">
+                            <div className="flex justify-between items-center text-sm">
+                                <span className="text-slate-500 dark:text-zinc-400">Sub Total Amount</span>
+                                <span className="font-semibold text-slate-700 dark:text-zinc-300">{formatNepaliCurrency(subTotalAmount)}</span>
+                            </div>
+                            <div className="flex justify-between items-center text-sm">
+                                <span className="text-slate-500 dark:text-zinc-400">13% VAT</span>
+                                <span className="font-semibold text-slate-700 dark:text-zinc-300">{formatNepaliCurrency(vatAmount)}</span>
+                            </div>
+                            <div className="border-t border-slate-100 dark:border-zinc-800 pt-3.5 flex justify-between items-center text-base font-bold">
+                                <span className="text-slate-800 dark:text-zinc-200">Total Amount</span>
+                                <span className="text-xl bg-gradient-to-r from-indigo-600 to-violet-600 dark:from-indigo-400 dark:to-violet-400 bg-clip-text text-transparent">{formatNepaliCurrency(totalAmount)}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="sticky bottom-0 bg-white/80 dark:bg-zinc-900/80 backdrop-blur-md py-4 px-6 border-t border-slate-100 dark:border-zinc-800/85 flex justify-end items-center gap-3 animate-fade-in-up">
                         <button
                             type="button"
                             onClick={onClose}
-                            className="px-6 py-2 border dark:border-zinc-700 rounded-md hover:bg-gray-100 dark:hover:bg-zinc-800"
+                            className="px-6 py-2.5 border border-slate-200 dark:border-zinc-800 text-slate-600 dark:text-zinc-400 rounded-xl hover:bg-slate-50 dark:hover:bg-zinc-850/60 font-semibold text-sm transition-all duration-200 animate-slide-in"
                         >
                             Cancel
                         </button>
+                        {!isEditing && (
+                            <button
+                                type="submit"
+                                onClick={() => setShouldCloseOnSave(false)}
+                                disabled={isSubmitting}
+                                className="px-6 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl font-semibold text-sm shadow-sm shadow-emerald-500/10 hover:shadow-md hover:shadow-emerald-500/20 active:scale-[0.98] transition-all duration-200 disabled:opacity-50 flex items-center gap-1.5 animate-slide-in"
+                            >
+                                {isSubmitting && !shouldCloseOnSave ? (
+                                    <>
+                                        <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                                        Saving...
+                                    </>
+                                ) : (
+                                    <>
+                                        <Plus className="w-4 h-4" />
+                                        Save & Continue
+                                    </>
+                                )}
+                            </button>
+                        )}
                         <button
                             type="submit"
+                            onClick={() => setShouldCloseOnSave(true)}
                             disabled={isSubmitting}
-                            className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors disabled:opacity-50"
+                            className="px-6 py-2.5 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white rounded-xl font-semibold text-sm shadow-sm shadow-indigo-500/10 hover:shadow-md hover:shadow-indigo-500/20 active:scale-[0.98] transition-all duration-200 disabled:opacity-50 flex items-center gap-1.5 animate-slide-in"
                         >
-                            {isSubmitting ? 'Saving...' : 'Save & Close'}
+                            {isSubmitting && shouldCloseOnSave ? (
+                                <>
+                                    <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                                    Saving...
+                                </>
+                            ) : (
+                                <>
+                                    <CheckCircle2 className="w-4 h-4" />
+                                    {isEditing ? 'Update & Close' : 'Save & Close'}
+                                </>
+                            )}
                         </button>
                     </div>
                 </form>
 
-                {/* Close Dropdown on outside click hack/handler could go here if needed, but fixed layout handles reasonable enough */}
+                {/* Close Dropdown on outside click */}
                 {activeRowIndex !== null && (
                     <div
                         className="fixed inset-0 z-40"

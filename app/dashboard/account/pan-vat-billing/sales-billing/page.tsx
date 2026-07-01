@@ -15,10 +15,12 @@ export default function SalesBillingPage() {
     const [activeTab, setActiveTab] = useState<'bill-entry' | 'stock-analysis' | 'sales-analysis'>('bill-entry')
     const [isAddSalesBillModalOpen, setIsAddSalesBillModalOpen] = useState(false)
     const [selectedBillId, setSelectedBillId] = useState<string | null>(null)
+    const [galleryBillIds, setGalleryBillIds] = useState<string[] | undefined>(undefined)
     const [billToEdit, setBillToEdit] = useState<SalesBill | undefined>(undefined)
 
     const handleEditBill = (bill: SalesBill) => {
         setSelectedBillId(null)
+        setGalleryBillIds(undefined)
         setBillToEdit(bill)
         setIsAddSalesBillModalOpen(true)
     }
@@ -99,7 +101,12 @@ export default function SalesBillingPage() {
             {/* Content */}
             <div className="flex-1 overflow-auto p-3">
                 {activeTab === 'bill-entry' ? (
-                    <SalesBillList onViewBill={setSelectedBillId} />
+                    <SalesBillList
+                        onViewBill={(id, ids) => {
+                            setSelectedBillId(id)
+                            setGalleryBillIds(ids)
+                        }}
+                    />
                 ) : activeTab === 'stock-analysis' ? (
                     <StockAnalysisPage />
                 ) : (
@@ -118,8 +125,13 @@ export default function SalesBillingPage() {
             {selectedBillId && (
                 <SalesBillDetailModal
                     billId={selectedBillId}
-                    onClose={() => setSelectedBillId(null)}
+                    galleryBillIds={galleryBillIds}
+                    onClose={() => {
+                        setSelectedBillId(null)
+                        setGalleryBillIds(undefined)
+                    }}
                     onEdit={handleEditBill}
+                    onNavigateBill={setSelectedBillId}
                 />
             )}
         </div>

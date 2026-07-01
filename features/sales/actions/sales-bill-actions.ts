@@ -100,6 +100,20 @@ export async function createSalesBill(params: CreateSalesBillParams) {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
 
+    // Enforce duplicate validation
+    const isDuplicate = await checkDuplicateInvoice(params.invoice_no, params.bill_date_ad)
+    if (isDuplicate) {
+        throw new Error('Invoice number Duplicate')
+    }
+
+    // Find matching fiscal year
+    const { data: fy } = await supabase
+        .from('fiscal_years')
+        .select('id')
+        .lte('start_date', params.bill_date_ad)
+        .gte('end_date', params.bill_date_ad)
+        .single()
+
     // Insert bill
     const { data: bill, error: billError } = await supabase
         .from('sales_bills')
@@ -107,14 +121,14 @@ export async function createSalesBill(params: CreateSalesBillParams) {
             bill_date_ad: params.bill_date_ad,
             bill_date_bs: params.bill_date_bs,
             seller_company_id: params.seller_company_id || null,
-            invoice_no: params.invoice_no,
+            invoice_no: params.invoice_no.trim(),
             customer_name: params.customer_name,
             customer_address: params.customer_address || null,
             customer_pan_vat: params.customer_pan_vat || null,
             sub_total_amount: params.sub_total_amount,
             vat_amount: params.vat_amount,
             total_amount: params.total_amount,
-            fiscal_year_id: params.fiscal_year_id || null,
+            fiscal_year_id: fy?.id || params.fiscal_year_id || null,
             created_by: user?.id || null,
         })
         .select()
@@ -173,6 +187,20 @@ export async function getSalesBillById(id: string) {
 export async function updateSalesBill(id: string, params: CreateSalesBillParams) {
     const supabase = await createClient()
 
+    // Enforce duplicate validation (excluding this bill)
+    const isDuplicate = await checkDuplicateInvoice(params.invoice_no, params.bill_date_ad, id)
+    if (isDuplicate) {
+        throw new Error('Invoice number Duplicate')
+    }
+
+    // Find matching fiscal year
+    const { data: fy } = await supabase
+        .from('fiscal_years')
+        .select('id')
+        .lte('start_date', params.bill_date_ad)
+        .gte('end_date', params.bill_date_ad)
+        .single()
+
     // Update bill
     const { data: bill, error: billError } = await supabase
         .from('sales_bills')
@@ -180,14 +208,14 @@ export async function updateSalesBill(id: string, params: CreateSalesBillParams)
             bill_date_ad: params.bill_date_ad,
             bill_date_bs: params.bill_date_bs,
             seller_company_id: params.seller_company_id || null,
-            invoice_no: params.invoice_no,
+            invoice_no: params.invoice_no.trim(),
             customer_name: params.customer_name,
             customer_address: params.customer_address || null,
             customer_pan_vat: params.customer_pan_vat || null,
             sub_total_amount: params.sub_total_amount,
             vat_amount: params.vat_amount,
             total_amount: params.total_amount,
-            fiscal_year_id: params.fiscal_year_id || null,
+            fiscal_year_id: fy?.id || params.fiscal_year_id || null,
         })
         .eq('id', id)
         .select()
@@ -224,4 +252,76 @@ export async function updateSalesBill(id: string, params: CreateSalesBillParams)
 
     revalidatePath('/dashboard/account/pan-vat-billing/sales-billing')
     return bill as SalesBill
+}
+
+// Get next suggested invoice number for a given date
+export async function getNextSuggestedInvoiceNo(date: string): Promise<string> {
+    const supabase = await createClient()
+
+    // Get fiscal year date range
+    const { data: fy } = await supabase
+        .from('fiscal_years')
+        .select('start_date, end_date')
+        .lte('start_date', date)
+        .gte('end_date', date)
+        .single()
+
+    if (!fy) return '001'
+
+    const { data, error } = await supabase
+        .from('sales_bills')
+        .select('invoice_no')
+        .eq('is_deleted', false)
+        .gte('bill_date_ad', fy.start_date)
+        .lte('bill_date_ad', fy.end_date)
+
+    if (error || !data || data.length === 0) {
+        return '001'
+    }
+
+    let maxNum = 0
+    data.forEach(bill => {
+        const num = parseInt(bill.invoice_no, 10)
+        if (!isNaN(num) && num > maxNum) {
+            maxNum = num
+        }
+    })
+
+    const nextNum = maxNum + 1
+    return String(nextNum).padStart(3, '0')
+}
+
+// Check for duplicate invoice number in the fiscal year of a given date
+export async function checkDuplicateInvoice(invoiceNo: string, date: string, excludeBillId?: string): Promise<boolean> {
+    const supabase = await createClient()
+
+    // Get fiscal year date range
+    const { data: fy } = await supabase
+        .from('fiscal_years')
+        .select('start_date, end_date')
+        .lte('start_date', date)
+        .gte('end_date', date)
+        .single()
+
+    if (!fy) return false
+
+    let query = supabase
+        .from('sales_bills')
+        .select('id')
+        .eq('invoice_no', invoiceNo.trim())
+        .eq('is_deleted', false)
+        .gte('bill_date_ad', fy.start_date)
+        .lte('bill_date_ad', fy.end_date)
+
+    if (excludeBillId) {
+        query = query.neq('id', excludeBillId)
+    }
+
+    const { data, error } = await query
+    if (error) {
+        console.error('Error checking duplicate invoice:', error)
+        return false
+    }
+
+    return data.length > 0
 }
