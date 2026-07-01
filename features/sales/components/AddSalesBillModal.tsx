@@ -145,7 +145,7 @@ export function AddSalesBillModal({ onClose, billToEdit }: AddSalesBillModalProp
 
         // Special handling for Quantity validation
         if (field === 'quantity') {
-            const qty = parseFloat(value) || 0
+            const qty = parseInt(value, 10) || 0
             // Find stock item to check running stock
             const stockItem = stockData.find(s => s.particulars === currentItem.particulars)
 
@@ -175,16 +175,14 @@ export function AddSalesBillModal({ onClose, billToEdit }: AddSalesBillModalProp
         // Auto-fill H.S Code
         const hsCode = stockItem.hs_code || ''
 
-        // Auto-calculate Rate: Purchase Rate * 1.1 + Purchase Rate = Purchase Rate * 2.1 ??? 
-        // User request: "Purchase Rate * 10% + Purchase rate" -> Rate + (Rate * 0.1) = Rate * 1.1
-        // Purchase Rate in stockData is `weighted_average_rate`
-        const suggestedRate = (stockItem.weighted_average_rate || 0) * 1.1
+        // Auto-calculate Rate: Purchase Rate * 10% markup (nearest integer)
+        const suggestedRate = Math.round((stockItem.weighted_average_rate || 0) * 1.1)
 
         newItems[index] = {
             ...newItems[index],
             particulars: stockItem.particulars,
             hs_code: hsCode,
-            rate: parseFloat(suggestedRate.toFixed(2)),
+            rate: suggestedRate,
             quantity: 0, // Reset qty
             amount: 0
         }
@@ -566,9 +564,18 @@ export function AddSalesBillModal({ onClose, billToEdit }: AddSalesBillModalProp
                                                 <div className="flex flex-col">
                                                     <input
                                                         type="number"
-                                                        step="0.01"
+                                                        step="1"
                                                         value={item.quantity || ''}
                                                         onChange={(e) => handleItemChange(index, 'quantity', e.target.value)}
+                                                        onKeyDown={(e) => {
+                                                            if (e.key === '.' || e.key === 'e' || e.key === 'E' || e.key === '+' || e.key === '-') {
+                                                                e.preventDefault()
+                                                            }
+                                                        }}
+                                                        onBlur={(e) => {
+                                                            const roundedQty = Math.round(parseFloat(e.target.value) || 0)
+                                                            handleItemChange(index, 'quantity', roundedQty)
+                                                        }}
                                                         className={`w-full px-3 py-2 border rounded-xl text-sm bg-white dark:bg-zinc-900 focus:outline-none focus:ring-4 transition-all duration-200 ${item.quantity > getRunningStock(item.particulars)
                                                             ? 'border-red-500 focus:ring-red-500/10 focus:border-red-500'
                                                             : 'border-slate-200 dark:border-zinc-800 focus:ring-indigo-500/10 focus:border-indigo-500'
@@ -585,9 +592,13 @@ export function AddSalesBillModal({ onClose, billToEdit }: AddSalesBillModalProp
                                             <td className="px-4 py-3">
                                                 <input
                                                     type="number"
-                                                    step="0.01"
+                                                    step="1"
                                                     value={item.rate || ''}
                                                     onChange={(e) => handleItemChange(index, 'rate', e.target.value)}
+                                                    onBlur={(e) => {
+                                                        const roundedRate = Math.round(parseFloat(e.target.value) || 0)
+                                                        handleItemChange(index, 'rate', roundedRate)
+                                                    }}
                                                     className="w-full px-3 py-2 border border-slate-200 dark:border-zinc-800 rounded-xl text-sm bg-white dark:bg-zinc-900 focus:outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all duration-200 text-slate-700 dark:text-zinc-300"
                                                 />
                                             </td>

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { X, Plus, Trash2, Search } from 'lucide-react'
+import { X, Plus, Trash2, Search, AlertTriangle, Calendar } from 'lucide-react'
 import { createPanVatBill, updatePanVatBill, type CreatePanVatBillParams, type PanVatBillItem, type PanVatBill } from '@/features/account/actions/pan-vat-bill-actions'
 import { getPanVatCompanies } from '@/features/account/actions/pan-vat-company-actions'
 import { getCompanyDetails } from '@/features/settings/actions/company-details-actions'
@@ -180,7 +180,11 @@ export function AddPanVatBillModal({ onClose, bill }: AddPanVatBillModalProps) {
     // Handle line item change
     const handleLineItemChange = (index: number, field: keyof PanVatBillItem, value: any) => {
         const newItems = [...lineItems]
-        newItems[index] = { ...newItems[index], [field]: value }
+        if (field === 'quantity') {
+            newItems[index] = { ...newItems[index], [field]: parseInt(value, 10) || 0 }
+        } else {
+            newItems[index] = { ...newItems[index], [field]: value }
+        }
 
         // Calculate amount if quantity or rate changes
         if (field === 'quantity' || field === 'rate') {
@@ -294,68 +298,83 @@ export function AddPanVatBillModal({ onClose, bill }: AddPanVatBillModalProps) {
     }
 
     return (
-        <div className={`fixed inset-0 z-[100] overflow-y-auto bg-gray-50 dark:bg-zinc-950 transition-all duration-300 ${isCollapsed ? 'md:ml-16' : 'md:ml-64'}`}>
-            <div className="min-h-screen">
+        <div className={`fixed inset-0 z-[100] overflow-y-auto bg-gray-50 dark:bg-zinc-950 transition-all duration-300 ${isCollapsed ? 'md:ml-16' : 'md:ml-64'} font-sans`}>
+            <div className="min-h-screen flex flex-col">
                 {/* Header */}
-                <div className="sticky top-0 z-10 bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 px-4 py-3">
-                    <div className="flex items-center justify-between">
-                        <h2 className="text-xl font-bold">{isEditMode ? 'Edit' : 'Add'} Pan/Vat Bill</h2>
-                        <button
-                            onClick={onClose}
-                            className="p-2 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-md transition-colors"
-                        >
-                            <X className="h-5 w-5" />
-                        </button>
+                <div className="sticky top-0 z-10 bg-white/90 dark:bg-zinc-900/90 backdrop-blur-md border-b border-slate-200 dark:border-zinc-800 px-6 py-4 flex items-center justify-between shadow-sm">
+                    <div>
+                        <h2 className="text-[18px] font-bold text-slate-800 dark:text-zinc-100">
+                            {isEditMode ? 'Edit Pan/Vat Purchase Bill' : 'Add Pan/Vat Purchase Bill'}
+                        </h2>
+                        <p className="text-[12px] text-slate-400 dark:text-zinc-500 mt-0.5">Enter details of the purchase invoice</p>
                     </div>
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        className="p-1.5 hover:bg-slate-100 dark:hover:bg-zinc-800 text-slate-400 hover:text-slate-600 dark:hover:text-zinc-300 rounded-xl transition-all"
+                    >
+                        <X className="h-5 w-5" />
+                    </button>
                 </div>
 
                 {/* Form */}
-                <form onSubmit={handleSubmit} className="space-y-3 p-4">
+                <form onSubmit={handleSubmit} className="flex-1 p-6 space-y-6 bg-slate-50/30 dark:bg-zinc-950/20">
                     {error && (
-                        <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md text-red-600 dark:text-red-400 text-sm">
-                            {error}
+                        <div className="flex items-start gap-2.5 p-4 bg-red-50 dark:bg-red-950/20 border border-red-200/50 dark:border-red-900/60 rounded-xl text-red-600 dark:text-red-400 text-[13px] font-medium animate-fade-in">
+                            <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+                            <span>{error}</span>
                         </div>
                     )}
 
                     {/* Row 1: Bill Dates */}
-                    <div className="bg-white dark:bg-zinc-900 rounded-lg border dark:border-zinc-800 p-4">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-slate-200 dark:border-zinc-800/85 p-5 shadow-sm">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                             <div>
-                                <label className="block text-sm font-medium mb-1">
+                                <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-zinc-500 mb-2">
                                     Issue Bill Date (A.D) <span className="text-red-500">*</span>
                                 </label>
-                                <input
-                                    type="date"
-                                    value={formData.issue_bill_date_ad}
-                                    onChange={(e) => handleADDateChange(e.target.value)}
-                                    className="w-full px-3 py-2 border dark:border-zinc-700 rounded-md bg-white dark:bg-zinc-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                    required
-                                />
+                                <div className="relative">
+                                    <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400 dark:text-zinc-500">
+                                        <Calendar className="h-4 w-4" />
+                                    </span>
+                                    <input
+                                        type="date"
+                                        value={formData.issue_bill_date_ad}
+                                        onChange={(e) => handleADDateChange(e.target.value)}
+                                        className="w-full pl-9 pr-3 py-2 border border-slate-200 dark:border-zinc-800 rounded-xl text-sm bg-white dark:bg-zinc-900 focus:outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all duration-200 text-slate-700 dark:text-zinc-300 font-medium"
+                                        required
+                                    />
+                                </div>
                             </div>
                             <div>
-                                <label className="block text-sm font-medium mb-1">
+                                <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-zinc-500 mb-2">
                                     Issue Bill Date (B.S) <span className="text-red-500">*</span>
                                 </label>
-                                <input
-                                    type="text"
-                                    value={formData.issue_bill_date_bs}
-                                    onChange={(e) => handleBSDateChange(e.target.value)}
-                                    placeholder="YYYY-MM-DD"
-                                    className="w-full px-3 py-2 border dark:border-zinc-700 rounded-md bg-white dark:bg-zinc-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                />
-                                <p className="text-xs text-gray-500 mt-1">Auto-converts from AD date</p>
+                                <div className="relative">
+                                    <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400 dark:text-zinc-500">
+                                        <Calendar className="h-4 w-4" />
+                                    </span>
+                                    <input
+                                        type="text"
+                                        value={formData.issue_bill_date_bs}
+                                        onChange={(e) => handleBSDateChange(e.target.value)}
+                                        placeholder="YYYY-MM-DD"
+                                        className="w-full pl-9 pr-3 py-2 border border-slate-200 dark:border-zinc-800 rounded-xl text-sm bg-white dark:bg-zinc-900 focus:outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all duration-200 text-slate-700 dark:text-zinc-300 font-medium"
+                                    />
+                                </div>
+                                <p className="text-[10px] text-slate-400 dark:text-zinc-500 mt-1 pl-1">Auto-converts from AD date</p>
                             </div>
                         </div>
                     </div>
 
                     {/* Row 2: Supplier & Invoice */}
-                    <div className="bg-white dark:bg-zinc-900 rounded-lg border dark:border-zinc-800 p-4">
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-slate-200 dark:border-zinc-800/85 p-5 shadow-sm">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
                             {/* Supplier Company */}
                             <div className="relative">
-                                <label className="block text-sm font-medium mb-1">Supplier Company</label>
+                                <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-zinc-500 mb-2">Supplier Company</label>
                                 <div className="relative">
-                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 dark:text-zinc-500" />
                                     <input
                                         type="text"
                                         ref={supplierRef}
@@ -368,17 +387,17 @@ export function AddPanVatBillModal({ onClose, bill }: AddPanVatBillModalProps) {
                                         onFocus={() => setShowSupplierDropdown(true)}
                                         onKeyDown={handleSupplierKeyDown}
                                         placeholder="Search supplier..."
-                                        className="w-full pl-10 pr-3 py-2 border dark:border-zinc-700 rounded-md bg-white dark:bg-zinc-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        className="w-full pl-9 pr-3 py-2 border border-slate-200 dark:border-zinc-800 rounded-xl text-sm bg-white dark:bg-zinc-900 focus:outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all duration-200 text-slate-700 dark:text-zinc-300 font-medium"
                                     />
                                 </div>
                                 {showSupplierDropdown && filteredSuppliers.length > 0 && (
-                                    <div className="absolute z-20 w-full mt-1 bg-white dark:bg-zinc-800 border dark:border-zinc-700 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                                    <div className="absolute z-20 w-full mt-1 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md border border-slate-200 dark:border-zinc-800 rounded-2xl shadow-xl max-h-56 overflow-y-auto divide-y divide-slate-100 dark:divide-zinc-800/80 animate-fade-in">
                                         {filteredSuppliers.map((supplier) => (
                                             <button
                                                 key={supplier.id}
                                                 type="button"
                                                 onClick={() => selectSupplier(supplier)}
-                                                className="w-full px-3 py-2 text-left hover:bg-gray-100 dark:hover:bg-zinc-700"
+                                                className="w-full px-4 py-2.5 text-left text-sm hover:bg-slate-50 dark:hover:bg-zinc-800 text-slate-700 dark:text-zinc-300 font-medium transition-colors cursor-pointer"
                                             >
                                                 {supplier.company_name}
                                             </button>
@@ -389,20 +408,20 @@ export function AddPanVatBillModal({ onClose, bill }: AddPanVatBillModalProps) {
 
                             {/* Supplier Pan/Vat */}
                             <div>
-                                <label className="block text-sm font-medium mb-1">Supplier Pan/Vat</label>
+                                <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-zinc-500 mb-2">Supplier Pan/Vat</label>
                                 <input
                                     type="text"
                                     value={formData.supplier_pan_vat}
                                     readOnly
                                     tabIndex={-1}
-                                    className="w-full px-3 py-2 border dark:border-zinc-700 rounded-md bg-gray-50 dark:bg-zinc-800 cursor-not-allowed"
+                                    className="w-full px-3 py-2 bg-slate-50 dark:bg-zinc-850/40 border border-slate-150 dark:border-zinc-800 rounded-xl text-sm text-slate-400 dark:text-zinc-500 cursor-not-allowed font-medium font-mono"
                                     placeholder="Auto-filled"
                                 />
                             </div>
 
                             {/* Invoice No */}
                             <div>
-                                <label className="block text-sm font-medium mb-1">
+                                <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-zinc-500 mb-2">
                                     Invoice No <span className="text-red-500">*</span>
                                 </label>
                                 <input
@@ -411,7 +430,7 @@ export function AddPanVatBillModal({ onClose, bill }: AddPanVatBillModalProps) {
                                     tabIndex={2}
                                     value={formData.invoice_no}
                                     onChange={(e) => setFormData({ ...formData, invoice_no: e.target.value })}
-                                    className="w-full px-3 py-2 border dark:border-zinc-700 rounded-md bg-white dark:bg-zinc-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    className="w-full px-3 py-2 border border-slate-200 dark:border-zinc-800 rounded-xl text-sm bg-white dark:bg-zinc-900 focus:outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all duration-200 text-slate-700 dark:text-zinc-300 font-medium"
                                     required
                                 />
                             </div>
@@ -419,13 +438,13 @@ export function AddPanVatBillModal({ onClose, bill }: AddPanVatBillModalProps) {
                     </div>
 
                     {/* Row 3: Buyer */}
-                    <div className="bg-white dark:bg-zinc-900 rounded-lg border dark:border-zinc-800 p-4">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-slate-200 dark:border-zinc-800/85 p-5 shadow-sm">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                             {/* Buyer Name */}
                             <div className="relative">
-                                <label className="block text-sm font-medium mb-1">Buyer Name</label>
+                                <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-zinc-500 mb-2">Buyer Name</label>
                                 <div className="relative">
-                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 dark:text-zinc-500" />
                                     <input
                                         type="text"
                                         ref={buyerRef}
@@ -438,17 +457,17 @@ export function AddPanVatBillModal({ onClose, bill }: AddPanVatBillModalProps) {
                                         onFocus={() => setShowBuyerDropdown(true)}
                                         onKeyDown={handleBuyerKeyDown}
                                         placeholder="Search buyer..."
-                                        className="w-full pl-10 pr-3 py-2 border dark:border-zinc-700 rounded-md bg-white dark:bg-zinc-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        className="w-full pl-9 pr-3 py-2 border border-slate-200 dark:border-zinc-800 rounded-xl text-sm bg-white dark:bg-zinc-900 focus:outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all duration-200 text-slate-700 dark:text-zinc-300 font-medium"
                                     />
                                 </div>
                                 {showBuyerDropdown && filteredBuyers.length > 0 && (
-                                    <div className="absolute z-20 w-full mt-1 bg-white dark:bg-zinc-800 border dark:border-zinc-700 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                                    <div className="absolute z-20 w-full mt-1 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md border border-slate-200 dark:border-zinc-800 rounded-2xl shadow-xl max-h-56 overflow-y-auto divide-y divide-slate-100 dark:divide-zinc-800/80 animate-fade-in">
                                         {filteredBuyers.map((buyer) => (
                                             <button
                                                 key={buyer.id}
                                                 type="button"
                                                 onClick={() => selectBuyer(buyer)}
-                                                className="w-full px-3 py-2 text-left hover:bg-gray-100 dark:hover:bg-zinc-700"
+                                                className="w-full px-4 py-2.5 text-left text-sm hover:bg-slate-50 dark:hover:bg-zinc-800 text-slate-700 dark:text-zinc-300 font-medium transition-colors cursor-pointer"
                                             >
                                                 {buyer.company_name}
                                             </button>
@@ -459,13 +478,13 @@ export function AddPanVatBillModal({ onClose, bill }: AddPanVatBillModalProps) {
 
                             {/* Buyer Pan/Vat */}
                             <div>
-                                <label className="block text-sm font-medium mb-1">Buyer Pan/Vat</label>
+                                <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-zinc-500 mb-2">Buyer Pan/Vat</label>
                                 <input
                                     type="text"
                                     value={formData.buyer_pan_vat}
                                     readOnly
                                     tabIndex={-1}
-                                    className="w-full px-3 py-2 border dark:border-zinc-700 rounded-md bg-gray-50 dark:bg-zinc-800 cursor-not-allowed"
+                                    className="w-full px-3 py-2 bg-slate-50 dark:bg-zinc-850/40 border border-slate-150 dark:border-zinc-800 rounded-xl text-sm text-slate-400 dark:text-zinc-500 cursor-not-allowed font-medium font-mono"
                                     placeholder="Auto-filled"
                                 />
                             </div>
@@ -473,16 +492,19 @@ export function AddPanVatBillModal({ onClose, bill }: AddPanVatBillModalProps) {
                     </div>
 
                     {/* Line Items */}
-                    <div className="bg-white dark:bg-zinc-900 rounded-lg border dark:border-zinc-800 p-4">
-                        <div className="flex items-center justify-between mb-3">
-                            <h3 className="text-base font-semibold">Line Items</h3>
+                    <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-slate-200 dark:border-zinc-800/85 overflow-hidden shadow-sm">
+                        <div className="flex items-center justify-between p-4 border-b border-slate-100 dark:border-zinc-800/80 bg-slate-50/50 dark:bg-zinc-900/40">
+                            <div>
+                                <h3 className="text-sm font-bold text-slate-700 dark:text-zinc-300">Line Items</h3>
+                                <p className="text-[11px] text-slate-400 dark:text-zinc-500 mt-0.5">Specify HS codes, particulars, and cost details</p>
+                            </div>
                             <button
                                 type="button"
                                 ref={addRowRef}
                                 tabIndex={100}
                                 onClick={() => addLineItem()}
                                 onKeyDown={handleAddRowTabKeyDown}
-                                className="flex items-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm"
+                                className="flex items-center gap-1.5 px-3.5 py-1.5 bg-indigo-600 text-white hover:bg-indigo-700 text-[13px] font-semibold rounded-xl transition-all shadow-sm active:scale-95 cursor-pointer"
                             >
                                 <Plus className="h-4 w-4" />
                                 Add Row
@@ -490,75 +512,86 @@ export function AddPanVatBillModal({ onClose, bill }: AddPanVatBillModalProps) {
                         </div>
 
                         <div className="overflow-x-auto">
-                            <table className="w-full">
-                                <thead className="bg-gray-50 dark:bg-zinc-800 text-xs">
+                            <table className="w-full text-left border-collapse">
+                                <thead className="bg-slate-50/60 dark:bg-zinc-900/50 text-slate-400 dark:text-zinc-500 border-b border-slate-100 dark:border-zinc-800/80 font-bold uppercase tracking-wider text-[10px]">
                                     <tr>
-                                        <th className="px-2 py-2 text-left">H.S Code</th>
-                                        <th className="px-2 py-2 text-left">Particulars <span className="text-red-500">*</span></th>
-                                        <th className="px-2 py-2 text-left">Quantity <span className="text-red-500">*</span></th>
-                                        <th className="px-2 py-2 text-left">Rate <span className="text-red-500">*</span></th>
-                                        <th className="px-2 py-2 text-left">Amount</th>
-                                        <th className="px-2 py-2"></th>
+                                        <th className="px-4 py-3 w-32">H.S Code</th>
+                                        <th className="px-4 py-3">Particulars <span className="text-red-500">*</span></th>
+                                        <th className="px-4 py-3 w-32 text-right">Quantity <span className="text-red-500">*</span></th>
+                                        <th className="px-4 py-3 w-36 text-right">Rate <span className="text-red-500">*</span></th>
+                                        <th className="px-4 py-3 w-40 text-right">Amount</th>
+                                        <th className="px-4 py-3 w-12"></th>
                                     </tr>
                                 </thead>
-                                <tbody>
+                                <tbody className="divide-y divide-slate-100 dark:divide-zinc-800/80">
                                     {lineItems.map((item, index) => (
-                                        <tr key={index} className="border-t dark:border-zinc-800">
-                                            <td className="px-2 py-2">
+                                        <tr key={index} className="hover:bg-slate-50/40 dark:hover:bg-zinc-900/40 transition-colors duration-150 align-top">
+                                            <td className="px-4 py-3">
                                                 <input
                                                     type="text"
                                                     ref={el => { hsCodeRefs.current[index] = el }}
                                                     tabIndex={10 + (index * 4)}
                                                     value={item.hs_code || ''}
                                                     onChange={(e) => handleLineItemChange(index, 'hs_code', e.target.value)}
-                                                    className="w-24 px-2 py-1 border dark:border-zinc-700 rounded text-sm bg-white dark:bg-zinc-800"
+                                                    className="w-full px-3 py-2 border border-slate-200 dark:border-zinc-800 rounded-xl text-sm bg-white dark:bg-zinc-900 focus:outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all duration-200 text-slate-700 dark:text-zinc-300 font-medium"
                                                 />
                                             </td>
-                                            <td className="px-2 py-2">
+                                            <td className="px-4 py-3">
                                                 <input
                                                     type="text"
                                                     ref={el => { particularsRefs.current[index] = el }}
                                                     tabIndex={11 + (index * 4)}
                                                     value={item.particulars}
                                                     onChange={(e) => handleLineItemChange(index, 'particulars', e.target.value)}
-                                                    className="w-full min-w-[200px] px-2 py-1 border dark:border-zinc-700 rounded text-sm bg-white dark:bg-zinc-800"
+                                                    className="w-full px-3 py-2 border border-slate-200 dark:border-zinc-800 rounded-xl text-sm bg-white dark:bg-zinc-900 focus:outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all duration-200 text-slate-700 dark:text-zinc-300 font-bold"
                                                     required
                                                 />
                                             </td>
-                                            <td className="px-2 py-2">
+                                            <td className="px-4 py-3">
                                                 <input
                                                     type="number"
-                                                    step="0.01"
+                                                    step="1"
                                                     ref={el => { quantityRefs.current[index] = el }}
                                                     tabIndex={12 + (index * 4)}
-                                                    value={item.quantity}
-                                                    onChange={(e) => handleLineItemChange(index, 'quantity', parseFloat(e.target.value) || 0)}
-                                                    className="w-24 px-2 py-1 border dark:border-zinc-700 rounded text-sm bg-white dark:bg-zinc-800"
+                                                    value={item.quantity || ''}
+                                                    onChange={(e) => handleLineItemChange(index, 'quantity', e.target.value)}
+                                                    onKeyDown={(e) => {
+                                                        if (e.key === '.' || e.key === 'e' || e.key === 'E' || e.key === '+' || e.key === '-') {
+                                                            e.preventDefault()
+                                                        }
+                                                    }}
+                                                    onBlur={(e) => {
+                                                        const roundedQty = Math.round(parseFloat(e.target.value) || 0)
+                                                        handleLineItemChange(index, 'quantity', roundedQty)
+                                                    }}
+                                                    className="w-full px-3 py-2 border border-slate-200 dark:border-zinc-800 rounded-xl text-sm bg-white dark:bg-zinc-900 focus:outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all duration-200 text-slate-700 dark:text-zinc-300 font-medium text-right"
                                                     required
                                                 />
                                             </td>
-                                            <td className="px-2 py-2">
+                                            <td className="px-4 py-3">
                                                 <input
                                                     type="number"
                                                     step="0.01"
                                                     ref={el => { rateRefs.current[index] = el }}
                                                     tabIndex={13 + (index * 4)}
-                                                    value={item.rate}
+                                                    value={item.rate || ''}
                                                     onChange={(e) => handleLineItemChange(index, 'rate', parseFloat(e.target.value) || 0)}
                                                     onKeyDown={(e) => handleRateKeyDown(e, index)}
-                                                    className="w-28 px-2 py-1 border dark:border-zinc-700 rounded text-sm bg-white dark:bg-zinc-800"
+                                                    className="w-full px-3 py-2 border border-slate-200 dark:border-zinc-800 rounded-xl text-sm bg-white dark:bg-zinc-900 focus:outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all duration-200 text-slate-700 dark:text-zinc-300 font-medium text-right"
                                                     required
                                                 />
                                             </td>
-                                            <td className="px-2 py-2 text-sm font-medium">
-                                                {formatNepaliCurrency(item.amount)}
+                                            <td className="px-4 py-3 text-right">
+                                                <div className="px-3 py-2 text-sm font-bold text-slate-700 dark:text-zinc-300 bg-slate-50/50 dark:bg-zinc-850/20 rounded-xl border border-dashed border-slate-150 dark:border-zinc-800">
+                                                    {formatNepaliCurrency(item.amount)}
+                                                </div>
                                             </td>
-                                            <td className="px-2 py-2">
+                                            <td className="px-4 py-3 text-center">
                                                 {lineItems.length > 1 && (
                                                     <button
                                                         type="button"
                                                         onClick={() => removeLineItem(index)}
-                                                        className="text-red-600 hover:text-red-800"
+                                                        className="text-red-400 hover:text-red-600 dark:text-red-500 dark:hover:text-red-400 p-1.5 hover:bg-red-50 dark:hover:bg-red-950/20 rounded-lg transition-colors mt-1"
                                                     >
                                                         <Trash2 className="h-4 w-4" />
                                                     </button>
@@ -571,42 +604,34 @@ export function AddPanVatBillModal({ onClose, bill }: AddPanVatBillModalProps) {
                         </div>
                     </div>
 
-                    {/* Totals */}
-                    <div className="bg-white dark:bg-zinc-900 rounded-lg border dark:border-zinc-800 p-4">
-                        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                            <div>
-                                <label className="block text-sm font-medium mb-1">Sub Total Amount</label>
-                                <div className="px-3 py-2 border dark:border-zinc-700 rounded-md bg-gray-50 dark:bg-zinc-800 font-medium">
-                                    {formatNepaliCurrency(subTotalAmount)}
-                                </div>
+                    {/* Totals Summary */}
+                    <div className="flex justify-end bg-white dark:bg-zinc-900 rounded-2xl border border-slate-200 dark:border-zinc-800/85 p-5 shadow-sm">
+                        <div className="w-80 space-y-3">
+                            <div className="flex justify-between items-center text-xs">
+                                <span className="text-slate-500 dark:text-zinc-400 font-medium font-sans">Sub Total Amount</span>
+                                <span className="font-semibold text-slate-700 dark:text-zinc-300 font-sans">{formatNepaliCurrency(subTotalAmount)}</span>
                             </div>
-                            <div>
-                                <label className="block text-sm font-medium mb-1">Taxable Amount</label>
-                                <div className="px-3 py-2 border dark:border-zinc-700 rounded-md bg-gray-50 dark:bg-zinc-800 font-medium">
-                                    {formatNepaliCurrency(taxableAmount)}
-                                </div>
+                            <div className="flex justify-between items-center text-xs">
+                                <span className="text-slate-500 dark:text-zinc-400 font-medium font-sans">Taxable Amount</span>
+                                <span className="font-semibold text-slate-700 dark:text-zinc-300 font-sans">{formatNepaliCurrency(taxableAmount)}</span>
                             </div>
-                            <div>
-                                <label className="block text-sm font-medium mb-1">VAT 13%</label>
-                                <div className="px-3 py-2 border dark:border-zinc-700 rounded-md bg-gray-50 dark:bg-zinc-800 font-medium">
-                                    {formatNepaliCurrency(vat13Percent)}
-                                </div>
+                            <div className="flex justify-between items-center text-xs">
+                                <span className="text-slate-500 dark:text-zinc-400 font-medium font-sans">VAT 13%</span>
+                                <span className="font-semibold text-slate-700 dark:text-zinc-300 font-sans">{formatNepaliCurrency(vat13Percent)}</span>
                             </div>
-                            <div>
-                                <label className="block text-sm font-medium mb-1">Total Amount</label>
-                                <div className="px-3 py-2 border dark:border-zinc-700 rounded-md bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 font-bold text-lg">
-                                    {formatNepaliCurrency(totalAmount)}
-                                </div>
+                            <div className="border-t border-slate-200 dark:border-zinc-850 pt-3 flex justify-between items-center text-sm font-bold">
+                                <span className="text-slate-800 dark:text-zinc-200 font-sans">Total Amount</span>
+                                <span className="text-base text-indigo-600 dark:text-indigo-400 font-extrabold font-sans">{formatNepaliCurrency(totalAmount)}</span>
                             </div>
                         </div>
                     </div>
 
-                    {/* Action Buttons */}
-                    <div className="flex gap-3 justify-end sticky bottom-0 bg-gray-50 dark:bg-zinc-950 py-3 border-t dark:border-zinc-800">
+                    {/* Footer Actions */}
+                    <div className="flex gap-3 justify-end sticky bottom-0 bg-white/90 dark:bg-zinc-900/90 backdrop-blur-md py-4 px-6 border-t border-slate-200 dark:border-zinc-800 shadow-md">
                         <button
                             type="button"
                             onClick={onClose}
-                            className="px-6 py-2 border dark:border-zinc-700 rounded-md hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors"
+                            className="px-6 py-2.5 border border-slate-200 dark:border-zinc-850 text-slate-600 dark:text-zinc-400 rounded-xl hover:bg-slate-50 dark:hover:bg-zinc-850/60 font-semibold text-sm transition-all duration-200"
                         >
                             Cancel
                         </button>
@@ -615,7 +640,7 @@ export function AddPanVatBillModal({ onClose, bill }: AddPanVatBillModalProps) {
                             ref={saveRef}
                             tabIndex={101}
                             disabled={isSubmitting}
-                            className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="px-6 py-2.5 bg-indigo-600 text-white hover:bg-indigo-700 font-semibold text-sm rounded-xl transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer active:scale-95"
                         >
                             {isSubmitting ? 'Saving...' : 'Save Bill'}
                         </button>
