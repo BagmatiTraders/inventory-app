@@ -8,7 +8,7 @@ import { getUserRole, getUserDeletionStats, createDeletionRequest, softDeleteOrd
 import { getOnlineStores } from '@/features/settings/actions/settingsActions'
 import { getActivePlanProductIds } from '@/features/purchase/actions/plan-actions'
 import { getOrdersStockInfo } from '@/features/sales/actions/get-order-stock-info'
-import { Search, Plus, Upload, Download, Printer, List, X, ArrowLeft, Trash2, Clock, RefreshCw, Filter, FileX, ChevronUp, ChevronDown, Package } from 'lucide-react'
+import { Search, Plus, Upload, Download, Printer, List, X, ArrowLeft, Trash2, Clock, RefreshCw, Filter, FileX, ChevronUp, ChevronDown, Package, MessageSquare } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Card } from '@/components/ui-shim'
@@ -24,6 +24,35 @@ import { QuickPlanButton } from '@/features/sales/components/QuickPlanButton'
 import { toast } from 'sonner'
 import { PermissionGuard } from '@/components/permissions/PermissionGuard'
 import { usePermissions } from '@/lib/permissions/PermissionContext'
+const CustomerRemarksTooltip = ({ remarks }: { remarks: string }) => {
+    const [showTooltip, setShowTooltip] = useState(false)
+    return (
+        <div 
+            className="relative z-20 hover:z-30 inline-block shrink-0"
+            onMouseEnter={() => setShowTooltip(true)}
+            onMouseLeave={() => setShowTooltip(false)}
+            onClick={(e) => {
+                e.stopPropagation()
+                alert(`Remarks / Note:\n\n${remarks}`)
+            }}
+        >
+            <button 
+                type="button" 
+                className="text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 transition-colors focus:outline-none flex items-center justify-center p-0.5"
+                title="Click to view full note"
+            >
+                <MessageSquare size={13} />
+            </button>
+            
+            {showTooltip && (
+                <div className="absolute z-50 bottom-full mb-1.5 left-1/2 -translate-x-1/2 bg-zinc-900 text-white border border-zinc-700 rounded shadow-lg p-2 min-w-[200px] max-w-[300px] whitespace-normal text-left text-[11px] leading-snug font-normal">
+                    <div className="font-bold text-yellow-450 mb-0.5">Remarks / Note:</div>
+                    <div className="italic break-words text-zinc-200">{remarks}</div>
+                </div>
+            )}
+        </div>
+    )
+}
 
 export default function DarazSalesEntryPage() {
     const { canEdit, hasPermission } = usePermissions()
@@ -1090,7 +1119,14 @@ export default function DarazSalesEntryPage() {
                                                             </div>
                                                         </div>
                                                     </td>
-                                                    <td className={`hidden md:table-cell px-1.5 py-0.5 text-[15px] truncate ${getCustomerClass(order.customer_name, order.order_date)}`} title={order.customer_name}>{order.customer_name}</td>
+                                                    <td className={`hidden md:table-cell px-1.5 py-0.5 text-[15px] ${getCustomerClass(order.customer_name, order.order_date)}`}>
+                                                        <div className="flex items-center gap-1.5 min-w-0 overflow-visible relative z-10 hover:z-30">
+                                                            <span className="truncate" title={order.customer_name}>{order.customer_name}</span>
+                                                            {order.remarks && (
+                                                                <CustomerRemarksTooltip remarks={order.remarks} />
+                                                            )}
+                                                        </div>
+                                                    </td>
                                                     <td
                                                         className={`hidden md:table-cell px-1.5 py-0.5 text-[15px] ${order.first_product_name === 'Product Not Found' ? 'text-red-600 dark:text-red-400 font-bold' : 'text-gray-700 dark:text-gray-300'} ${order.item_count > 1 ? 'cursor-help' : ''}`}
                                                         title={order.items && order.items.length > 1

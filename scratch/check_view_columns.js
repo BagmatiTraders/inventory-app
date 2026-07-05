@@ -1,24 +1,20 @@
-const { createClient } = require('@supabase/supabase-js');
-require('dotenv').config({ path: '.env.local' });
+const { createClient } = require('@supabase/supabase-js')
+require('dotenv').config({ path: '.env.local' })
 
-const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_ROLE_KEY
-);
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
-async function run() {
-    console.log("Querying daraz_orders_with_totals columns...");
-    const { data: order, error } = await supabase
-        .from('daraz_orders_with_totals')
-        .select('*')
-        .limit(1);
+const supabase = createClient(supabaseUrl, supabaseKey)
 
+async function check() {
+    const { data, error } = await supabase.from('daraz_orders_with_totals').select('*').limit(1)
     if (error) {
-        console.error("Error fetching order from view:", error);
+        console.error('Error:', error)
+    } else if (data && data[0]) {
+        console.log('Columns in daraz_orders_with_totals:', Object.keys(data[0]).join(', '))
+        console.log('Sample data remarks field:', data[0].remarks)
     } else {
-        console.log("View Columns:", Object.keys(order[0] || {}));
-        console.log("Sample Order from View:", order[0]);
+        console.log('No data found.')
     }
 }
-
-run();
+check()

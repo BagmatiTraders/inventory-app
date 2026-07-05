@@ -166,8 +166,21 @@ export default function DarazInvoicePage() {
                 </table>
 
                 {/* Footer */}
-                <div className="footer">
-                    This is a computer-generated bill. If you find any issue, please contact us.
+                <div className="footer" style={{ marginTop: '20px' }}>
+                    {order.remarks ? (
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', fontSize: '10px' }}>
+                            <div style={{ textAlign: 'left', fontWeight: 'normal' }}>
+                                Remarks: <strong style={{ fontWeight: 'bold' }}>"{order.remarks}"</strong>
+                            </div>
+                            <div style={{ textAlign: 'right' }}>
+                                This is a computer-generated bill. If you find any issue, please contact us.
+                            </div>
+                        </div>
+                    ) : (
+                        <div style={{ textAlign: 'center' }}>
+                            This is a computer-generated bill. If you find any issue, please contact us.
+                        </div>
+                    )}
                     <div className="dotted-line" style={{ marginTop: '5px' }}></div>
                 </div>
             </div>

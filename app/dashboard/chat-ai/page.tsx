@@ -19,6 +19,7 @@ import {
     updateReviewSettings,
     type ReviewSettings
 } from '@/features/reviews/actions/review-actions'
+import { updateDarazOrderRemarks } from '@/features/sales/actions/daraz-actions'
 import {
     MessageSquare,
     Cpu,
@@ -35,7 +36,10 @@ import {
     User,
     Copy,
     Star,
-    ExternalLink
+    ExternalLink,
+    Plus,
+    Maximize2,
+    Minimize2
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui-shim'
@@ -124,6 +128,67 @@ interface ChatRule {
     reply_content: string
 }
 
+const ChatInputBar = ({ onSendMessage }: { onSendMessage: (text: string) => Promise<boolean> }) => {
+    const [text, setText] = useState('')
+    const [sending, setSending] = useState(false)
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault()
+        if (!text.trim() || sending) return
+
+        const textToSend = text
+        setSending(true)
+        const success = await onSendMessage(textToSend)
+        setSending(false)
+        if (success) {
+            setText('')
+        }
+    }
+
+    return (
+        <div className="bg-white dark:bg-zinc-900 border-t border-zinc-200 dark:border-zinc-800 p-4 shrink-0">
+            {/* Presets suggestions bar */}
+            <div className="flex gap-2 overflow-x-auto pb-3 scrollbar-none">
+                <span className="text-[10px] font-bold text-zinc-400 self-center shrink-0 uppercase tracking-wider">Quick:</span>
+                {[
+                    'Hello, how can I help you today?',
+                    'Thank you for your inquiry. Checking stock right now.',
+                    'Your order has been shipped and is in transit.',
+                    'Please follow our store for discount vouchers!'
+                ].map(template => (
+                    <button
+                        key={template}
+                        type="button"
+                        onClick={() => setText(template)}
+                        className="bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 text-zinc-700 dark:text-zinc-300 text-xs px-3 py-1.5 rounded-full shrink-0 border border-zinc-200/50 dark:border-zinc-700/50 transition-colors cursor-pointer active:scale-95"
+                    >
+                        {template}
+                    </button>
+                ))}
+            </div>
+
+            {/* Message form */}
+            <form onSubmit={handleSubmit} className="flex gap-2">
+                <input
+                    type="text"
+                    value={text}
+                    disabled={sending}
+                    onChange={(e) => setText(e.target.value)}
+                    placeholder={sending ? "Sending..." : "Write your response..."}
+                    className="flex-1 bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 text-zinc-800 dark:text-zinc-100 disabled:opacity-50"
+                />
+                <button
+                    type="submit"
+                    disabled={sending}
+                    className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 active:scale-95 text-white shadow px-5 rounded-xl flex items-center justify-center transition-all disabled:opacity-50"
+                >
+                    <Send size={16} />
+                </button>
+            </form>
+        </div>
+    )
+}
+
 function ChatAiDashboardContent() {
     const searchParams = useSearchParams()
     const [activeTab, setActiveTab] = useState<'chat' | 'settings'>('chat')
@@ -144,12 +209,17 @@ function ChatAiDashboardContent() {
     const [reviewSettings, setReviewSettings] = useState<Record<string, ReviewSettings>>({})
     const [sessions, setSessions] = useState<ChatSession[]>([])
     const [activeSessionId, setActiveSessionId] = useState<string | null>(null)
+    const activeSessionRef = useRef<string | null>(null)
+    useEffect(() => {
+        activeSessionRef.current = activeSessionId
+    }, [activeSessionId])
+
     const [messages, setMessages] = useState<ChatMessage[]>([])
+    const [isZoomed, setIsZoomed] = useState(false)
     
     // UI filters
     const [searchQuery, setSearchQuery] = useState('')
     const [sessionFilter, setSessionFilter] = useState<'all' | 'unread'>('all')
-    const [replyText, setReplyText] = useState('')
     
     // Settings state
     const [rules, setRules] = useState<ChatRule[]>([])
@@ -170,7 +240,37 @@ function ChatAiDashboardContent() {
     const [ordersSearchQuery, setOrdersSearchQuery] = useState('')
     const [activeRightTab, setActiveRightTab] = useState<'order' | 'product' | 'voucher'>('order')
 
+    // States for order notes / remarks
+    const [isNoteModalOpen, setIsNoteModalOpen] = useState(false)
+    const [selectedOrderForNote, setSelectedOrderForNote] = useState<any | null>(null)
+    const [noteText, setNoteText] = useState('')
+    const [isSubmittingNote, setIsSubmittingNote] = useState(false)
+    const [ordersRefreshTrigger, setOrdersRefreshTrigger] = useState(0)
+
     const chatEndRef = useRef<HTMLDivElement>(null)
+    const messagesContainerRef = useRef<HTMLDivElement>(null)
+
+    const scrollToBottom = (behavior: 'smooth' | 'auto' = 'smooth') => {
+        if (messagesContainerRef.current) {
+            messagesContainerRef.current.scrollTo({
+                top: messagesContainerRef.current.scrollHeight,
+                behavior
+            })
+        }
+    }
+
+    const sessionListRef = useRef<HTMLDivElement>(null)
+    const sidebarScrollTopRef = useRef<number>(0)
+
+    const handleSidebarScroll = (e: React.UIEvent<HTMLDivElement>) => {
+        sidebarScrollTopRef.current = e.currentTarget.scrollTop
+    }
+
+    React.useLayoutEffect(() => {
+        if (sessionListRef.current) {
+            sessionListRef.current.scrollTop = sidebarScrollTopRef.current
+        }
+    }, [sessions])
 
     // Preset tags for customer queries
     const PRESET_TAGS = ['Change Address', 'Change Phone Number', 'Wholesale Inquiry', 'Urgent Return', 'General FAQ']
@@ -263,6 +363,11 @@ function ChatAiDashboardContent() {
     // 3. Fetch Sessions when active store changes & subscribe to real-time updates
     useEffect(() => {
         if (!activeStoreId) return
+
+        sidebarScrollTopRef.current = 0
+        if (sessionListRef.current) {
+            sessionListRef.current.scrollTop = 0
+        }
         
         async function fetchSessions() {
             setLoadingSessions(true)
@@ -342,7 +447,7 @@ function ChatAiDashboardContent() {
                 console.error(error)
             } else {
                 setMessages(data || [])
-                setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100)
+                setTimeout(() => scrollToBottom('auto'), 50)
             }
             setLoadingMessages(false)
         }
@@ -362,7 +467,7 @@ function ChatAiDashboardContent() {
                         if (prev.some(m => m.message_id === payload.new.message_id)) return prev
                         return [...prev, payload.new as ChatMessage]
                     })
-                    setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100)
+                    setTimeout(() => scrollToBottom('smooth'), 50)
                 } else if (payload.eventType === 'UPDATE') {
                     setMessages(prev => prev.map(m => m.message_id === payload.new.message_id ? payload.new as ChatMessage : m))
                 } else if (payload.eventType === 'DELETE') {
@@ -427,34 +532,36 @@ function ChatAiDashboardContent() {
     }
 
     // Send chat message
-    const handleSendMessage = async (e: React.FormEvent) => {
-        e.preventDefault()
-        if (!replyText.trim() || !activeSessionId || !activeStoreId) return
+    const handleSendMessage = async (textToSend: string) => {
+        if (!textToSend.trim() || !activeSessionId || !activeStoreId) return false
 
-        const textToSend = replyText
-        setReplyText('')
+        const sessionSentTo = activeSessionId
 
         try {
-            const result = await sendChatMessage(activeStoreId, activeSessionId, '1', textToSend)
+            const result = await sendChatMessage(activeStoreId, sessionSentTo, '1', textToSend)
             if (result.success) {
+                // Only load and update messages if the user is still looking at this session
+                if (activeSessionRef.current !== sessionSentTo) return true
+
                 // Refresh messages locally
                 const { data } = await supabase
                     .from('daraz_chat_messages')
                     .select('*')
-                    .eq('session_id', activeSessionId)
+                    .eq('session_id', sessionSentTo)
                     .order('send_time', { ascending: true })
-                if (data) {
+                if (data && activeSessionRef.current === sessionSentTo) {
                     setMessages(data)
-                    setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 50)
+                    setTimeout(() => scrollToBottom('smooth'), 50)
                 }
+                return true
             } else {
                 toast.error(result.error || 'Failed to send message')
-                setReplyText(textToSend) // Restore text on failure
+                return false
             }
         } catch (err) {
             const errorMsg = err instanceof Error ? err.message : 'Failed to send message'
             toast.error(errorMsg)
-            setReplyText(textToSend) // Restore text on failure
+            return false
         }
     }
 
@@ -583,6 +690,7 @@ function ChatAiDashboardContent() {
                         customer_first_name,
                         customer_last_name,
                         items_detail,
+                        remarks,
                         daraz_order_items (
                             id,
                             product_name,
@@ -612,7 +720,7 @@ function ChatAiDashboardContent() {
         }
 
         fetchCustomerOrders()
-    }, [activeSessionId, activeStoreId])
+    }, [activeSessionId, activeStoreId, ordersRefreshTrigger])
 
     const activeSession = sessions.find(s => s.session_id === activeSessionId)
     const currentStoreSettings = storeSettings[activeStoreId] || {}
@@ -684,21 +792,27 @@ function ChatAiDashboardContent() {
     // Handler to send order card to the conversation
     const handleSendOrderCard = async (orderId: string) => {
         if (!activeStoreId || !activeSessionId) return
+        const sessionSentTo = activeSessionId
         toast.info('Sending order card...')
         try {
-            const result = await sendChatMessage(activeStoreId, activeSessionId, '10007', undefined, undefined, orderId)
+            const result = await sendChatMessage(activeStoreId, sessionSentTo, '10007', undefined, undefined, orderId)
             if (!result.success) {
                 throw new Error(result.error || 'Failed to send order card')
             }
             toast.success('Order card sent successfully!')
             
+            // Only update messages if user is still looking at this session
+            if (activeSessionRef.current !== sessionSentTo) return
+
             // Refresh messages locally
             const { data } = await supabase
                 .from('daraz_chat_messages')
                 .select('*')
-                .eq('session_id', activeSessionId)
+                .eq('session_id', sessionSentTo)
                 .order('send_time', { ascending: true })
-            if (data) setMessages(data)
+            if (data && activeSessionRef.current === sessionSentTo) {
+                setMessages(data)
+            }
         } catch (err: any) {
             toast.error(err.message || 'Failed to send order card')
         }
@@ -707,22 +821,28 @@ function ChatAiDashboardContent() {
     // Handler to send guide link text summary to the conversation
     const handleSendGuideLink = async (orderNumber: string, status: string, trackingNumber?: string) => {
         if (!activeStoreId || !activeSessionId) return
+        const sessionSentTo = activeSessionId
         toast.info('Sending order guide link...')
         try {
             const txt = `Order Status Details:\nOrder Number: ${orderNumber}\nStatus: ${status}\nTracking Number: ${trackingNumber || 'Pending / In Processing'}`
-            const result = await sendChatMessage(activeStoreId, activeSessionId, '1', txt)
+            const result = await sendChatMessage(activeStoreId, sessionSentTo, '1', txt)
             if (!result.success) {
                 throw new Error(result.error || 'Failed to send guide link')
             }
             toast.success('Order status details sent!')
             
+            // Only update messages if user is still looking at this session
+            if (activeSessionRef.current !== sessionSentTo) return
+
             // Refresh messages locally
             const { data } = await supabase
                 .from('daraz_chat_messages')
                 .select('*')
-                .eq('session_id', activeSessionId)
+                .eq('session_id', sessionSentTo)
                 .order('send_time', { ascending: true })
-            if (data) setMessages(data)
+            if (data && activeSessionRef.current === sessionSentTo) {
+                setMessages(data)
+            }
         } catch (err: any) {
             toast.error(err.message || 'Failed to send guide link')
         }
@@ -731,23 +851,69 @@ function ChatAiDashboardContent() {
     // Handler to send follow invitation to the conversation
     const handleSendFollowInvitation = async () => {
         if (!activeStoreId || !activeSessionId) return
+        const sessionSentTo = activeSessionId
         toast.info('Sending follow invitation...')
         try {
-            const result = await sendChatMessage(activeStoreId, activeSessionId, '10010')
+            const result = await sendChatMessage(activeStoreId, sessionSentTo, '10010')
             if (!result.success) {
                 throw new Error(result.error || 'Failed to send follow invitation')
             }
             toast.success('Follow invitation sent successfully!')
             
+            // Only update messages if user is still looking at this session
+            if (activeSessionRef.current !== sessionSentTo) return
+
             // Refresh messages locally
             const { data } = await supabase
                 .from('daraz_chat_messages')
                 .select('*')
-                .eq('session_id', activeSessionId)
+                .eq('session_id', sessionSentTo)
                 .order('send_time', { ascending: true })
-            if (data) setMessages(data)
+            if (data && activeSessionRef.current === sessionSentTo) {
+                setMessages(data)
+            }
         } catch (err: any) {
             toast.error(err.message || 'Failed to send follow invitation')
+        }
+    }
+
+    const handleOpenNoteModal = (order: any) => {
+        setSelectedOrderForNote(order)
+        setNoteText(order.remarks || '')
+        setIsNoteModalOpen(true)
+    }
+
+    const handleSaveNote = async () => {
+        if (!selectedOrderForNote) return
+        setIsSubmittingNote(true)
+        try {
+            const res = await updateDarazOrderRemarks(selectedOrderForNote.id, noteText.trim() || null)
+            if (res.success) {
+                toast.success('Note saved successfully!')
+                setIsNoteModalOpen(false)
+                setOrdersRefreshTrigger(prev => prev + 1)
+            } else {
+                toast.error(res.error || 'Failed to save note')
+            }
+        } catch (err: any) {
+            toast.error(err.message || 'An error occurred')
+        } finally {
+            setIsSubmittingNote(false)
+        }
+    }
+
+    const handleDeleteNote = async (orderId: string) => {
+        if (!confirm('Are you sure you want to delete this note?')) return
+        try {
+            const res = await updateDarazOrderRemarks(orderId, null)
+            if (res.success) {
+                toast.success('Note deleted successfully!')
+                setOrdersRefreshTrigger(prev => prev + 1)
+            } else {
+                toast.error(res.error || 'Failed to delete note')
+            }
+        } catch (err: any) {
+            toast.error(err.message || 'An error occurred')
         }
     }
 
@@ -767,7 +933,11 @@ function ChatAiDashboardContent() {
     }
 
     return (
-        <div className="flex flex-col h-[calc(100vh-5rem)] bg-zinc-50 dark:bg-zinc-950 rounded-2xl overflow-hidden border border-zinc-200 dark:border-zinc-800">
+        <div className={`flex flex-col bg-zinc-50 dark:bg-zinc-950 overflow-hidden border border-zinc-200 dark:border-zinc-800 transition-all ${
+            isZoomed 
+                ? 'fixed inset-0 z-[150] rounded-none h-screen' 
+                : 'h-[calc(100vh-5rem)] rounded-2xl'
+        }`}>
             {/* Header Area */}
             <div className="bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 p-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 shrink-0">
                 <div>
@@ -828,6 +998,14 @@ function ChatAiDashboardContent() {
                         {syncing ? 'Syncing...' : 'Sync Daraz'}
                     </button>
 
+                    <button
+                        onClick={() => setIsZoomed(!isZoomed)}
+                        title={isZoomed ? "Exit Fullscreen" : "Fullscreen Chat"}
+                        className="flex items-center justify-center p-2 text-zinc-700 bg-white dark:bg-zinc-800 dark:text-zinc-200 border border-zinc-200 dark:border-zinc-700 rounded-lg shadow-sm hover:bg-zinc-50 dark:hover:bg-zinc-750 transition-all active:scale-95"
+                    >
+                        {isZoomed ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+                    </button>
+
 
                 </div>
             </div>
@@ -877,7 +1055,11 @@ function ChatAiDashboardContent() {
                         </div>
 
                         {/* Session list */}
-                        <div className="flex-1 overflow-y-auto divide-y divide-zinc-100 dark:divide-zinc-800/50">
+                        <div 
+                            ref={sessionListRef}
+                            onScroll={handleSidebarScroll}
+                            className="flex-1 overflow-y-auto divide-y divide-zinc-100 dark:divide-zinc-800/50"
+                        >
                             {loadingSessions ? (
                                 <div className="p-8 text-center text-zinc-500">
                                     <RefreshCw className="animate-spin h-6 w-6 mx-auto mb-2 text-zinc-400" />
@@ -924,10 +1106,11 @@ function ChatAiDashboardContent() {
                                     const formattedTime = getFormattedSessionTime(session.last_message_time)
 
                                     return (
-                                        <button
+                                        <div
                                             key={session.session_id}
+                                            role="button"
                                             onClick={() => setActiveSessionId(session.session_id)}
-                                            className={`w-full p-4 flex gap-3 text-left transition-all hover:bg-zinc-50 dark:hover:bg-zinc-800/40 ${
+                                            className={`w-full p-4 flex gap-3 text-left transition-all hover:bg-zinc-50 dark:hover:bg-zinc-800/40 cursor-pointer ${
                                                 isActive ? 'bg-blue-50/70 dark:bg-blue-955/20 border-l-4 border-blue-600' : ''
                                             }`}
                                         >
@@ -955,7 +1138,7 @@ function ChatAiDashboardContent() {
                                                     </div>
                                                 )}
                                             </div>
-                                        </button>
+                                        </div>
                                     )
                                 })
                             )}
@@ -987,7 +1170,7 @@ function ChatAiDashboardContent() {
                                 </div>
 
                                 {/* Messages Viewport */}
-                                <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                                <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-4 space-y-4">
                                     {loadingMessages ? (
                                         <div className="flex items-center justify-center h-full">
                                             <RefreshCw className="animate-spin text-zinc-400 mr-2" />
@@ -1149,46 +1332,8 @@ function ChatAiDashboardContent() {
                                         })
                                     )}
                                     <div ref={chatEndRef} />
-                                </div>
-
-                                {/* Quick Replies & Input Bar */}
-                                <div className="bg-white dark:bg-zinc-900 border-t border-zinc-200 dark:border-zinc-800 p-4 shrink-0">
-                                    {/* Presets suggestions bar */}
-                                    <div className="flex gap-2 overflow-x-auto pb-3 scrollbar-none">
-                                        <span className="text-[10px] font-bold text-zinc-400 self-center shrink-0 uppercase tracking-wider">Quick:</span>
-                                        {[
-                                            'Hello, how can I help you today?',
-                                            'Thank you for your inquiry. Checking stock right now.',
-                                            'Your order has been shipped and is in transit.',
-                                            'Please follow our store for discount vouchers!'
-                                        ].map(template => (
-                                            <button
-                                                key={template}
-                                                onClick={() => setReplyText(template)}
-                                                className="bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 text-zinc-700 dark:text-zinc-300 text-xs px-3 py-1.5 rounded-full shrink-0 border border-zinc-200/50 dark:border-zinc-700/50 transition-colors"
-                                            >
-                                                {template}
-                                            </button>
-                                        ))}
-                                    </div>
-
-                                    {/* Message form */}
-                                    <form onSubmit={handleSendMessage} className="flex gap-2">
-                                        <input
-                                            type="text"
-                                            value={replyText}
-                                            onChange={(e) => setReplyText(e.target.value)}
-                                            placeholder="Write your response..."
-                                            className="flex-1 bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 text-zinc-800 dark:text-zinc-100"
-                                        />
-                                        <button
-                                            type="submit"
-                                            className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 active:scale-95 text-white shadow px-5 rounded-xl flex items-center justify-center transition-all"
-                                        >
-                                            <Send size={16} />
-                                        </button>
-                                    </form>
-                                </div>
+                                </div>                                {/* Quick Replies & Input Bar */}
+                                <ChatInputBar onSendMessage={handleSendMessage} />
                             </>
                         ) : (
                             <div className="flex-1 flex flex-col items-center justify-center text-zinc-500 text-sm">
@@ -1199,7 +1344,7 @@ function ChatAiDashboardContent() {
                     </div>
 
                     {/* Right Column: Customer Info & Orders Sidebar (Daraz-like) */}
-                    {activeSession && (
+                    {activeSession && !isZoomed && (
                         <div className="w-80 border-l border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 flex flex-col shrink-0 h-full overflow-hidden">
                             {/* Profile details */}
                             <div className="p-4 border-b border-zinc-200 dark:border-zinc-800 flex flex-col items-center text-center space-y-2 shrink-0">
@@ -1365,6 +1510,52 @@ function ChatAiDashboardContent() {
                                                                 </span>
                                                             </div>
                                                         </div>
+
+                                                        {/* Note / Remarks section */}
+                                                        {(() => {
+                                                            const allowedStatuses = ['pending', 'ready to ship', 'ready_to_ship', 'packed']
+                                                            const isNoteAllowed = allowedStatuses.includes(order.order_status?.toLowerCase())
+                                                            
+                                                            if (order.remarks) {
+                                                                return (
+                                                                    <div className="mt-2 p-2 bg-yellow-50 dark:bg-yellow-950/20 border border-yellow-250 dark:border-yellow-900 rounded text-xs space-y-1 relative group">
+                                                                        <div className="flex justify-between items-center">
+                                                                            <span className="font-bold text-yellow-800 dark:text-yellow-400">Remarks:</span>
+                                                                            <div className="flex gap-2">
+                                                                                {isNoteAllowed && (
+                                                                                    <>
+                                                                                        <button 
+                                                                                            onClick={() => handleOpenNoteModal(order)}
+                                                                                            className="text-blue-600 dark:text-blue-450 hover:underline font-bold text-[10px]"
+                                                                                        >
+                                                                                            Edit
+                                                                                        </button>
+                                                                                        <button 
+                                                                                            onClick={() => handleDeleteNote(order.id)}
+                                                                                            className="text-red-650 dark:text-red-450 hover:underline font-bold text-[10px]"
+                                                                                        >
+                                                                                            Delete
+                                                                                        </button>
+                                                                                    </>
+                                                                                )}
+                                                                            </div>
+                                                                        </div>
+                                                                        <p className="text-gray-800 dark:text-gray-200 break-words font-medium italic">{order.remarks}</p>
+                                                                    </div>
+                                                                )
+                                                            } else if (isNoteAllowed) {
+                                                                return (
+                                                                    <button
+                                                                        onClick={() => handleOpenNoteModal(order)}
+                                                                        className="mt-2 w-full py-1 border border-dashed border-zinc-300 dark:border-zinc-700 text-zinc-650 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 text-[10px] font-bold rounded transition-colors text-center flex items-center justify-center gap-1"
+                                                                    >
+                                                                        <Plus size={10} />
+                                                                        Add Note
+                                                                    </button>
+                                                                )
+                                                            }
+                                                            return null
+                                                        })()}
 
                                                         {/* Action Buttons */}
                                                         <div className="flex gap-2 pt-1">
@@ -1799,7 +1990,7 @@ function ChatAiDashboardContent() {
                                                 ((currentReviewSettings as any)[`${settingsCategoryTab}_templates`] || []).map((template: string, idx: number) => (
                                                     <div
                                                         key={`${template}-${idx}`}
-                                                        className="bg-white dark:bg-zinc-955 border border-zinc-200 dark:border-zinc-800 rounded-lg p-3 flex gap-3 shadow-sm items-start relative group border-zinc-200 dark:border-zinc-800"
+                                                        className="bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg p-3 flex gap-3 shadow-sm items-start relative group border-zinc-200 dark:border-zinc-800"
                                                     >
                                                         <p className="text-xs text-zinc-700 dark:text-zinc-300 flex-1 whitespace-pre-wrap">{template}</p>
                                                         <button
@@ -2028,6 +2219,45 @@ function ChatAiDashboardContent() {
                                     )
                                 })
                             )}
+                        </div>
+                    </div>
+                </DialogContent>
+            </Dialog>
+
+            {/* Add / Edit Note Modal */}
+            <Dialog open={isNoteModalOpen} onOpenChange={setIsNoteModalOpen}>
+                <DialogContent className="max-w-md bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800">
+                    <DialogHeader>
+                        <DialogTitle className="text-zinc-900 dark:text-zinc-100 flex items-center gap-2 text-lg font-bold">
+                            <MessageSquare className="text-orange-500" /> {selectedOrderForNote?.remarks ? 'Edit Note' : 'Add Note'}
+                        </DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4 pt-2">
+                        <div className="text-xs text-zinc-500 dark:text-zinc-400 space-y-1">
+                            <p>Order Number: <strong>{selectedOrderForNote?.order_number}</strong></p>
+                            <p>Status: <span className="uppercase font-bold">{selectedOrderForNote?.order_status}</span></p>
+                        </div>
+                        <textarea
+                            value={noteText}
+                            onChange={(e) => setNoteText(e.target.value)}
+                            placeholder="Enter notes / remarks (e.g. Color family, specific design request, packaging request...)"
+                            className="w-full h-32 p-3 text-xs bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 text-zinc-850 dark:text-zinc-100 placeholder:text-zinc-450"
+                            maxLength={1000}
+                        />
+                        <div className="flex gap-2 justify-end">
+                            <button
+                                onClick={() => setIsNoteModalOpen(false)}
+                                className="px-3 py-1.5 border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800 rounded-lg text-xs font-bold transition-all"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                disabled={isSubmittingNote}
+                                onClick={handleSaveNote}
+                                className="px-4 py-1.5 bg-orange-500 hover:bg-orange-600 disabled:bg-orange-300 text-white text-xs font-bold rounded-lg shadow-sm transition-all"
+                            >
+                                {isSubmittingNote ? 'Saving...' : 'Save Note'}
+                            </button>
                         </div>
                     </div>
                 </DialogContent>

@@ -2529,4 +2529,47 @@ export async function getDarazCustomerDetails(params: {
     }
 }
 
+// Update order remarks/note
+export async function updateDarazOrderRemarks(orderId: string, remarks: string | null) {
+    const supabase = await createClient()
+
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) throw new Error('Not authenticated')
+
+    try {
+        // Fetch order status to check validation
+        const { data: order, error: fetchError } = await supabase
+            .from('daraz_orders')
+            .select('order_status')
+            .eq('id', orderId)
+            .single()
+
+        if (fetchError || !order) {
+            throw new Error('Order not found')
+        }
+
+        const allowedStatuses = ['pending', 'ready to ship', 'ready_to_ship', 'packed']
+        const currentStatus = order.order_status?.toLowerCase() || ''
+        if (!allowedStatuses.includes(currentStatus)) {
+            throw new Error(`Cannot add or edit note when order status is ${order.order_status}`)
+        }
+
+        const { error } = await supabase
+            .from('daraz_orders')
+            .update({ 
+                remarks,
+                updated_by: user.id
+            })
+            .eq('id', orderId)
+
+        if (error) throw error
+
+        return { success: true }
+    } catch (error: any) {
+        console.error('Error updating remarks:', error)
+        return { success: false, error: error.message || 'Failed to update remarks' }
+    }
+}
+
+
 
