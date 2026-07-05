@@ -1344,7 +1344,7 @@ function ChatAiDashboardContent() {
                     </div>
 
                     {/* Right Column: Customer Info & Orders Sidebar (Daraz-like) */}
-                    {activeSession && !isZoomed && (
+                    {activeSession && (
                         <div className="w-80 border-l border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 flex flex-col shrink-0 h-full overflow-hidden">
                             {/* Profile details */}
                             <div className="p-4 border-b border-zinc-200 dark:border-zinc-800 flex flex-col items-center text-center space-y-2 shrink-0">
