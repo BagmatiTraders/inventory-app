@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { Store, Calendar, MapPin, CheckCircle, Database, Users, Shield, RefreshCw } from 'lucide-react'
+import { Store, Calendar, MapPin, CheckCircle, Database, Users, Shield, RefreshCw, Scale } from 'lucide-react'
 
 const settingsCards = [
     {
@@ -59,6 +59,13 @@ const settingsCards = [
         icon: RefreshCw,
         href: '/dashboard/settings/sync-settings',
         color: 'bg-teal-500',
+    },
+    {
+        title: 'Finance & Accounts',
+        description: 'Manage units and account parameters',
+        icon: Scale,
+        href: '/dashboard/settings/finance-accounts',
+        color: 'bg-amber-500',
     },
 ]
 

@@ -5,6 +5,7 @@ import { X, Plus, Trash2, Search, AlertTriangle, Calendar } from 'lucide-react'
 import { createPanVatBill, updatePanVatBill, type CreatePanVatBillParams, type PanVatBillItem, type PanVatBill } from '@/features/account/actions/pan-vat-bill-actions'
 import { getPanVatCompanies } from '@/features/account/actions/pan-vat-company-actions'
 import { getCompanyDetails } from '@/features/settings/actions/company-details-actions'
+import { getBillingUnits } from '@/features/settings/actions/billing-unit-actions'
 import { adToBS, bsToAD, formatNepaliCurrency } from '@/lib/utils/date-converter'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useDashboard } from '@/app/dashboard/context'
@@ -30,8 +31,21 @@ export function AddPanVatBillModal({ onClose, bill }: AddPanVatBillModalProps) {
         buyer_pan_vat: '',
     })
 
+    // Fetch units
+    const { data: units = [] } = useQuery({
+        queryKey: ['billing-units'],
+        queryFn: getBillingUnits,
+    })
+
+    const primaryUnit = units.find(u => u.is_primary)?.name || 'Pcs'
+
+    // Form states for discount and excise duty
+    const [discount, setDiscount] = useState<number>(0)
+    const [exciseDuty, setExciseDuty] = useState<number>(0)
+
     // Line items state
-    const [lineItems, setLineItems] = useState<Omit<PanVatBillItem, 'id'>[]>([{ hs_code: '', particulars: '', quantity: 0, rate: 0, amount: 0, line_order: 0 }
+    const [lineItems, setLineItems] = useState<Omit<PanVatBillItem, 'id'>[]>([
+        { hs_code: '', particulars: '', quantity: 0, rate: 0, amount: 0, unit: '', line_order: 0 }
     ])
 
     // Refs for custom tab order
@@ -59,6 +73,8 @@ export function AddPanVatBillModal({ onClose, bill }: AddPanVatBillModalProps) {
             })
             setSupplierSearch(bill.supplier_company_name || '')
             setBuyerSearch(bill.buyer_company_name || '')
+            setDiscount(bill.discount || 0)
+            setExciseDuty(bill.excise_duty || 0)
             if (bill.items && bill.items.length > 0) {
                 setLineItems(bill.items.map(item => ({
                     hs_code: item.hs_code || '',
@@ -66,11 +82,12 @@ export function AddPanVatBillModal({ onClose, bill }: AddPanVatBillModalProps) {
                     quantity: item.quantity,
                     rate: item.rate,
                     amount: item.amount,
+                    unit: item.unit || primaryUnit,
                     line_order: item.line_order
                 })))
             }
         }
-    }, [bill])
+    }, [bill, primaryUnit])
 
     // Dropdown search states
     const [supplierSearch, setSupplierSearch] = useState('')
@@ -117,7 +134,7 @@ export function AddPanVatBillModal({ onClose, bill }: AddPanVatBillModalProps) {
 
     // Calculate totals
     const subTotalAmount = lineItems.reduce((sum, item) => sum + item.amount, 0)
-    const taxableAmount = subTotalAmount
+    const taxableAmount = Math.max(0, subTotalAmount - discount + exciseDuty)
     const vat13Percent = taxableAmount * 0.13
     const totalAmount = taxableAmount + vat13Percent
 
@@ -199,7 +216,7 @@ export function AddPanVatBillModal({ onClose, bill }: AddPanVatBillModalProps) {
         const newIndex = lineItems.length
         setLineItems([
             ...lineItems,
-            { hs_code: '', particulars: '', quantity: 0, rate: 0, amount: 0, line_order: newIndex }
+            { hs_code: '', particulars: '', quantity: 0, rate: 0, amount: 0, unit: primaryUnit, line_order: newIndex }
         ])
         if (focusNewRow) {
             // Focus the new row's H.S Code field after state update
@@ -279,7 +296,13 @@ export function AddPanVatBillModal({ onClose, bill }: AddPanVatBillModalProps) {
                 taxable_amount: taxableAmount,
                 vat_13_percent: vat13Percent,
                 total_amount: totalAmount,
-                items: lineItems.map((item, index) => ({ ...item, line_order: index })),
+                discount: discount,
+                excise_duty: exciseDuty,
+                items: lineItems.map((item, index) => ({
+                    ...item,
+                    unit: item.unit || primaryUnit,
+                    line_order: index
+                })),
             }
 
             if (isEditMode && bill) {
@@ -518,6 +541,7 @@ export function AddPanVatBillModal({ onClose, bill }: AddPanVatBillModalProps) {
                                         <th className="px-4 py-3 w-32">H.S Code</th>
                                         <th className="px-4 py-3">Particulars <span className="text-red-500">*</span></th>
                                         <th className="px-4 py-3 w-32 text-right">Quantity <span className="text-red-500">*</span></th>
+                                        <th className="px-4 py-3 w-28">Unit</th>
                                         <th className="px-4 py-3 w-36 text-right">Rate <span className="text-red-500">*</span></th>
                                         <th className="px-4 py-3 w-40 text-right">Amount</th>
                                         <th className="px-4 py-3 w-12"></th>
@@ -530,7 +554,7 @@ export function AddPanVatBillModal({ onClose, bill }: AddPanVatBillModalProps) {
                                                 <input
                                                     type="text"
                                                     ref={el => { hsCodeRefs.current[index] = el }}
-                                                    tabIndex={10 + (index * 4)}
+                                                    tabIndex={10 + (index * 5)}
                                                     value={item.hs_code || ''}
                                                     onChange={(e) => handleLineItemChange(index, 'hs_code', e.target.value)}
                                                     className="w-full px-3 py-2 border border-slate-200 dark:border-zinc-800 rounded-xl text-sm bg-white dark:bg-zinc-900 focus:outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all duration-200 text-slate-700 dark:text-zinc-300 font-medium"
@@ -540,7 +564,7 @@ export function AddPanVatBillModal({ onClose, bill }: AddPanVatBillModalProps) {
                                                 <input
                                                     type="text"
                                                     ref={el => { particularsRefs.current[index] = el }}
-                                                    tabIndex={11 + (index * 4)}
+                                                    tabIndex={11 + (index * 5)}
                                                     value={item.particulars}
                                                     onChange={(e) => handleLineItemChange(index, 'particulars', e.target.value)}
                                                     className="w-full px-3 py-2 border border-slate-200 dark:border-zinc-800 rounded-xl text-sm bg-white dark:bg-zinc-900 focus:outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all duration-200 text-slate-700 dark:text-zinc-300 font-bold"
@@ -552,7 +576,7 @@ export function AddPanVatBillModal({ onClose, bill }: AddPanVatBillModalProps) {
                                                     type="number"
                                                     step="1"
                                                     ref={el => { quantityRefs.current[index] = el }}
-                                                    tabIndex={12 + (index * 4)}
+                                                    tabIndex={12 + (index * 5)}
                                                     value={item.quantity || ''}
                                                     onChange={(e) => handleLineItemChange(index, 'quantity', e.target.value)}
                                                     onKeyDown={(e) => {
@@ -569,11 +593,32 @@ export function AddPanVatBillModal({ onClose, bill }: AddPanVatBillModalProps) {
                                                 />
                                             </td>
                                             <td className="px-4 py-3">
+                                                <select
+                                                    value={item.unit || primaryUnit}
+                                                    tabIndex={13 + (index * 5)}
+                                                    onChange={(e) => handleLineItemChange(index, 'unit', e.target.value)}
+                                                    className="w-full px-3 py-2 border border-slate-200 dark:border-zinc-800 rounded-xl text-sm bg-white dark:bg-zinc-900 focus:outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all duration-200 text-slate-700 dark:text-zinc-300 font-medium"
+                                                >
+                                                    {units.map((unit: any) => (
+                                                        <option key={unit.id} value={unit.name}>
+                                                            {unit.name}
+                                                        </option>
+                                                    ))}
+                                                    {units.length === 0 && (
+                                                        <>
+                                                            <option value="Pcs">Pcs</option>
+                                                            <option value="kg">kg</option>
+                                                            <option value="Doz">Doz</option>
+                                                        </>
+                                                    )}
+                                                </select>
+                                            </td>
+                                            <td className="px-4 py-3">
                                                 <input
                                                     type="number"
                                                     step="0.01"
                                                     ref={el => { rateRefs.current[index] = el }}
-                                                    tabIndex={13 + (index * 4)}
+                                                    tabIndex={14 + (index * 5)}
                                                     value={item.rate || ''}
                                                     onChange={(e) => handleLineItemChange(index, 'rate', parseFloat(e.target.value) || 0)}
                                                     onKeyDown={(e) => handleRateKeyDown(e, index)}
@@ -610,6 +655,28 @@ export function AddPanVatBillModal({ onClose, bill }: AddPanVatBillModalProps) {
                             <div className="flex justify-between items-center text-xs">
                                 <span className="text-slate-500 dark:text-zinc-400 font-medium font-sans">Sub Total Amount</span>
                                 <span className="font-semibold text-slate-700 dark:text-zinc-300 font-sans">{formatNepaliCurrency(subTotalAmount)}</span>
+                            </div>
+                            <div className="flex justify-between items-center text-xs gap-3">
+                                <span className="text-slate-500 dark:text-zinc-400 font-medium font-sans">Discount</span>
+                                <input
+                                    type="number"
+                                    step="0.01"
+                                    value={discount || ''}
+                                    onChange={(e) => setDiscount(parseFloat(e.target.value) || 0)}
+                                    placeholder="0.00"
+                                    className="w-32 px-3 py-1.5 border border-slate-200 dark:border-zinc-800 rounded-lg text-xs bg-white dark:bg-zinc-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-700 dark:text-zinc-300 text-right font-medium font-mono"
+                                />
+                            </div>
+                            <div className="flex justify-between items-center text-xs gap-3">
+                                <span className="text-slate-500 dark:text-zinc-400 font-medium font-sans">Excise Duty (5%)</span>
+                                <input
+                                    type="number"
+                                    step="0.01"
+                                    value={exciseDuty || ''}
+                                    onChange={(e) => setExciseDuty(parseFloat(e.target.value) || 0)}
+                                    placeholder="0.00"
+                                    className="w-32 px-3 py-1.5 border border-slate-200 dark:border-zinc-800 rounded-lg text-xs bg-white dark:bg-zinc-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-700 dark:text-zinc-300 text-right font-medium font-mono"
+                                />
                             </div>
                             <div className="flex justify-between items-center text-xs">
                                 <span className="text-slate-500 dark:text-zinc-400 font-medium font-sans">Taxable Amount</span>

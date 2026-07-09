@@ -31,7 +31,7 @@ export function AddSalesBillModal({ onClose, billToEdit }: AddSalesBillModalProp
     })
 
     const [lineItems, setLineItems] = useState<Omit<SalesBillItem, 'id'>[]>([
-        { hs_code: '', particulars: '', quantity: 0, rate: 0, amount: 0, line_order: 0 }
+        { hs_code: '', particulars: '', quantity: 0, rate: 0, amount: 0, unit: '', line_order: 0 }
     ])
 
     // Initialize Data
@@ -46,6 +46,7 @@ export function AddSalesBillModal({ onClose, billToEdit }: AddSalesBillModalProp
                 customer_address: billToEdit.customer_address || '',
                 customer_pan_vat: billToEdit.customer_pan_vat || '',
             })
+            setDiscount(billToEdit.discount || 0)
             // Map items if available (requires getSalesBillById to fetch items with the bill)
             if (billToEdit.items) {
                 setLineItems(billToEdit.items.map(item => ({
@@ -54,6 +55,7 @@ export function AddSalesBillModal({ onClose, billToEdit }: AddSalesBillModalProp
                     quantity: item.quantity,
                     rate: item.rate,
                     amount: item.amount,
+                    unit: item.unit || 'Pcs',
                     line_order: item.line_order
                 })))
             }
@@ -66,6 +68,7 @@ export function AddSalesBillModal({ onClose, billToEdit }: AddSalesBillModalProp
         }
     }, [billToEdit])
 
+    const [discount, setDiscount] = useState<number>(0)
     const [isSubmitting, setIsSubmitting] = useState(false)
     const [error, setError] = useState('')
     const [shouldCloseOnSave, setShouldCloseOnSave] = useState(true)
@@ -106,8 +109,9 @@ export function AddSalesBillModal({ onClose, billToEdit }: AddSalesBillModalProp
 
     // Calculate totals
     const subTotalAmount = lineItems.reduce((sum, item) => sum + item.amount, 0)
-    const vatAmount = subTotalAmount * 0.13
-    const totalAmount = subTotalAmount + vatAmount
+    const taxableAmount = Math.max(0, subTotalAmount - discount)
+    const vatAmount = taxableAmount * 0.13
+    const totalAmount = taxableAmount + vatAmount
 
     // Handlers
     const handleADDateChange = (date: string) => {
@@ -129,7 +133,7 @@ export function AddSalesBillModal({ onClose, billToEdit }: AddSalesBillModalProp
     const addLineItem = () => {
         setLineItems([
             ...lineItems,
-            { hs_code: '', particulars: '', quantity: 0, rate: 0, amount: 0, line_order: lineItems.length }
+            { hs_code: '', particulars: '', quantity: 0, rate: 0, amount: 0, unit: '', line_order: lineItems.length }
         ])
     }
 
@@ -184,7 +188,8 @@ export function AddSalesBillModal({ onClose, billToEdit }: AddSalesBillModalProp
             hs_code: hsCode,
             rate: suggestedRate,
             quantity: 0, // Reset qty
-            amount: 0
+            amount: 0,
+            unit: stockItem.unit || 'Pcs'
         }
         setLineItems(newItems)
         setActiveRowIndex(null)
@@ -259,6 +264,8 @@ export function AddSalesBillModal({ onClose, billToEdit }: AddSalesBillModalProp
                 await updateSalesBill(billToEdit.id, {
                     ...formData,
                     sub_total_amount: subTotalAmount,
+                    discount: discount,
+                    taxable_amount: taxableAmount,
                     vat_amount: vatAmount,
                     total_amount: totalAmount,
                     items: lineItems.map((item, i) => ({ ...item, line_order: i }))
@@ -268,6 +275,8 @@ export function AddSalesBillModal({ onClose, billToEdit }: AddSalesBillModalProp
                 await createSalesBill({
                     ...formData,
                     sub_total_amount: subTotalAmount,
+                    discount: discount,
+                    taxable_amount: taxableAmount,
                     vat_amount: vatAmount,
                     total_amount: totalAmount,
                     items: lineItems.map((item, i) => ({ ...item, line_order: i }))
@@ -287,8 +296,9 @@ export function AddSalesBillModal({ onClose, billToEdit }: AddSalesBillModalProp
                     customer_address: '',
                     customer_pan_vat: '',
                 }))
+                setDiscount(0)
                 setLineItems([
-                    { hs_code: '', particulars: '', quantity: 0, rate: 0, amount: 0, line_order: 0 }
+                    { hs_code: '', particulars: '', quantity: 0, rate: 0, amount: 0, unit: '', line_order: 0 }
                 ])
                 setActiveRowIndex(null)
                 setParticularSearch('')
@@ -323,7 +333,7 @@ export function AddSalesBillModal({ onClose, billToEdit }: AddSalesBillModalProp
                     </button>
                 </div>
 
-                <form onSubmit={handleSubmit} className="flex-1 p-6 space-y-6 max-w-7xl w-full mx-auto pb-10">
+                <form onSubmit={handleSubmit} className="flex-1 p-6 space-y-6 pb-10">
                     {error && (
                         <div className="p-4 bg-red-50 dark:bg-red-950/20 border border-red-150 dark:border-red-900/30 rounded-2xl text-red-600 dark:text-red-400 text-sm flex items-center gap-2.5 shadow-sm">
                             <AlertTriangle className="h-5 w-5 shrink-0" />
@@ -491,6 +501,7 @@ export function AddSalesBillModal({ onClose, billToEdit }: AddSalesBillModalProp
                                         <th className="px-4 py-3.5 w-28 text-[11px]">H.S Code</th>
                                         <th className="px-4 py-3.5 min-w-[240px] text-[11px]">Particulars <span className="text-red-500">*</span></th>
                                         <th className="px-4 py-3.5 w-36 text-[11px]">Qty <span className="text-red-500">*</span></th>
+                                        <th className="px-4 py-3.5 w-28 text-[11px]">Unit</th>
                                         <th className="px-4 py-3.5 w-36 text-[11px]">Rate (Rs)</th>
                                         <th className="px-4 py-3.5 w-40 text-[11px]">Amount</th>
                                         <th className="px-4 py-3.5 w-12"></th>
@@ -591,6 +602,16 @@ export function AddSalesBillModal({ onClose, billToEdit }: AddSalesBillModalProp
                                             </td>
                                             <td className="px-4 py-3">
                                                 <input
+                                                    type="text"
+                                                    value={item.unit || 'Pcs'}
+                                                    readOnly
+                                                    tabIndex={-1}
+                                                    className="w-full px-3 py-2 bg-slate-50 dark:bg-zinc-850/40 border border-slate-150 dark:border-zinc-800 rounded-xl text-sm text-slate-400 dark:text-zinc-500 cursor-not-allowed font-medium"
+                                                    placeholder="Auto"
+                                                />
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                <input
                                                     type="number"
                                                     step="1"
                                                     value={item.rate || ''}
@@ -636,6 +657,20 @@ export function AddSalesBillModal({ onClose, billToEdit }: AddSalesBillModalProp
                             <div className="flex justify-between items-center text-sm">
                                 <span className="text-slate-500 dark:text-zinc-400">Sub Total Amount</span>
                                 <span className="font-semibold text-slate-700 dark:text-zinc-300">{formatNepaliCurrency(subTotalAmount)}</span>
+                            </div>
+                            <div className="flex justify-between items-center text-sm">
+                                <span className="text-slate-500 dark:text-zinc-400">Discount</span>
+                                <input
+                                    type="number"
+                                    value={discount || ''}
+                                    onChange={(e) => setDiscount(Math.max(0, parseFloat(e.target.value) || 0))}
+                                    placeholder="0.00"
+                                    className="w-32 px-2.5 py-1 text-right border border-slate-200 dark:border-zinc-800 rounded-xl text-sm bg-white dark:bg-zinc-900 font-semibold focus:outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all duration-200 text-slate-700 dark:text-zinc-300"
+                                />
+                            </div>
+                            <div className="flex justify-between items-center text-sm">
+                                <span className="text-slate-500 dark:text-zinc-400">Taxable Amount</span>
+                                <span className="font-semibold text-slate-700 dark:text-zinc-300">{formatNepaliCurrency(taxableAmount)}</span>
                             </div>
                             <div className="flex justify-between items-center text-sm">
                                 <span className="text-slate-500 dark:text-zinc-400">13% VAT</span>

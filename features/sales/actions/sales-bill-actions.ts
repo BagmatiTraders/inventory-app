@@ -10,6 +10,7 @@ export interface SalesBillItem {
     quantity: number
     rate: number
     amount: number
+    unit?: string | null
     line_order: number
 }
 
@@ -23,6 +24,8 @@ export interface SalesBill {
     customer_address: string | null
     customer_pan_vat: string | null
     sub_total_amount: number
+    discount?: number
+    taxable_amount?: number
     vat_amount: number
     total_amount: number
     fiscal_year_id: string | null
@@ -39,6 +42,8 @@ export interface CreateSalesBillParams {
     customer_address?: string | null
     customer_pan_vat?: string | null
     sub_total_amount: number
+    discount?: number
+    taxable_amount?: number
     vat_amount: number
     total_amount: number
     fiscal_year_id?: string | null
@@ -126,6 +131,8 @@ export async function createSalesBill(params: CreateSalesBillParams) {
             customer_address: params.customer_address || null,
             customer_pan_vat: params.customer_pan_vat || null,
             sub_total_amount: params.sub_total_amount,
+            discount: params.discount || 0,
+            taxable_amount: params.taxable_amount || params.sub_total_amount,
             vat_amount: params.vat_amount,
             total_amount: params.total_amount,
             fiscal_year_id: fy?.id || params.fiscal_year_id || null,
@@ -145,6 +152,7 @@ export async function createSalesBill(params: CreateSalesBillParams) {
             quantity: item.quantity,
             rate: item.rate,
             amount: item.amount,
+            unit: item.unit || 'Pcs',
             line_order: item.line_order,
         }))
 
@@ -213,6 +221,8 @@ export async function updateSalesBill(id: string, params: CreateSalesBillParams)
             customer_address: params.customer_address || null,
             customer_pan_vat: params.customer_pan_vat || null,
             sub_total_amount: params.sub_total_amount,
+            discount: params.discount || 0,
+            taxable_amount: params.taxable_amount || params.sub_total_amount,
             vat_amount: params.vat_amount,
             total_amount: params.total_amount,
             fiscal_year_id: fy?.id || params.fiscal_year_id || null,
@@ -240,6 +250,7 @@ export async function updateSalesBill(id: string, params: CreateSalesBillParams)
             quantity: item.quantity,
             rate: item.rate,
             amount: item.amount,
+            unit: item.unit || 'Pcs',
             line_order: item.line_order,
         }))
 

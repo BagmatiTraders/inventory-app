@@ -142,7 +142,7 @@ export function ViewPanVatBillModal({ billId, onClose }: ViewPanVatBillModalProp
                                         <td className="px-4 py-3 text-sm">{index + 1}</td>
                                         <td className="px-4 py-3 text-sm">{item.hs_code || '-'}</td>
                                         <td className="px-4 py-3 text-sm">{item.particulars}</td>
-                                        <td className="px-4 py-3 text-sm text-right">{item.quantity}</td>
+                                        <td className="px-4 py-3 text-sm text-right">{item.quantity} {item.unit || 'Pcs'}</td>
                                         <td className="px-4 py-3 text-sm text-right">{formatNepaliCurrency(item.rate)}</td>
                                         <td className="px-4 py-3 text-sm text-right font-medium">{formatNepaliCurrency(item.amount)}</td>
                                     </tr>
@@ -155,11 +155,31 @@ export function ViewPanVatBillModal({ billId, onClose }: ViewPanVatBillModalProp
                                     <td className="px-4 py-3 text-sm font-semibold text-right">{formatNepaliCurrency(bill.sub_total_amount)}</td>
                                 </tr>
 
+                                {/* Discount Row */}
+                                {bill.discount && bill.discount > 0 ? (
+                                    <tr>
+                                        <td colSpan={4} className="px-4 py-3"></td>
+                                        <td className="px-4 py-3 text-sm font-semibold text-right">Discount</td>
+                                        <td className="px-4 py-3 text-sm font-semibold text-right">-{formatNepaliCurrency(bill.discount)}</td>
+                                    </tr>
+                                ) : null}
+
+                                {/* Excise Duty Row */}
+                                {bill.excise_duty && bill.excise_duty > 0 ? (
+                                    <tr className="bg-gray-50 dark:bg-zinc-800/50">
+                                        <td colSpan={4} className="px-4 py-3"></td>
+                                        <td className="px-4 py-3 text-sm font-semibold text-right">Excise Duty</td>
+                                        <td className="px-4 py-3 text-sm font-semibold text-right">{formatNepaliCurrency(bill.excise_duty)}</td>
+                                    </tr>
+                                ) : null}
+
                                 {/* Taxable Amount Row */}
                                 <tr>
                                     <td colSpan={4} className="px-4 py-3"></td>
                                     <td className="px-4 py-3 text-sm font-semibold text-right">Taxable Amount</td>
-                                    <td className="px-4 py-3 text-sm font-semibold text-right">{formatNepaliCurrency(bill.taxable_amount)}</td>
+                                    <td className="px-4 py-3 text-sm font-semibold text-right">
+                                        {formatNepaliCurrency((bill.taxable_amount && bill.taxable_amount > 0) ? bill.taxable_amount : (bill.sub_total_amount - (bill.discount || 0) + (bill.excise_duty || 0)))}
+                                    </td>
                                 </tr>
 
                                 {/* VAT 13% Row */}

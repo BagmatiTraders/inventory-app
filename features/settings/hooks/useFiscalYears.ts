@@ -17,6 +17,7 @@ export function useFiscalYears() {
             if (result.error) throw new Error(result.error)
             return result.data || []
         },
+        staleTime: 1000 * 60 * 10,
     })
 }
 
@@ -28,6 +29,7 @@ export function useActiveFiscalYear() {
             if (result.error) throw new Error(result.error)
             return result.data || null
         },
+        staleTime: 1000 * 60 * 10,
     })
 }
 

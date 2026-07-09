@@ -252,7 +252,7 @@ export function SalesBillDetailModal({ billId, galleryBillIds, onClose, onEdit, 
                                         <td className="px-3 py-1.5 border-r border-slate-300 font-bold text-center text-slate-400">{index + 1}</td>
                                         <td className="px-3 py-1.5 border-r border-slate-300 font-mono text-slate-900 text-[11px] font-semibold">{item.hs_code || '-'}</td>
                                         <td className="px-3 py-1.5 border-r border-slate-300 font-semibold text-slate-800">{item.particulars}</td>
-                                        <td className="px-3 py-1.5 border-r border-slate-300 text-right font-bold text-slate-700">{item.quantity}</td>
+                                        <td className="px-3 py-1.5 border-r border-slate-300 text-right font-bold text-slate-700">{item.quantity} {item.unit || 'Pcs'}</td>
                                         <td className="px-3 py-1.5 border-r border-slate-300 text-right font-medium text-slate-600 text-[11px]">{formatNepaliCurrency(item.rate)}</td>
                                         <td className="px-3 py-1.5 text-right font-extrabold text-slate-900">{formatNepaliCurrency(item.amount)}</td>
                                     </tr>
@@ -275,12 +275,20 @@ export function SalesBillDetailModal({ billId, galleryBillIds, onClose, onEdit, 
                             {/* Totals Summary */}
                             <div className="w-64 border border-slate-300 rounded-xl overflow-hidden text-[11px] divide-y divide-slate-300 shadow-sm">
                                 <div className="flex justify-between px-3 py-1.5 bg-slate-50/50">
-                                    <span className="text-slate-500 font-semibold">Total</span>
+                                    <span className="text-slate-500 font-semibold">Sub Total</span>
                                     <span className="font-bold text-slate-800">{formatNepaliCurrency(bill.sub_total_amount)}</span>
                                 </div>
+                                {bill.discount && bill.discount > 0 ? (
+                                    <div className="flex justify-between px-3 py-1.5">
+                                        <span className="text-slate-500 font-semibold">Discount</span>
+                                        <span className="font-bold text-slate-800">-{formatNepaliCurrency(bill.discount)}</span>
+                                    </div>
+                                ) : null}
                                 <div className="flex justify-between px-3 py-1.5">
                                     <span className="text-slate-500 font-semibold">Taxable Amount</span>
-                                    <span className="font-bold text-slate-800">{formatNepaliCurrency(bill.sub_total_amount)}</span>
+                                    <span className="font-bold text-slate-800">
+                                        {formatNepaliCurrency((bill.taxable_amount && bill.taxable_amount > 0) ? bill.taxable_amount : (bill.sub_total_amount - (bill.discount || 0)))}
+                                    </span>
                                 </div>
                                 <div className="flex justify-between px-3 py-1.5">
                                     <span className="text-slate-500 font-semibold">13% VAT</span>

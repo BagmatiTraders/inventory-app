@@ -21,6 +21,7 @@ export function useOnlineStores() {
             if (result.error) throw new Error(result.error)
             return result.data || []
         },
+        staleTime: 1000 * 60 * 10,
     })
 }
 
@@ -67,6 +68,7 @@ export function useRetailStores() {
             if (result.error) throw new Error(result.error)
             return result.data || []
         },
+        staleTime: 1000 * 60 * 10,
     })
 }
 

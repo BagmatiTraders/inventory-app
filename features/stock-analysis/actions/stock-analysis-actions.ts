@@ -12,6 +12,7 @@ export interface StockAnalysisItem {
     sales_qty: number
     running_stock: number
     weighted_average_rate: number
+    unit?: string
 }
 
 export async function getStockAnalysisData(filters?: {
@@ -129,7 +130,8 @@ export async function getStockAnalysisData(filters?: {
                 purchase_amount: 0,
                 sales_qty: 0,
                 running_stock: 0,
-                weighted_average_rate: 0
+                weighted_average_rate: 0,
+                unit: item.unit || 'Pcs'
             })
         }
 

@@ -42,6 +42,7 @@ export function PanVatBillList({ onAddBill }: PanVatBillListProps) {
             endDate: selectedFiscalYear?.end_date,
             search: search || undefined,
         }),
+        staleTime: 1000 * 60 * 2,
     })
 
     const handleClearFilters = () => {
@@ -186,7 +187,7 @@ export function PanVatBillList({ onAddBill }: PanVatBillListProps) {
                                 <th className="px-3 py-2 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Invoice No</th>
                                 <th className="px-3 py-2 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Supplier</th>
                                 <th className="px-3 py-2 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Supplier Pan/Vat</th>
-                                <th className="px-3 py-2 text-right text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Sub Total Amount</th>
+                                <th className="px-3 py-2 text-right text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Taxable Amount</th>
                                 <th className="px-3 py-2 text-right text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Vat 13 %</th>
                                 <th className="px-3 py-2 text-right text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Total Amount</th>
                             </tr>
@@ -220,7 +221,7 @@ export function PanVatBillList({ onAddBill }: PanVatBillListProps) {
                                         <td className="px-3 py-2 text-[13px] text-gray-900 dark:text-gray-100">{bill.supplier_company_name || '-'}</td>
                                         <td className="px-3 py-2 text-[13px] text-gray-900 dark:text-gray-100">{bill.supplier_pan_vat || '-'}</td>
                                         <td className="px-3 py-2 text-[13px] text-right text-gray-900 dark:text-gray-100">
-                                            Rs. {(bill.sub_total_amount || 0).toLocaleString('en-NP', { minimumFractionDigits: 2 })}
+                                            Rs. {(bill.taxable_amount || 0).toLocaleString('en-NP', { minimumFractionDigits: 2 })}
                                         </td>
                                         <td className="px-3 py-2 text-[13px] text-right text-gray-900 dark:text-gray-100">
                                             Rs. {(bill.vat_13_percent || 0).toLocaleString('en-NP', { minimumFractionDigits: 2 })}
@@ -236,7 +237,7 @@ export function PanVatBillList({ onAddBill }: PanVatBillListProps) {
                             <tr>
                                 <td className="px-3 py-2 text-[13px] text-gray-900 dark:text-gray-100" colSpan={5}>Total</td>
                                 <td className="px-3 py-2 text-[13px] text-right text-gray-900 dark:text-gray-100">
-                                    Rs. {bills.reduce((sum, bill) => sum + (bill.sub_total_amount || 0), 0).toLocaleString('en-NP', { minimumFractionDigits: 2 })}
+                                    Rs. {bills.reduce((sum, bill) => sum + (bill.taxable_amount || 0), 0).toLocaleString('en-NP', { minimumFractionDigits: 2 })}
                                 </td>
                                 <td className="px-3 py-2 text-[13px] text-right text-gray-900 dark:text-gray-100">
                                     Rs. {bills.reduce((sum, bill) => sum + (bill.vat_13_percent || 0), 0).toLocaleString('en-NP', { minimumFractionDigits: 2 })}

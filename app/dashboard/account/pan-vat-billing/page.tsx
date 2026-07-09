@@ -114,7 +114,8 @@ export default function PanVatBillingPage() {
     const { data: savedTransactions = [], isLoading: isLoadingTransactions } = useQuery({
         queryKey: ['daraz-weekly-transactions', fiscalYearId],
         queryFn: () => getDarazWeeklyTransactions(fiscalYearId !== 'all' ? fiscalYearId : undefined),
-        enabled: !!fiscalYearId
+        enabled: !!fiscalYearId,
+        staleTime: 1000 * 60 * 2,
     })
 
     // Edit modal state
@@ -333,6 +334,7 @@ export default function PanVatBillingPage() {
     const { data: companies = [], isLoading: isLoadingCompanies } = useQuery({
         queryKey: ['company-details'],
         queryFn: getCompanyDetails,
+        staleTime: 1000 * 60 * 5,
     })
 
     // Fetch purchase bills
@@ -343,6 +345,7 @@ export default function PanVatBillingPage() {
             startDate: selectedFiscalYear?.start_date,
             endDate: selectedFiscalYear?.end_date,
         }),
+        staleTime: 1000 * 60 * 2,
     })
 
     // Fetch Stock Analysis data for valuation
@@ -353,7 +356,8 @@ export default function PanVatBillingPage() {
             companyId: undefined,
             search: undefined
         }),
-        enabled: !!fiscalYearId
+        enabled: !!fiscalYearId,
+        staleTime: 1000 * 60 * 5,
     })
 
     const totalStockValuation = useMemo(() => {
@@ -368,7 +372,8 @@ export default function PanVatBillingPage() {
         queryFn: () => getSalesBills({
             fiscalYearId: fiscalYearId !== 'all' ? fiscalYearId : undefined
         }),
-        enabled: !!fiscalYearId
+        enabled: !!fiscalYearId,
+        staleTime: 1000 * 60 * 2,
     })
 
     // Generate combined sales history list for the last 4 weeks

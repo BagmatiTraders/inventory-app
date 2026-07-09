@@ -10,6 +10,7 @@ export interface PanVatBillItem {
     quantity: number
     rate: number
     amount: number
+    unit?: string | null
     line_order: number
 }
 
@@ -28,6 +29,8 @@ export interface PanVatBill {
     taxable_amount: number
     vat_13_percent: number
     total_amount: number
+    discount?: number
+    excise_duty?: number
     fiscal_year_id: string | null
     created_at: string
     updated_at: string
@@ -48,6 +51,8 @@ export interface CreatePanVatBillParams {
     taxable_amount: number
     vat_13_percent: number
     total_amount: number
+    discount?: number
+    excise_duty?: number
     fiscal_year_id?: string | null
     items: Omit<PanVatBillItem, 'id'>[]
 }
@@ -139,6 +144,8 @@ export async function createPanVatBill(params: CreatePanVatBillParams) {
             taxable_amount: params.taxable_amount,
             vat_13_percent: params.vat_13_percent,
             total_amount: params.total_amount,
+            discount: params.discount || 0,
+            excise_duty: params.excise_duty || 0,
             fiscal_year_id: params.fiscal_year_id || null,
             created_by: user?.id || null,
         })
@@ -156,6 +163,7 @@ export async function createPanVatBill(params: CreatePanVatBillParams) {
             quantity: item.quantity,
             rate: item.rate,
             amount: item.amount,
+            unit: item.unit || 'Pcs',
             line_order: item.line_order,
         }))
 
@@ -191,6 +199,8 @@ export async function updatePanVatBill(id: string, params: CreatePanVatBillParam
             taxable_amount: params.taxable_amount,
             vat_13_percent: params.vat_13_percent,
             total_amount: params.total_amount,
+            discount: params.discount || 0,
+            excise_duty: params.excise_duty || 0,
             fiscal_year_id: params.fiscal_year_id || null,
             updated_at: new Date().toISOString(),
         })
@@ -212,6 +222,7 @@ export async function updatePanVatBill(id: string, params: CreatePanVatBillParam
             quantity: item.quantity,
             rate: item.rate,
             amount: item.amount,
+            unit: item.unit || 'Pcs',
             line_order: item.line_order,
         }))
 

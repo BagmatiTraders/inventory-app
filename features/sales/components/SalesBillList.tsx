@@ -31,6 +31,7 @@ export function SalesBillList({ onViewBill }: SalesBillListProps) {
     const { data: bills = [], isLoading } = useQuery({
         queryKey: ['sales-bills', fiscalYearId, search],
         queryFn: () => getSalesBills({ fiscalYearId, search }),
+        staleTime: 1000 * 60 * 2,
     })
 
     // Group bills by date and calculate total amount per date
