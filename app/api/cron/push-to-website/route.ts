@@ -60,6 +60,7 @@ export async function GET(request: NextRequest) {
             .eq('approval_status', 'Approved')
             .eq('website_sync_status', 'Pending')
             .not('website_category', 'is', null)
+            .neq('website_category', 'Select Category')
 
         if (error) {
             throw new Error(`Failed to fetch pending approved products: ${error.message}`)
