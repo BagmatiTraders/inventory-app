@@ -1697,6 +1697,27 @@ export async function getEcommerceBrands() {
     return data
 }
 
+function stripHtml(html: string | null): string {
+    if (!html) return 'No description provided.'
+    let text = html
+        .replace(/<\/li>/gi, '\n')
+        .replace(/<br\s*\/?>/gi, '\n')
+        .replace(/<\/p>/gi, '\n\n')
+        .replace(/<\/div>/gi, '\n')
+    text = text.replace(/<[^>]*>/g, '')
+    return text
+        .replace(/&nbsp;/g, ' ')
+        .replace(/&amp;/g, '&')
+        .replace(/&quot;/g, '"')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&#39;/g, "'")
+        .split('\n')
+        .map(line => line.trim())
+        .filter(Boolean)
+        .join('\n')
+}
+
 /**
  * Publish product to the ecommerce storefront database table
  */
@@ -1718,6 +1739,7 @@ export async function pushProductToEcommerce(productId: string, payload: any) {
         .from('ecommerce_products')
         .insert({
             ...payload,
+            description: stripHtml(payload.description),
             slug,
             status: 'active',
             price: payload.regular_price || 0,

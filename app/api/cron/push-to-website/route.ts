@@ -12,6 +12,27 @@ function getEcommerceSupabaseClient() {
     return createSupabaseClient(url, key)
 }
 
+function stripHtml(html: string | null): string {
+    if (!html) return 'No description provided.'
+    let text = html
+        .replace(/<\/li>/gi, '\n')
+        .replace(/<br\s*\/?>/gi, '\n')
+        .replace(/<\/p>/gi, '\n\n')
+        .replace(/<\/div>/gi, '\n')
+    text = text.replace(/<[^>]*>/g, '')
+    return text
+        .replace(/&nbsp;/g, ' ')
+        .replace(/&amp;/g, '&')
+        .replace(/&quot;/g, '"')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&#39;/g, "'")
+        .split('\n')
+        .map(line => line.trim())
+        .filter(Boolean)
+        .join('\n')
+}
+
 function parseHighlights(html: string | null): string[] {
     if (!html) return ['Quality Guaranteed']
     const match = html.match(/<li[^>]*>([\s\S]*?)<\/li>/gi)
@@ -76,7 +97,7 @@ export async function GET(request: NextRequest) {
                         inventory_id: product.id,
                         warehouse_product_id: String(product.product_id),
                         display_name: displayName,
-                        description: product.description || 'No description provided.',
+                        description: stripHtml(product.description),
                         regular_price: product.regular_price || 0,
                         special_price: product.special_price || null,
                         stock_quantity: 100, // Default stock qty
