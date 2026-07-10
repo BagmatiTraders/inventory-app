@@ -1928,3 +1928,123 @@ export async function saveWebsiteDiscountRules(rules: { active: boolean, percent
     return { success: true }
 }
 
+// ============================================================================
+// SYNC WEBSITE STATUS
+// Connects to the Ecommerce Supabase DB and syncs website_sync_status for all
+// inventory products based on whether they are active in the ecommerce store.
+// Matching key: inventory.products.product_id == ecommerce.ecommerce_products.warehouse_product_id
+// ============================================================================
+
+export async function syncWebsiteStatus(): Promise<{
+    success: boolean
+    updated: number
+    markedDone: number
+    markedPending: number
+    error?: string
+}> {
+    try {
+        const inventorySupabase = await createClient()
+        const { data: { user } } = await inventorySupabase.auth.getUser()
+        if (!user) throw new Error('Not authenticated')
+
+        // Connect to the Ecommerce Supabase using its own credentials
+        const ecommerceUrl = process.env.NEXT_PUBLIC_ECOMMERCE_SUPABASE_URL
+        const ecommerceKey = process.env.ECOMMERCE_SUPABASE_SERVICE_ROLE_KEY
+            || process.env.NEXT_PUBLIC_ECOMMERCE_SUPABASE_ANON_KEY
+
+        if (!ecommerceUrl || !ecommerceKey) {
+            throw new Error('Ecommerce Supabase credentials not configured. Add NEXT_PUBLIC_ECOMMERCE_SUPABASE_URL and ECOMMERCE_SUPABASE_SERVICE_ROLE_KEY to .env.local')
+        }
+
+        const ecommerceSupabase = createSupabaseClient(ecommerceUrl, ecommerceKey)
+
+        // Fetch all ecommerce products: grab their warehouse_product_id and status
+        // Also check if linked as a variation (variations JSONB contains inventory_id entries)
+        const { data: ecommerceProducts, error: ecommerceError } = await ecommerceSupabase
+            .from('ecommerce_products')
+            .select('warehouse_product_id, status, variations')
+
+        if (ecommerceError) {
+            throw new Error(`Failed to fetch ecommerce products: ${ecommerceError.message}`)
+        }
+
+        // Build a Set of warehouse_product_ids that are ACTIVE in the ecommerce store
+        const activeSyncedIds = new Set<string>()
+
+        ;(ecommerceProducts || []).forEach((ep: any) => {
+            const wpid = ep.warehouse_product_id != null ? String(ep.warehouse_product_id).trim() : ''
+            const isActive = ep.status === 'active'
+
+            // Direct product match - mark as Done if active
+            if (wpid && isActive) {
+                activeSyncedIds.add(wpid)
+            }
+
+            // Variation match - check each variation's inventory_id
+            // A variation is "active" if the parent product is active
+            if (isActive && Array.isArray(ep.variations)) {
+                ep.variations.forEach((v: any) => {
+                    if (v.inventory_id) {
+                        const vid = String(v.inventory_id).trim()
+                        if (vid) activeSyncedIds.add(vid)
+                    }
+                })
+            }
+        })
+
+        // Fetch all non-deleted inventory products (just id and product_id)
+        const { data: inventoryProducts, error: inventoryError } = await inventorySupabase
+            .from('products')
+            .select('id, product_id, website_sync_status')
+            .eq('is_deleted', false)
+
+        if (inventoryError) {
+            throw new Error(`Failed to fetch inventory products: ${inventoryError.message}`)
+        }
+
+        const toMarkDone: string[] = []
+        const toMarkPending: string[] = []
+
+        ;(inventoryProducts || []).forEach((p: any) => {
+            const pid = p.product_id != null ? String(p.product_id).trim() : ''
+            const shouldBeDone = pid && activeSyncedIds.has(pid)
+            if (shouldBeDone) {
+                toMarkDone.push(p.id)
+            } else {
+                toMarkPending.push(p.id)
+            }
+        })
+
+        // Bulk update: mark as Done
+        if (toMarkDone.length > 0) {
+            const { error: doneError } = await inventorySupabase
+                .from('products')
+                .update({ website_sync_status: 'Done' })
+                .in('id', toMarkDone)
+            if (doneError) throw new Error(`Failed to update Done products: ${doneError.message}`)
+        }
+
+        // Bulk update: mark as Pending
+        if (toMarkPending.length > 0) {
+            const { error: pendingError } = await inventorySupabase
+                .from('products')
+                .update({ website_sync_status: 'Pending' })
+                .in('id', toMarkPending)
+            if (pendingError) throw new Error(`Failed to update Pending products: ${pendingError.message}`)
+        }
+
+        revalidatePath('/dashboard/inventory/product-list')
+
+        return {
+            success: true,
+            updated: toMarkDone.length + toMarkPending.length,
+            markedDone: toMarkDone.length,
+            markedPending: toMarkPending.length,
+        }
+    } catch (err: any) {
+        console.error('[SYNC-WEBSITE-STATUS]', err.message)
+        return { success: false, updated: 0, markedDone: 0, markedPending: 0, error: err.message }
+    }
+}
+
+

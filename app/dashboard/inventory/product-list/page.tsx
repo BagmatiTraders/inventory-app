@@ -2,8 +2,9 @@
 
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { getProducts, exportProducts, toggleProductStatus, updateProduct, approveProduct, rejectProduct, updateSyncStatuses } from '@/features/inventory/actions/product-actions'
-import { ArrowLeft, Plus, Upload, Download, Search, X, Package, Trash2, Box, Image as ImageIcon, Check, RefreshCw, ExternalLink } from 'lucide-react'
+import { getProducts, exportProducts, toggleProductStatus, updateProduct, approveProduct, rejectProduct, updateSyncStatuses, syncWebsiteStatus } from '@/features/inventory/actions/product-actions'
+import { syncSelectedProductsFromDaraz } from '@/features/inventory/actions/daraz-sync-products'
+import { ArrowLeft, Plus, Upload, Download, Search, X, Package, Trash2, Box, Image as ImageIcon, Check, RefreshCw, ExternalLink, Filter, CheckSquare, Square, Zap } from 'lucide-react'
 import Link from 'next/link'
 import { Card } from '@/components/ui-shim'
 import { AddProductModal } from '@/features/inventory/components/AddProductModal'
@@ -29,7 +30,13 @@ export default function ProductListPage() {
     const [moreMenuId, setMoreMenuId] = useState<string | null>(null)
     const [isSavingPriority, setIsSavingPriority] = useState(false)
     const [isSyncing, setIsSyncing] = useState(false)
+    const [isSyncingWebsite, setIsSyncingWebsite] = useState(false)
+    const [isSyncingFromDaraz, setIsSyncingFromDaraz] = useState(false)
     const [isExportDropdownOpen, setIsExportDropdownOpen] = useState(false)
+
+    // Selection & filter state
+    const [selectedProductIds, setSelectedProductIds] = useState<Set<string>>(new Set())
+    const [syncFilter, setSyncFilter] = useState<'all' | 'website_pending' | 'marketplace_pending'>('all')
 
     // Get real user role from permission context
     const { userRole } = usePermissions()
@@ -49,6 +56,38 @@ export default function ProductListPage() {
             alert(`Sync failed: ${err.message}`)
         } finally {
             setIsSyncing(false)
+        }
+    }
+
+    const handleSyncWebsite = async () => {
+        setIsSyncingWebsite(true)
+        try {
+            const result = await syncWebsiteStatus()
+            if (!result.success) throw new Error(result.error)
+            alert(`✅ Website sync complete!\n\n🟢 Done: ${result.markedDone} products\n🟡 Pending: ${result.markedPending} products`)
+            queryClient.invalidateQueries({ queryKey: ['products'] })
+        } catch (err: any) {
+            alert(`Website sync failed: ${err.message}`)
+        } finally {
+            setIsSyncingWebsite(false)
+        }
+    }
+
+    const handleSyncFromDaraz = async () => {
+        const ids = Array.from(selectedProductIds)
+        if (ids.length === 0) return
+        if (!confirm(`Sync ${ids.length} selected product(s) from Daraz? This will update their images, description, prices and other data.`)) return
+        setIsSyncingFromDaraz(true)
+        try {
+            const result = await syncSelectedProductsFromDaraz(ids)
+            const errMsg = result.errors.length > 0 ? `\n\n⚠️ Errors:\n${result.errors.slice(0, 5).join('\n')}` : ''
+            alert(`✅ Daraz Sync Complete!\n\n🟢 Updated: ${result.updated}\n🟡 Not found on Daraz: ${result.notFound}${errMsg}`)
+            setSelectedProductIds(new Set())
+            queryClient.invalidateQueries({ queryKey: ['products'] })
+        } catch (err: any) {
+            alert(`Sync from Daraz failed: ${err.message}`)
+        } finally {
+            setIsSyncingFromDaraz(false)
         }
     }
 
@@ -130,6 +169,42 @@ export default function ProductListPage() {
         queryKey: ['products', page, search],
         queryFn: () => getProducts({ page, search, limit: 50 })
     })
+
+    // Client-side sync filter applied on top of server results
+    const filteredProducts = (data?.products || []).filter(p => {
+        if (syncFilter === 'website_pending') return p.website_sync_status === 'Pending'
+        if (syncFilter === 'marketplace_pending') return p.marketplace_sync_status === 'Pending'
+        return true
+    })
+
+    // Select All applies to currently filtered visible products only
+    const allFilteredIds = filteredProducts.map(p => p.id)
+    const allSelected = allFilteredIds.length > 0 && allFilteredIds.every(id => selectedProductIds.has(id))
+
+    const toggleSelectAll = () => {
+        if (allSelected) {
+            setSelectedProductIds(prev => {
+                const next = new Set(prev)
+                allFilteredIds.forEach(id => next.delete(id))
+                return next
+            })
+        } else {
+            setSelectedProductIds(prev => {
+                const next = new Set(prev)
+                allFilteredIds.forEach(id => next.add(id))
+                return next
+            })
+        }
+    }
+
+    const toggleSelectProduct = (id: string) => {
+        setSelectedProductIds(prev => {
+            const next = new Set(prev)
+            if (next.has(id)) next.delete(id)
+            else next.add(id)
+            return next
+        })
+    }
 
     const handleSearch = () => {
         setSearch(searchInput)
@@ -221,9 +296,27 @@ export default function ProductListPage() {
             {/* Action Bar - Floating Card Effect */}
             <div className="sticky top-0 md:top-[76px] z-10 px-0 py-0 md:px-6 md:py-4 pointer-events-none transition-all">
                 <div className="bg-white dark:bg-zinc-900 rounded-none md:rounded-xl border-b md:border dark:border-zinc-800 md:shadow-sm p-3 flex flex-wrap items-center justify-between gap-4 pointer-events-auto">
-                    {/* Search Field */}
-                    <div className="flex-1 w-full md:w-auto md:min-w-[240px] md:max-w-md">
-                        <div className="relative group">
+                    {/* Filter Dropdown + Search Field */}
+                    <div className="flex-1 w-full md:w-auto md:min-w-[240px] md:max-w-lg flex items-center gap-2">
+                        {/* Sync Status Filter */}
+                        <div className="relative flex-shrink-0">
+                            <div className="flex items-center gap-1.5 h-[38px] pl-3 pr-2 bg-gray-50 dark:bg-zinc-800 rounded-lg border border-gray-200 dark:border-zinc-700 shadow-inner">
+                                <Filter size={13} className="text-gray-400 flex-shrink-0" />
+                                <select
+                                    value={syncFilter}
+                                    onChange={(e) => {
+                                        setSyncFilter(e.target.value as any)
+                                        setSelectedProductIds(new Set())
+                                    }}
+                                    className="text-xs font-medium text-gray-700 dark:text-gray-300 bg-transparent border-none outline-none cursor-pointer pr-1"
+                                >
+                                    <option value="all">All</option>
+                                    <option value="website_pending">Website Pending</option>
+                                    <option value="marketplace_pending">Marketplace Pending</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div className="relative group flex-1">
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-blue-500 transition-colors" size={16} />
                             <input
                                 type="text"
@@ -246,6 +339,28 @@ export default function ProductListPage() {
 
                     {/* Action Buttons Group */}
                     <div className="flex items-center gap-2">
+                        {/* Select All — only shown when at least one row is selected */}
+                        {selectedProductIds.size > 0 && (
+                            <button
+                                onClick={toggleSelectAll}
+                                className="hidden md:flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900/50 rounded-lg hover:bg-blue-100 transition-all"
+                            >
+                                {allSelected ? <CheckSquare size={13} /> : <Square size={13} />}
+                                {allSelected ? 'Deselect All' : `Select All (${filteredProducts.length})`}
+                            </button>
+                        )}
+                        {/* Sync From Daraz — shown when 1+ product is selected */}
+                        {selectedProductIds.size > 0 && (
+                            <button
+                                onClick={handleSyncFromDaraz}
+                                disabled={isSyncingFromDaraz}
+                                className="hidden md:flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-white bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 rounded-lg shadow-md shadow-orange-500/20 hover:shadow-lg hover:shadow-orange-500/30 transition-all active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed"
+                                title={`Sync ${selectedProductIds.size} selected product(s) from Daraz`}
+                            >
+                                <Zap size={14} className={isSyncingFromDaraz ? 'animate-pulse' : ''} />
+                                {isSyncingFromDaraz ? 'Syncing...' : `Sync From Daraz (${selectedProductIds.size})`}
+                            </button>
+                        )}
                         <button
                             onClick={() => setIsImportModalOpen(true)}
                             className="hidden md:flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-zinc-800 border border-dashed border-gray-300 dark:border-zinc-700 rounded-lg hover:bg-gray-50 dark:hover:bg-zinc-700 hover:border-gray-400 transition-all"
@@ -308,6 +423,15 @@ export default function ProductListPage() {
                             {isSyncing ? 'Syncing...' : 'Sync'}
                         </button>
                         <button
+                            onClick={handleSyncWebsite}
+                            disabled={isSyncingWebsite}
+                            title="Sync Website Status from Ecommerce Store"
+                            className="hidden md:flex items-center gap-2 px-4 py-2 text-sm font-medium text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-lg hover:bg-emerald-100 dark:hover:bg-emerald-900/50 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            <RefreshCw size={14} className={`text-emerald-500 ${isSyncingWebsite ? 'animate-spin' : ''}`} />
+                            {isSyncingWebsite ? 'Syncing...' : 'Sync Website'}
+                        </button>
+                        <button
                             onClick={() => setIsModalOpen(true)}
                             className="hidden md:flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-md hover:shadow-lg hover:shadow-blue-500/20 transition-all active:scale-[0.98]"
                         >
@@ -322,9 +446,20 @@ export default function ProductListPage() {
             <div className="flex-1 overflow-auto px-2 md:px-6 pb-2 md:pb-6">
                 <div className="bg-white dark:bg-zinc-900 border dark:border-zinc-800 rounded-lg md:rounded-xl shadow-sm overflow-hidden">
                     <div className="overflow-x-auto">
-                        <table className="w-full text-left border-collapse">
+                        <table className="w-full text-left">
                             <thead>
                                 <tr className="bg-gray-50/80 dark:bg-zinc-800/80 border-b border-gray-100 dark:border-zinc-800">
+                                    <th className="px-2 md:px-4 py-3 w-8 md:w-10">
+                                        <button
+                                            onClick={toggleSelectAll}
+                                            className="flex items-center justify-center text-gray-400 hover:text-blue-500 transition-colors"
+                                            title={allSelected ? 'Deselect all' : 'Select all on this page'}
+                                        >
+                                            {allSelected
+                                                ? <CheckSquare size={15} className="text-blue-500" />
+                                                : <Square size={15} />}
+                                        </button>
+                                    </th>
                                     <th className="px-2 md:px-4 py-3 text-xs font-bold uppercase tracking-wider text-black dark:text-white w-10 md:w-12 text-center">#</th>
                                     <th className="px-2 md:px-4 py-3 text-xs font-bold uppercase tracking-wider text-black dark:text-white w-12 md:w-16">Image</th>
                                     <th className="px-2 md:px-4 py-3 text-xs font-bold uppercase tracking-wider text-black dark:text-white">Product</th>
@@ -374,12 +509,23 @@ export default function ProductListPage() {
                                         </td>
                                     </tr>
                                 ) : (
-                                    data.products.map((product, index) => {
+                                    filteredProducts.map((product, index) => {
+                                        const isSelected = selectedProductIds.has(product.id)
                                         return (
                                             <tr
                                                 key={product.id}
-                                                className="group hover:bg-gray-50 dark:hover:bg-zinc-800/50 transition-colors"
+                                                className={`group hover:bg-gray-50 dark:hover:bg-zinc-800/50 transition-colors ${isSelected ? 'bg-blue-50/40 dark:bg-blue-950/10' : ''}`}
                                             >
+                                                <td className="px-2 md:px-4 py-3">
+                                                    <button
+                                                        onClick={() => toggleSelectProduct(product.id)}
+                                                        className="flex items-center justify-center text-gray-300 hover:text-blue-500 transition-colors"
+                                                    >
+                                                        {isSelected
+                                                            ? <CheckSquare size={15} className="text-blue-500" />
+                                                            : <Square size={15} />}
+                                                    </button>
+                                                </td>
                                                 <td className="px-2 md:px-4 py-3 text-xs text-center text-gray-400 font-mono">
                                                     {(page - 1) * 50 + index + 1}
                                                 </td>
