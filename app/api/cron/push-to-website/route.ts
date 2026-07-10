@@ -26,10 +26,10 @@ function parseHighlights(html: string | null): string[] {
 
 export async function GET(request: NextRequest) {
     const startTime = Date.now()
-    const warehouseSupabase = await createAdminClient()
-    const ecommerceSupabase = getEcommerceSupabaseClient()
 
     try {
+        const warehouseSupabase = await createAdminClient()
+        const ecommerceSupabase = getEcommerceSupabaseClient()
         console.log('[Cron-Push] Starting automatic product sync to ecommerce storefront...')
 
         // 1. Fetch all products that are approved, pending website sync, and have a resolved website category
