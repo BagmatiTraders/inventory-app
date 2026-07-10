@@ -2,10 +2,11 @@
 
 import React, { useState, useEffect, useRef } from 'react'
 import { Card, Button } from '@/components/ui-shim'
-import { Search, ChevronLeft, ChevronRight, Edit2, Check, X, Loader2, RefreshCw, AlertTriangle, ArrowLeft, UploadCloud, ArrowDown } from 'lucide-react'
+import * as XLSX from 'xlsx'
+import { Search, ChevronLeft, ChevronRight, Edit2, Check, X, Loader2, RefreshCw, AlertTriangle, ArrowLeft, UploadCloud, ArrowDown, Lock, Unlock, FileSpreadsheet } from 'lucide-react'
 import Image from 'next/image'
 import Link from 'next/link'
-import { getDarazAvgPrices, updateDarazAvgPrice, bulkUpdateDarazAvgPrice, syncDarazAvgPricesGoogleSheets, pullDarazAvgPricesFromGoogleSheets, syncLiveSellerPrices, pushPriceToDaraz, DarazAvgPriceItem, updateWebsitePricesBulk, syncLiveSellerPricesForProduct } from '@/features/sales/actions/avg-price-actions'
+import { getDarazAvgPrices, updateDarazAvgPrice, bulkUpdateDarazAvgPrice, syncDarazAvgPricesGoogleSheets, pullDarazAvgPricesFromGoogleSheets, syncLiveSellerPrices, pushPriceToDaraz, DarazAvgPriceItem, updateWebsitePricesBulk, syncLiveSellerPricesForProduct, toggleProductPriceLock, autoUpdateWebsitePrices } from '@/features/sales/actions/avg-price-actions'
 export default function DarazAverageSalesPricePage() {
     const [data, setData] = useState<DarazAvgPriceItem[]>([])
     const [isLoading, setIsLoading] = useState(true)
@@ -14,6 +15,35 @@ export default function DarazAverageSalesPricePage() {
     const [isPulling, setIsPulling] = useState(false)
     const [isSyncingLive, setIsSyncingLive] = useState(false)
     const [pushingId, setPushingId] = useState<string | null>(null)
+    const [togglingLockId, setTogglingLockId] = useState<string | null>(null)
+    const [isApplyingAutoPrices, setIsApplyingAutoPrices] = useState(false)
+    const [isCompareModalOpen, setIsCompareModalOpen] = useState(false)
+    const [compareRows, setCompareRows] = useState<any[]>([])
+    const [markupPercent, setMarkupPercent] = useState<string>('20')
+    const [compareSortOrder, setCompareSortOrder] = useState<'asc' | 'desc' | null>(null)
+    const [markupBaseCol, setMarkupBaseCol] = useState<'breakeven' | 'campaign' | 'required'>('breakeven')
+    const [diffCol1, setDiffCol1] = useState<string>('required')
+    const [diffCol2, setDiffCol2] = useState<string>('campaign')
+
+    useEffect(() => {
+        const markup = parseFloat(markupPercent) || 0
+        setCompareRows(prev => prev.map(row => {
+            if (row.is_manually_edited) return row
+            
+            let basePrice = 0
+            if (markupBaseCol === 'breakeven') {
+                basePrice = row.breakeven_price || 0
+            } else if (markupBaseCol === 'campaign') {
+                basePrice = row.campaign_price || 0
+            } else if (markupBaseCol === 'required') {
+                basePrice = row.required_price || 0
+            }
+            
+            const calculated = basePrice * (1 + markup / 100)
+            const rounded = Math.ceil(calculated / 5) * 5
+            return { ...row, custom_price: rounded }
+        }))
+    }, [markupPercent, markupBaseCol])
     const [activeSyncMenuProductId, setActiveSyncMenuProductId] = useState<string | null>(null)
     const [syncingLiveProductId, setSyncingLiveProductId] = useState<string | null>(null)
 
@@ -446,7 +476,228 @@ export default function DarazAverageSalesPricePage() {
         alert(alertMsg)
     }
 
+    const handleToggleLock = async (productId: string, currentLockState: boolean) => {
+        setTogglingLockId(productId)
+        try {
+            await toggleProductPriceLock(productId, !currentLockState)
+            setData(prev => prev.map(item => {
+                if (item.product_id === productId) {
+                    return { ...item, is_price_locked: !currentLockState }
+                }
+                return item
+            }))
+        } catch (err: any) {
+            alert(`Failed to update lock: ${err.message}`)
+        } finally {
+            setTogglingLockId(null)
+        }
+    }
+
+    const handleApplyAutoDiscount = async () => {
+        setIsApplyingAutoPrices(true)
+        try {
+            const res = await autoUpdateWebsitePrices()
+            if (res.success) {
+                alert(`✓ Auto-Discount rules applied successfully!\nRecalculated & pushed website prices for ${res.count} products.`)
+                loadData()
+            } else {
+                alert(`✗ Pricing update failed: ${res.message}`)
+            }
+        } catch (err: any) {
+            alert(`Error: ${err.message}`)
+        } finally {
+            setIsApplyingAutoPrices(false)
+        }
+    }
+
+    const handleCompareFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0]
+        if (!file) return
+
+        const reader = new FileReader()
+        reader.onload = (evt) => {
+            try {
+                const bstr = evt.target?.result
+                const workbook = XLSX.read(bstr, { type: 'binary' })
+                const sheetName = workbook.SheetNames[0]
+                const worksheet = workbook.Sheets[sheetName]
+                const json: any[] = XLSX.utils.sheet_to_json(worksheet)
+
+                if (json.length === 0) {
+                    throw new Error('The uploaded sheet is empty.')
+                }
+
+                const parsed = json.map(row => {
+                    const rawSku = String(row['Seller Sku'] || row['seller_sku'] || row['SKU'] || '').trim()
+                    const reqPrice = parseFloat(row['Required Price'] || row['required_price'] || row['Price'] || '0') || 0
+
+                    if (!rawSku) return null
+
+                    const matchedProd = data.find(p => 
+                        p.seller_sku1?.toLowerCase().trim() === rawSku.toLowerCase() ||
+                        p.seller_sku2?.toLowerCase().trim() === rawSku.toLowerCase() ||
+                        p.seller_sku3?.toLowerCase().trim() === rawSku.toLowerCase() ||
+                        p.seller_sku4?.toLowerCase().trim() === rawSku.toLowerCase()
+                    )
+
+                    const breakeven = matchedProd ? (matchedProd.breakeven_price || 0) : 0
+                    const reg15 = matchedProd ? (matchedProd.regular_sales_price || 0) : 0
+                    const campaign = matchedProd ? (matchedProd.campaign_price || 0) : 0
+                    const purchase = matchedProd ? (matchedProd.purchasing_price || 0) : 0
+                    const commission = matchedProd ? (matchedProd.commission_percent !== null ? matchedProd.commission_percent : 25) : 25
+                    const name = matchedProd ? matchedProd.product_name : 'Product Not Found'
+
+                    let basePrice = 0
+                    if (markupBaseCol === 'breakeven') {
+                        basePrice = breakeven
+                    } else if (markupBaseCol === 'campaign') {
+                        basePrice = campaign
+                    } else if (markupBaseCol === 'required') {
+                        basePrice = reqPrice
+                    }
+
+                    const markup = parseFloat(markupPercent) || 0
+                    const calculated = basePrice * (1 + markup / 100)
+                    const customPrice = Math.ceil(calculated / 5) * 5
+
+                    return {
+                        sku: rawSku,
+                        product_name: name,
+                        breakeven_price: breakeven,
+                        regular_15_price: reg15,
+                        campaign_price: campaign,
+                        purchasing_price: purchase,
+                        commission_percent: commission,
+                        required_price: reqPrice,
+                        custom_price: customPrice,
+                        is_manually_edited: false
+                    }
+                }).filter(Boolean)
+
+                setCompareRows(parsed)
+            } catch (err: any) {
+                alert(`Error parsing file: ${err.message}`)
+            }
+        }
+        reader.readAsBinaryString(file)
+    }
+
+    const handleCustomPriceChange = (sku: string, val: string) => {
+        setCompareRows(prev => prev.map(row => {
+            if (row.sku === sku) {
+                return { 
+                    ...row, 
+                    custom_price: val === '' ? '' : parseFloat(val), 
+                    is_manually_edited: true 
+                }
+            }
+            return row
+        }))
+    }
+
+    const getCustomPrice = (row: any) => {
+        if (row.custom_price !== null && row.custom_price !== undefined && row.custom_price !== '') {
+            return Number(row.custom_price)
+        }
+        const markup = parseFloat(markupPercent) || 0
+        
+        let basePrice = 0
+        if (markupBaseCol === 'breakeven') {
+            basePrice = row.breakeven_price || 0
+        } else if (markupBaseCol === 'campaign') {
+            basePrice = row.campaign_price || 0
+        } else if (markupBaseCol === 'required') {
+            basePrice = row.required_price || 0
+        }
+        
+        const calculated = basePrice * (1 + markup / 100)
+        return Math.ceil(calculated / 5) * 5
+    }
+
+    const getPriceOfCol = (row: any, colKey: string) => {
+        switch (colKey) {
+            case 'breakeven': return row.breakeven_price || 0;
+            case 'regular15': return row.regular_15_price || 0;
+            case 'campaign': return row.campaign_price || 0;
+            case 'required': return row.required_price || 0;
+            case 'custom': return getCustomPrice(row);
+            default: return 0;
+        }
+    }
+
+    const getColLabel = (colKey: string) => {
+        switch (colKey) {
+            case 'breakeven': return 'Breakeven';
+            case 'regular15': return 'Regular 15%';
+            case 'campaign': return 'Campaign Price';
+            case 'required': return 'Required Price';
+            case 'custom': return 'Custom Price (Formula)';
+            default: return '';
+        }
+    }
+
+    const getSortedCompareRows = () => {
+        if (!compareSortOrder) return compareRows
+        
+        return [...compareRows].sort((a, b) => {
+            const aNotFound = a.product_name === 'Product Not Found'
+            const bNotFound = b.product_name === 'Product Not Found'
+            
+            // "Product Not Found" is forced to the bottom always
+            if (aNotFound && !bNotFound) return 1
+            if (!aNotFound && bNotFound) return -1
+            if (aNotFound && bNotFound) return 0
+            
+            // Standard alphabetical sorting
+            if (compareSortOrder === 'asc') {
+                return a.product_name.localeCompare(b.product_name)
+            } else {
+                return b.product_name.localeCompare(a.product_name)
+            }
+        })
+    }
+
+    const handleDownloadCompare = () => {
+        try {
+            const sorted = getSortedCompareRows()
+            const exportData = sorted.map(row => {
+                const custom = getCustomPrice(row)
+                const commissionAmt = custom * ((row.commission_percent || 0) / 100)
+                const profit = custom - commissionAmt - (row.purchasing_price || 0) - 30
+                
+                const diffVal = getPriceOfCol(row, diffCol1) - getPriceOfCol(row, diffCol2)
+                const diffLabel = `${getColLabel(diffCol1)} - ${getColLabel(diffCol2)}`
+                
+                return {
+                    'Seller Sku': row.sku,
+                    'Product Name': row.product_name,
+                    'Purchase Price': row.purchasing_price || 0,
+                    'Breakeven': row.breakeven_price || 0,
+                    'Commission %': row.commission_percent !== undefined ? Number(row.commission_percent.toFixed(2)) : 25,
+                    'Regular 15%': row.regular_15_price || 0,
+                    'Campaign Price': row.campaign_price || 0,
+                    'Required Price': row.required_price || 0,
+                    'Custom Price (Formula)': custom,
+                    [`Difference (${diffLabel})`]: diffVal,
+                    'Net Profit': Number(profit.toFixed(2))
+                }
+            })
+
+            const worksheet = XLSX.utils.json_to_sheet(exportData)
+            const workbook = XLSX.utils.book_new()
+            XLSX.utils.book_append_sheet(workbook, worksheet, 'Price Comparison')
+            
+            XLSX.writeFile(workbook, 'daraz_price_comparison.xlsx')
+        } catch (err: any) {
+            alert(`Download failed: ${err.message}`)
+        }
+    }
+
     const handlePushToWebsiteSingle = async (item: DarazAvgPriceItem) => {
+        if (item.is_price_locked) {
+            alert(`✗ Push to website is not allowed for this product because its price is locked.`)
+            return
+        }
         let activeDarazPrice = item.market_price || 0
         if (activeDarazPrice === 0) {
             let lowest = Infinity
@@ -492,7 +743,13 @@ export default function DarazAverageSalesPricePage() {
 
     const handleWebsiteBulkPush = async () => {
         const selected = data.filter(d => selectedProductIds.has(d.product_id))
-        if (selected.length === 0) return
+        const activeNonLocked = selected.filter(item => !item.is_price_locked)
+        const lockedCount = selected.length - activeNonLocked.length
+
+        if (activeNonLocked.length === 0) {
+            alert('No valid items selected or all selected items have locked prices.')
+            return
+        }
         
         let val = parseFloat(websiteDiscountValue)
         if ((websiteDiscountType === 'amount' || websiteDiscountType === 'percent') && (isNaN(val) || websiteDiscountValue.trim() === '')) {
@@ -500,11 +757,15 @@ export default function DarazAverageSalesPricePage() {
             return
         }
 
-        if (!confirm(`Calculate and push Website Prices for ${selected.length} products?\nRounding to nearest Rs. 5 will be applied.`)) return
+        const confirmMsg = lockedCount > 0 
+            ? `Calculate and push Website Prices for ${activeNonLocked.length} products? (${lockedCount} locked products will be skipped).\nRounding to nearest Rs. 5 will be applied.`
+            : `Calculate and push Website Prices for ${selected.length} products?\nRounding to nearest Rs. 5 will be applied.`
+
+        if (!confirm(confirmMsg)) return
 
         setIsWebsitePushing(true)
         try {
-            const updates = selected.map(item => {
+            const updates = activeNonLocked.map(item => {
                 let activeDarazPrice = 0
                 
                 if (websiteDiscountType === 'daraz_campaign') {
@@ -729,6 +990,262 @@ export default function DarazAverageSalesPricePage() {
         }
     }
 
+    if (isCompareModalOpen) {
+        const sortedRows = getSortedCompareRows()
+        return (
+            <div className="flex flex-col h-[calc(100vh-64px)] overflow-hidden bg-gray-50 dark:bg-zinc-900">
+                {/* Full Page Header */}
+                <div className="bg-white dark:bg-zinc-900 px-[24px] py-[18px] flex flex-col gap-3 z-20 shadow-sm animate-in fade-in duration-150 border-b dark:border-zinc-800">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                            <button
+                                onClick={() => {
+                                    setIsCompareModalOpen(false)
+                                    setCompareRows([])
+                                    setCompareSortOrder(null)
+                                }}
+                                className="p-2 hover:bg-gray-150 dark:hover:bg-zinc-800 rounded-lg text-gray-500 hover:text-gray-700 transition-all focus:outline-none cursor-pointer animate-in slide-in-from-left duration-200"
+                                title="Back to Average Sales Price"
+                            >
+                                <ArrowLeft size={20} />
+                            </button>
+                            <div>
+                                <h1 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                                    <FileSpreadsheet className="text-indigo-500" size={24} />
+                                    <span>Price Comparison Tool</span>
+                                </h1>
+                                <p className="text-xs text-gray-500">Calculate margins, markup prices, and compare with required price lists in memory.</p>
+                            </div>
+                        </div>
+
+                        {compareRows.length > 0 && (
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={handleDownloadCompare}
+                                    className="py-2.5 px-4 bg-emerald-600 hover:bg-[#047857] text-white rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-sm transition-colors border-none whitespace-nowrap"
+                                >
+                                    <UploadCloud size={14} className="rotate-180" />
+                                    <span>Download Excel</span>
+                                </button>
+                                <button
+                                    onClick={() => {
+                                        setCompareRows([])
+                                        setCompareSortOrder(null)
+                                    }}
+                                    className="py-2.5 px-4 bg-white dark:bg-zinc-800 hover:bg-gray-50 dark:hover:bg-zinc-700 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-zinc-700 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                                >
+                                    Upload Another File
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                {/* Content */}
+                <div className="flex-1 p-6 overflow-hidden flex flex-col gap-4">
+                    {compareRows.length === 0 ? (
+                        /* Upload Area */
+                        <div className="flex-1 flex items-center justify-center">
+                            <div className="flex flex-col items-center justify-center border-2 border-dashed border-gray-200 dark:border-zinc-850 bg-white dark:bg-zinc-900 rounded-2xl p-12 text-center max-w-lg w-full shadow-lg space-y-5 animate-in zoom-in duration-200">
+                                <UploadCloud size={54} className="text-indigo-500 animate-bounce" />
+                                <div className="space-y-1.5">
+                                    <h4 className="font-bold text-gray-800 dark:text-gray-200 text-sm">Upload Comparison Sheet</h4>
+                                    <p className="text-xs text-gray-500 max-w-sm">
+                                        Import an Excel sheet containing a <strong>Seller Sku</strong> column and an optional <strong>Required Price</strong> column.
+                                    </p>
+                                </div>
+                                <div className="relative w-full pt-2">
+                                    <input
+                                        type="file"
+                                        accept=".xlsx, .xls, .csv"
+                                        onChange={handleCompareFileUpload}
+                                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                                    />
+                                    <button className="w-full py-2.5 px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all cursor-pointer shadow-sm border-none">
+                                        Choose Excel File
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    ) : (
+                        /* Comparison Grid */
+                        <div className="w-full flex-1 overflow-hidden flex flex-col gap-4 animate-in fade-in duration-150">
+                            {/* Action Bar */}
+                            <div className="flex flex-wrap items-center justify-between gap-4 p-4 bg-white dark:bg-zinc-900 border dark:border-zinc-800 rounded-2xl shadow-sm">
+                                <div className="flex flex-wrap items-center gap-6">
+                                    {/* Markup Config */}
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-xs font-bold text-gray-400 uppercase tracking-wider whitespace-nowrap">Formula Markup % on</span>
+                                        <select
+                                            value={markupBaseCol}
+                                            onChange={(e) => setMarkupBaseCol(e.target.value as any)}
+                                            className="text-xs bg-gray-50 dark:bg-zinc-800 border dark:border-zinc-700 rounded-lg p-2 font-bold cursor-pointer outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                        >
+                                            <option value="breakeven">Breakeven</option>
+                                            <option value="campaign">Campaign Price</option>
+                                            <option value="required">Required Price</option>
+                                        </select>
+                                        <div className="relative w-20">
+                                            <input
+                                                type="number"
+                                                value={markupPercent}
+                                                onChange={(e) => setMarkupPercent(e.target.value)}
+                                                className="w-full text-xs bg-gray-50 dark:bg-zinc-950 border border-gray-200 dark:border-zinc-800 rounded-lg p-2 pr-6 focus:outline-none focus:border-indigo-500 font-bold text-right"
+                                            />
+                                            <span className="absolute right-2 top-2 text-gray-400 text-xs font-bold">%</span>
+                                        </div>
+                                    </div>
+
+                                    {/* Difference Column Selector */}
+                                    <div className="flex items-center gap-2 border-l pl-6 dark:border-zinc-800">
+                                        <select
+                                            value={diffCol1}
+                                            onChange={(e) => {
+                                                const val = e.target.value
+                                                if (val === diffCol2) setDiffCol2(diffCol1)
+                                                setDiffCol1(val)
+                                            }}
+                                            className="text-xs bg-gray-50 dark:bg-zinc-800 border dark:border-zinc-700 rounded-lg p-2 font-bold cursor-pointer outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                        >
+                                            <option value="breakeven">Breakeven</option>
+                                            <option value="regular15">Regular 15%</option>
+                                            <option value="campaign">Campaign Price</option>
+                                            <option value="required">Required Price</option>
+                                            <option value="custom">Custom Price (Formula)</option>
+                                        </select>
+                                        <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">difference</span>
+                                        <select
+                                            value={diffCol2}
+                                            onChange={(e) => {
+                                                const val = e.target.value
+                                                if (val === diffCol1) setDiffCol1(diffCol2)
+                                                setDiffCol2(val)
+                                            }}
+                                            className="text-xs bg-gray-50 dark:bg-zinc-800 border dark:border-zinc-700 rounded-lg p-2 font-bold cursor-pointer outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                        >
+                                            <option value="breakeven">Breakeven</option>
+                                            <option value="regular15">Regular 15%</option>
+                                            <option value="campaign">Campaign Price</option>
+                                            <option value="required">Required Price</option>
+                                            <option value="custom">Custom Price (Formula)</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                
+                                <div className="text-[11px] text-gray-400 italic">
+                                    * Custom Price is rounded to nearest Rs. 5
+                                </div>
+                            </div>
+
+                            {/* Table Container */}
+                            <div className="flex-1 overflow-auto bg-white dark:bg-zinc-900 border dark:border-zinc-800 rounded-2xl shadow-sm">
+                                <table className="w-full text-left border-collapse text-xs">
+                                    <thead className="bg-[#F8FAFC] dark:bg-zinc-800 text-[#6B7280] dark:text-gray-400 font-bold uppercase tracking-wider sticky top-0 z-10 border-b dark:border-zinc-850 shadow-[0_1px_0_0_#e5e7eb] dark:shadow-[0_1px_0_0_#27272a]">
+                                        <tr className="h-12">
+                                            <th className="p-3 text-center w-12 bg-[#F8FAFC] dark:bg-zinc-800">S.N</th>
+                                            <th className="p-3 w-36 bg-[#F8FAFC] dark:bg-zinc-800">Seller SKU</th>
+                                            <th className="p-3 w-64 bg-[#F8FAFC] dark:bg-zinc-800 select-none">
+                                                <div className="flex items-center gap-1.5">
+                                                    <span>Product Name</span>
+                                                    <button
+                                                        onClick={() => {
+                                                            setCompareSortOrder(prev => {
+                                                                if (!prev) return 'asc';
+                                                                if (prev === 'asc') return 'desc';
+                                                                return null;
+                                                            });
+                                                        }}
+                                                        className="p-1 hover:bg-gray-205 dark:hover:bg-zinc-700 rounded transition-all focus:outline-none cursor-pointer"
+                                                        title="Sort Alphabetical (Product Not Found always forced to end)"
+                                                    >
+                                                        <ArrowDown size={12} className={`transition-transform duration-200 ${compareSortOrder === 'desc' ? 'rotate-180' : ''} ${compareSortOrder ? 'text-indigo-650 font-bold' : 'text-gray-400'}`} />
+                                                    </button>
+                                                </div>
+                                            </th>
+                                            <th className="p-3 text-right bg-[#F8FAFC] dark:bg-zinc-800 w-28">Purchase Price</th>
+                                            <th className="p-3 text-right bg-[#F8FAFC] dark:bg-zinc-800 w-28">Breakeven</th>
+                                            <th className="p-3 text-right bg-[#F8FAFC] dark:bg-zinc-800 w-28">Commission</th>
+                                            <th className="p-3 text-right bg-[#F8FAFC] dark:bg-zinc-800 w-28">Regular 15%</th>
+                                            <th className="p-3 text-right bg-[#F8FAFC] dark:bg-zinc-800 w-28">Campaign Price</th>
+                                            <th className="p-3 text-right bg-[#F8FAFC] dark:bg-zinc-800 w-28">Required Price</th>
+                                            <th className="p-3 text-right bg-[#F8FAFC] dark:bg-zinc-800 w-36">Custom Price (Formula)</th>
+                                            <th className="p-3 text-right bg-[#F8FAFC] dark:bg-zinc-800 font-bold text-gray-800 dark:text-gray-200 w-44">
+                                                Difference ({getColLabel(diffCol1)} - {getColLabel(diffCol2)})
+                                            </th>
+                                            <th className="p-3 text-right bg-[#F8FAFC] dark:bg-zinc-800 font-bold text-indigo-650 dark:text-indigo-300 w-32">Profit</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y dark:divide-zinc-800 font-semibold text-gray-700 dark:text-gray-300">
+                                        {sortedRows.map((row, index) => {
+                                            const customPrice = getCustomPrice(row)
+                                            const commissionAmt = customPrice * ((row.commission_percent || 0) / 100)
+                                            const netProfit = customPrice - commissionAmt - (row.purchasing_price || 0) - 30
+
+                                            const val1 = getPriceOfCol(row, diffCol1)
+                                            const val2 = getPriceOfCol(row, diffCol2)
+                                            const difference = val1 - val2
+
+                                            const isNotFound = row.product_name === 'Product Not Found'
+
+                                            return (
+                                                <tr key={index} className={`hover:bg-gray-50 dark:hover:bg-zinc-850 h-12 transition-colors ${isNotFound ? 'bg-red-50/20 dark:bg-red-950/10' : ''}`}>
+                                                    <td className="p-3 text-center text-gray-400">{index + 1}</td>
+                                                    <td className="p-3 font-semibold">{row.sku}</td>
+                                                    <td className="p-3 max-w-[240px] truncate font-medium text-gray-800 dark:text-gray-200" title={row.product_name}>
+                                                        {isNotFound ? (
+                                                            <span className="text-red-500 font-bold italic">{row.product_name}</span>
+                                                        ) : (
+                                                            row.product_name
+                                                        )}
+                                                    </td>
+                                                    <td className="p-3 text-right bg-emerald-50/70 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-300 font-bold">
+                                                        {row.purchasing_price > 0 ? `Rs. ${row.purchasing_price.toLocaleString()}` : 'Rs. 0'}
+                                                    </td>
+                                                    <td className="p-3 text-right bg-blue-50/70 dark:bg-blue-950/20 text-blue-700 dark:text-blue-300 font-bold">
+                                                        {row.breakeven_price > 0 ? `Rs. ${row.breakeven_price.toLocaleString()}` : 'Rs. 0'}
+                                                    </td>
+                                                    <td className="p-3 text-right bg-red-50/70 dark:bg-red-950/20 text-red-700 dark:text-red-300 font-bold">
+                                                        {row.commission_percent !== undefined && row.commission_percent !== null ? `${row.commission_percent.toFixed(2)}%` : '25.00%'}
+                                                    </td>
+                                                    <td className="p-3 text-right text-gray-500 font-medium">
+                                                        {row.regular_15_price > 0 ? `Rs. ${row.regular_15_price.toLocaleString()}` : '-'}
+                                                    </td>
+                                                    <td className="p-3 text-right text-purple-650 dark:text-purple-400 font-bold">
+                                                        {row.campaign_price > 0 ? `Rs. ${row.campaign_price.toLocaleString()}` : '-'}
+                                                    </td>
+                                                    <td className="p-3 text-right font-bold text-gray-700 dark:text-gray-300 bg-amber-50/5 dark:bg-amber-950/5">
+                                                        {row.required_price > 0 ? `Rs. ${row.required_price.toLocaleString()}` : '-'}
+                                                    </td>
+                                                    <td className="p-3 text-right">
+                                                        <div className="flex items-center justify-end gap-1.5">
+                                                            <span className="text-[10px] text-gray-400 font-bold">Rs.</span>
+                                                            <input
+                                                                type="number"
+                                                                value={row.custom_price ?? ''}
+                                                                onChange={(e) => handleCustomPriceChange(row.sku, e.target.value)}
+                                                                className="w-24 px-2.5 py-1 text-right text-xs border border-gray-200 dark:border-zinc-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/30 bg-white dark:bg-zinc-900 font-bold"
+                                                            />
+                                                        </div>
+                                                    </td>
+                                                    <td className={`p-3 text-right font-bold ${difference >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                                                        {difference >= 0 ? '+' : ''}Rs. {difference.toLocaleString()}
+                                                    </td>
+                                                    <td className={`p-3 text-right font-bold ${netProfit >= 0 ? 'text-emerald-650 dark:text-emerald-400' : 'text-red-500'}`}>
+                                                        Rs. {netProfit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                    </td>
+                                                </tr>
+                                            )
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            </div>
+        )
+    }
+
     return (
         <div className="flex flex-col h-[calc(100vh-64px)] overflow-hidden bg-gray-50 dark:bg-zinc-900">
             {/* Header */}
@@ -855,6 +1372,23 @@ export default function DarazAverageSalesPricePage() {
                     >
                         {isSyncingLive ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
                         Sync Live Prices
+                    </button>
+
+                    <button
+                        onClick={handleApplyAutoDiscount}
+                        disabled={isApplyingAutoPrices}
+                        className="flex flex-row items-center justify-center gap-[8px] h-[42px] min-w-[160px] px-[16px] bg-emerald-600 hover:bg-[#047857] text-[13px] font-semibold text-white rounded-[12px] transition-colors border-none whitespace-nowrap cursor-pointer disabled:opacity-50"
+                    >
+                        {isApplyingAutoPrices ? <Loader2 size={16} className="animate-spin" /> : <UploadCloud size={16} />}
+                        Auto Price Push
+                    </button>
+
+                    <button
+                        onClick={() => setIsCompareModalOpen(true)}
+                        className="flex flex-row items-center justify-center gap-[8px] h-[42px] min-w-[140px] px-[16px] bg-indigo-650 hover:bg-indigo-700 text-[13px] font-semibold text-white rounded-[12px] transition-colors border-none whitespace-nowrap cursor-pointer"
+                    >
+                        <FileSpreadsheet size={16} />
+                        Price Compare
                     </button>
                 </div>
             </div>
@@ -1173,21 +1707,38 @@ export default function DarazAverageSalesPricePage() {
 
                                                 {/* Website Price */}
                                                 <td className="text-right border-l border-gray-100 dark:border-zinc-800 align-top pt-3 p-4 align-middle bg-[#fdfaf6] dark:bg-amber-950/10">
-                                                    <div className="flex flex-col items-end gap-0.5">
-                                                        {item.website_special_price || item.website_regular_price ? (
-                                                            <>
-                                                                <span className="font-bold text-emerald-700 dark:text-emerald-400">
-                                                                    Rs. {(item.website_special_price || item.website_regular_price)!.toLocaleString()}
-                                                                </span>
-                                                                {item.website_special_price && item.website_regular_price && (
-                                                                    <span className="text-[10px] text-gray-500 line-through font-medium whitespace-nowrap">
-                                                                        Rs. {item.website_regular_price.toLocaleString()}
+                                                    <div className="flex items-center justify-end gap-1.5">
+                                                        <button
+                                                            onClick={() => handleToggleLock(item.product_id, !!item.is_price_locked)}
+                                                            disabled={togglingLockId === item.product_id}
+                                                            className="p-1 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded transition-all focus:outline-none shrink-0"
+                                                            title={item.is_price_locked ? "Unlock Website Price" : "Lock Website Price"}
+                                                        >
+                                                            {togglingLockId === item.product_id ? (
+                                                                <Loader2 size={12} className="animate-spin text-blue-500" />
+                                                            ) : item.is_price_locked ? (
+                                                                <Lock size={12} className="text-red-500 dark:text-red-400" />
+                                                            ) : (
+                                                                <Unlock size={12} className="text-gray-300 dark:text-zinc-700 hover:text-gray-500 dark:hover:text-zinc-500 transition-colors" />
+                                                            )}
+                                                        </button>
+
+                                                        <div className="flex flex-col items-end gap-0.5">
+                                                            {item.website_special_price || item.website_regular_price ? (
+                                                                <>
+                                                                    <span className="font-bold text-emerald-700 dark:text-emerald-400">
+                                                                        Rs. {(item.website_special_price || item.website_regular_price)!.toLocaleString()}
                                                                     </span>
-                                                                )}
-                                                            </>
-                                                        ) : (
-                                                            <span className="text-gray-400 italic text-sm">-</span>
-                                                        )}
+                                                                    {item.website_special_price && item.website_regular_price && (
+                                                                        <span className="text-[10px] text-gray-500 line-through font-medium whitespace-nowrap">
+                                                                            Rs. {item.website_regular_price.toLocaleString()}
+                                                                        </span>
+                                                                    )}
+                                                                </>
+                                                            ) : (
+                                                                <span className="text-gray-400 italic text-sm">-</span>
+                                                            )}
+                                                        </div>
                                                     </div>
                                                 </td>
 

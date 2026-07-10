@@ -7,21 +7,17 @@ async function check() {
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     const { data, error } = await supabase
-        .from('products')
+        .from('daraz_finance_transactions')
         .select('*')
-        .limit(1);
+        .eq('transaction_type', 'Delivered Orders-Transaction Fees')
+        .limit(10);
 
     if (error) {
         console.error('Error:', error.message);
         return;
     }
 
-    if (data && data.length > 0) {
-        console.log('Columns in products table:', Object.keys(data[0]));
-        console.log('Sample product data:', data[0]);
-    } else {
-        console.log('No products found.');
-    }
+    console.log('Delivered Orders-Transaction Fees samples:', data);
 }
 
 check();

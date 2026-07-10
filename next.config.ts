@@ -129,6 +129,14 @@ const nextConfig: NextConfig = {
         protocol: 'https',
         hostname: 'www.wishluck.in',
       },
+      {
+        protocol: 'https',
+        hostname: '*.gstatic.com',
+      },
+      {
+        protocol: 'https',
+        hostname: '*.googleusercontent.com',
+      },
     ],
   },
   // Add empty turbopack config to silence Turbopack warning

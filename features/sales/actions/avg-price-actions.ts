@@ -55,6 +55,7 @@ export interface DarazAvgPriceItem {
     seller_account4?: string | null
     sales_priority?: boolean
     priority_seller_account?: string | null
+    is_price_locked?: boolean
 }
 
 async function getSoldQuantitiesMap(days: number) {
@@ -64,11 +65,7 @@ async function getSoldQuantitiesMap(days: number) {
     startDate.setDate(startDate.getDate() - days)
     const startDateStr = startDate.toISOString().split('T')[0]
 
-    let rawItems: any[] = []
-    let fetchPage = 0
     const FETCH_SIZE = 1000
-    let hasMore = true
-
     const NON_SOLD_STATUSES = [
         'Returned Delivered', 'returned delivered',
         'Customer Return Delivered', 'customer return delivered',
@@ -76,42 +73,53 @@ async function getSoldQuantitiesMap(days: number) {
         'unpaid', 'Unpaid',
     ]
 
-    while (hasMore) {
-        const from = fetchPage * FETCH_SIZE
+    // 1. Get the total count first using a light head query
+    const { count, error: countError } = await supabase
+        .from('daraz_order_items')
+        .select('product_id, daraz_orders!inner(order_date)', { count: 'exact', head: true })
+        .not('product_id', 'is', null)
+        .gte('daraz_orders.order_date', startDateStr)
+
+    if (countError || count === null || count === 0) {
+        if (countError) console.error('[getSoldQuantitiesMap] count error:', countError)
+        return new Map<string, { total: number; accounts: Record<string, number> }>()
+    }
+
+    // 2. Fetch pages concurrently
+    const totalPages = Math.ceil(count / FETCH_SIZE)
+    const pageQueries = []
+    for (let page = 0; page < totalPages; page++) {
+        const from = page * FETCH_SIZE
         const to = from + FETCH_SIZE - 1
+        pageQueries.push(
+            supabase
+                .from('daraz_order_items')
+                .select(`
+                    product_id,
+                    quantity,
+                    item_status,
+                    seller_account,
+                    daraz_orders!inner(
+                        order_date,
+                        order_status,
+                        deleted
+                    )
+                `)
+                .not('product_id', 'is', null)
+                .gte('daraz_orders.order_date', startDateStr)
+                .range(from, to)
+        )
+    }
 
-        let pageQuery = supabase
-            .from('daraz_order_items')
-            .select(`
-                product_id,
-                quantity,
-                item_status,
-                seller_account,
-                daraz_orders!inner(
-                    order_date,
-                    order_status,
-                    deleted
-                )
-            `)
-            .not('product_id', 'is', null)
-            .gte('daraz_orders.order_date', startDateStr)
-            .range(from, to)
-
-        const { data, error } = await pageQuery
-        if (error) {
-            console.error('[getSoldQuantitiesMap] fetch error:', error)
-            break
+    const pageResults = await Promise.all(pageQueries)
+    let rawItems: any[] = []
+    for (const res of pageResults) {
+        if (res.error) {
+            console.error('[getSoldQuantitiesMap] fetch page error:', res.error)
+            continue
         }
-
-        if (!data || data.length === 0) {
-            hasMore = false
-        } else {
-            rawItems = rawItems.concat(data)
-            if (data.length < FETCH_SIZE) {
-                hasMore = false
-            } else {
-                fetchPage++
-            }
+        if (res.data) {
+            rawItems = rawItems.concat(res.data)
         }
     }
 
@@ -141,29 +149,129 @@ async function getSoldQuantitiesMap(days: number) {
 
 export async function getDarazAvgPrices(days: number = 60) {
     const supabase = await createClient()
-    const soldQtyMap = await getSoldQuantitiesMap(days)
 
-    // 1. Fetch all products from pricing view
-    const { data: productsData, error: productsError } = await supabase
+    // 1. Fetch soldQtyMap concurrently
+    const soldQtyMapPromise = getSoldQuantitiesMap(days)
+
+    // 2. Fetch inventory products from the reports view concurrently
+    const productsPromise = supabase
         .from('inventory_price_reports_view')
         .select('*')
 
-    if (productsError) {
-        console.error('Error fetching products from inventory_price_reports_view:', productsError)
-        throw new Error('Failed to fetch product pricing data: ' + productsError.message)
-    }
-
-    // 1a. Fetch MRP prices
-    const { data: mrpPricesData, error: mrpError } = await supabase
+    // 3. Fetch MRP prices concurrently
+    const mrpPricesPromise = supabase
         .from('mrp_prices')
         .select('inventory_id, product_name, mrp_price')
         .order('applied_date', { ascending: false })
         .order('created_at', { ascending: false })
 
+    // 4. Fetch products SKUs, priorities, lock flags concurrently
+    const skusPromise = supabase
+        .from('products')
+        .select('id, seller_sku1, seller_account1, seller_sku2, seller_account2, seller_sku3, seller_account3, seller_sku4, seller_account4, sales_priority, priority_seller_account, commission_percent, is_price_locked')
+
+    // 5. Fetch combos concurrently
+    const combosPromise = supabase
+        .from('product_combos')
+        .select('parent_product_id, child_product_id, quantity')
+
+    // 6. Fetch wholesale prices concurrently
+    const wholesalePricesPromise = supabase
+        .from('product_wholesale_prices')
+        .select('product_id, wholesale_price')
+
+    // 7. Fetch daraz average prices (editable fields) concurrently
+    const dbPricesPromise = supabase
+        .from('daraz_avg_prices')
+        .select('*')
+
+    // 8. Fetch Website Prices from Ecommerce DB concurrently
+    const ecommerceSupabaseUrl = process.env.NEXT_PUBLIC_ECOMMERCE_SUPABASE_URL
+    const ecommerceSupabaseKey = process.env.NEXT_PUBLIC_ECOMMERCE_SUPABASE_ANON_KEY
+    let ecommercePromise: any = Promise.resolve({ data: null, error: null })
+    if (ecommerceSupabaseUrl && ecommerceSupabaseKey) {
+        try {
+            const ecommerceSupabase = createJSClient(ecommerceSupabaseUrl, ecommerceSupabaseKey)
+            ecommercePromise = ecommerceSupabase
+                .from('ecommerce_products')
+                .select('inventory_id, regular_price, special_price')
+        } catch (err) {
+            console.error('Failed to init ecommerce client:', err)
+        }
+    }
+
+    // 9. Fetch Live Prices count concurrently for pagination count
+    const liveCountPromise = supabase
+        .from('daraz_live_prices')
+        .select('*', { count: 'exact', head: true })
+
+    // Await all independent calls concurrently!
+    const [
+        soldQtyMap,
+        productsRes,
+        mrpRes,
+        skusRes,
+        combosRes,
+        wholesaleRes,
+        dbPricesRes,
+        ecommerceRes,
+        liveCountRes
+    ] = await Promise.all([
+        soldQtyMapPromise,
+        productsPromise,
+        mrpPricesPromise,
+        skusPromise,
+        combosPromise,
+        wholesalePricesPromise,
+        dbPricesPromise,
+        ecommercePromise,
+        liveCountPromise
+    ])
+
+    if (productsRes.error) {
+        console.error('Error fetching products from inventory_price_reports_view:', productsRes.error)
+        throw new Error('Failed to fetch product pricing data: ' + productsRes.error.message)
+    }
+
+    const productsData = productsRes.data
+    const mrpPricesData = mrpRes.data
+    const skusData = skusRes.data
+    const combosData = combosRes.data
+    const wholesalePricesData = wholesaleRes.data
+    const dbPrices = dbPricesRes.data
+    const webProducts = ecommerceRes.data
+
+    // Parallel fetch live prices page-by-page concurrently!
+    const allDbLivePrices: any[] = []
+    const livePricesCount = liveCountRes.count
+    const liveCountError = liveCountRes.error
+    if (!liveCountError && livePricesCount !== null && livePricesCount > 0) {
+        const totalLivePages = Math.ceil(livePricesCount / 1000)
+        const livePromises = []
+        for (let page = 0; page < totalLivePages; page++) {
+            livePromises.push(
+                supabase
+                    .from('daraz_live_prices')
+                    .select('*')
+                    .range(page * 1000, (page + 1) * 1000 - 1)
+            )
+        }
+        const liveResults = await Promise.all(livePromises)
+        for (const res of liveResults) {
+            if (res.error) {
+                console.error('daraz_live_prices fetch page error:', res.error.message)
+                continue
+            }
+            if (res.data) {
+                allDbLivePrices.push(...res.data)
+            }
+        }
+    }
+
     const mrpMapById = new Map<string, number>()
     const mrpMapByName = new Map<string, number>()
 
-    if (mrpPricesData && !mrpError) {
+    if (mrpPricesData) {
         mrpPricesData.forEach(item => {
             if (item.inventory_id && !mrpMapById.has(item.inventory_id)) {
                 mrpMapById.set(item.inventory_id, Number(item.mrp_price))
@@ -173,17 +281,6 @@ export async function getDarazAvgPrices(days: number = 60) {
                 mrpMapByName.set(nameKey, Number(item.mrp_price))
             }
         })
-    } else if (mrpError) {
-        console.warn('mrp_prices fetch error:', mrpError.message)
-    }
-
-    // 1b. Fetch SKUs from products table (since view might not have them)
-    const { data: skusData, error: skuError } = await supabase
-        .from('products')
-        .select('id, seller_sku1, seller_account1, seller_sku2, seller_account2, seller_sku3, seller_account3, seller_sku4, seller_account4, sales_priority, priority_seller_account')
-
-    if (skuError) {
-        console.error('Error fetching SKUs from products table:', skuError)
     }
 
     const skuMap = new Map<string, any>()
@@ -199,11 +296,6 @@ export async function getDarazAvgPrices(days: number = 60) {
         })
     }
 
-    // 1c. Fetch product combos to calculate accurate purchasing cost for combos
-    const { data: combosData } = await supabase
-        .from('product_combos')
-        .select('parent_product_id, child_product_id, quantity')
-
     const comboComponentsMap: Record<string, Array<{ child_product_id: string, quantity: number }>> = {}
     combosData?.forEach((c: any) => {
         if (!comboComponentsMap[c.parent_product_id]) {
@@ -214,11 +306,6 @@ export async function getDarazAvgPrices(days: number = 60) {
             quantity: c.quantity
         })
     })
-
-    // 1d. Fetch Wholesale Prices for fallback if no history exists
-    const { data: wholesalePricesData } = await supabase
-        .from('product_wholesale_prices')
-        .select('product_id, wholesale_price')
 
     const bestWholesaleMap = new Map<string, number>()
     wholesalePricesData?.forEach(wp => {
@@ -256,43 +343,9 @@ export async function getDarazAvgPrices(days: number = 60) {
         }
     })
 
-    // 2. Fetch all Daraz product prices (editable fields)
-    const { data: dbPrices, error: pricesError } = await supabase
-        .from('daraz_avg_prices')
-        .select('*')
-
     const pricesMap = new Map<string, any>()
-    if (dbPrices && !pricesError) {
+    if (dbPrices) {
         dbPrices.forEach(p => pricesMap.set(p.product_id, p))
-    } else if (pricesError) {
-        console.warn('daraz_avg_prices fetch error (table might not exist yet):', pricesError.message)
-    }
-
-    // 2b. Fetch Live Daraz Prices from our new cache table
-    const allDbLivePrices: any[] = []
-    let fetchPage = 0
-    let hasMoreLivePrices = true
-
-    while (hasMoreLivePrices) {
-        const { data: dbLivePricesChunk, error: livePricesError } = await supabase
-            .from('daraz_live_prices')
-            .select('*')
-            .range(fetchPage * 1000, (fetchPage + 1) * 1000 - 1)
-
-        if (livePricesError) {
-            console.error('daraz_live_prices fetch error:', livePricesError.message)
-            break
-        }
-        if (!dbLivePricesChunk || dbLivePricesChunk.length === 0) {
-            hasMoreLivePrices = false
-            break
-        }
-        allDbLivePrices.push(...dbLivePricesChunk)
-        if (dbLivePricesChunk.length < 1000) {
-            hasMoreLivePrices = false
-        } else {
-            fetchPage++
-        }
     }
 
     const livePricesMap = new Map<string, any[]>()
@@ -306,124 +359,16 @@ export async function getDarazAvgPrices(days: number = 60) {
         })
     }
 
-    // 3. Fetch recent delivered order items to calculate accurate product commissions
-    let rawOrderItems: any[] = []
-    try {
-        let page = 0
-        const PAGE_SIZE = 1000
-        const MAX_PAGES = 5 // Fetch up to 5000 items
-
-        while (page < MAX_PAGES) {
-            const from = page * PAGE_SIZE
-            const to = from + PAGE_SIZE - 1
-            
-            const { data, error } = await supabase
-                .from('daraz_order_items')
-                .select(`
-                    product_id,
-                    seller_sku,
-                    amount,
-                    quantity,
-                    daraz_orders!inner(
-                        id,
-                        daraz_fees,
-                        order_status,
-                        deleted
-                    )
-                `)
-                .eq('daraz_orders.order_status', 'Delivered')
-                .eq('daraz_orders.deleted', false)
-                .not('daraz_orders.daraz_fees', 'is', null)
-                .order('created_at', { ascending: false })
-                .range(from, to)
-
-            if (error) {
-                console.error('Error fetching order items for commission:', error)
-                break
-            }
-            if (!data || data.length === 0) break
-            
-            rawOrderItems = rawOrderItems.concat(data)
-            if (data.length < PAGE_SIZE) break
-            page++
-        }
-    } catch (err) {
-        console.error('Exception fetching order items for commission:', err)
-    }
-
-    // Compile order total revenue and order items count
-    const orderRevenueMap = new Map<string, number>()
-    const orderItemCountMap = new Map<string, number>()
-
-    rawOrderItems.forEach((item: any) => {
-        const orderId = item.daraz_orders?.id
-        if (!orderId) return
-        const itemRevenue = (item.amount || 0) * (item.quantity || 1)
-        
-        orderRevenueMap.set(orderId, (orderRevenueMap.get(orderId) || 0) + itemRevenue)
-        orderItemCountMap.set(orderId, (orderItemCountMap.get(orderId) || 0) + 1)
-    })
-
-    // Group rates by product
-    const productCommissionDataMap = new Map<string, { singleItemRates: number[], multiItemRates: number[] }>()
-
-    rawOrderItems.forEach((item: any) => {
-        let pid = item.product_id
-        if (!pid && item.seller_sku) {
-            pid = reverseSkuMap.get(item.seller_sku.toLowerCase().trim())
-        }
-        if (!pid) return
-
-        const orderId = item.daraz_orders?.id
-        const orderFees = Math.abs(item.daraz_orders?.daraz_fees || 0)
-        const orderRevenue = orderRevenueMap.get(orderId) || 0
-        const orderItemCount = orderItemCountMap.get(orderId) || 1
-
-        if (orderRevenue <= 0 || orderFees <= 0) return
-
-        const rate = orderFees / orderRevenue
-        // Filter out extreme outlier rates (cap between 2% and 55% for safety)
-        if (rate < 0.02 || rate > 0.55) return
-
-        if (!productCommissionDataMap.has(pid)) {
-            productCommissionDataMap.set(pid, { singleItemRates: [], multiItemRates: [] })
-        }
-
-        const entry = productCommissionDataMap.get(pid)!
-        if (orderItemCount === 1) {
-            entry.singleItemRates.push(rate)
-        } else {
-            entry.multiItemRates.push(rate)
-        }
-    })
-
-    // 3b. Fetch Website Prices from Ecommerce DB
-    const ecommerceSupabaseUrl = process.env.NEXT_PUBLIC_ECOMMERCE_SUPABASE_URL
-    const ecommerceSupabaseKey = process.env.NEXT_PUBLIC_ECOMMERCE_SUPABASE_ANON_KEY
     const websitePricesMap = new Map<string, { regular_price: number | null, special_price: number | null }>()
-
-    if (ecommerceSupabaseUrl && ecommerceSupabaseKey) {
-        try {
-            const ecommerceSupabase = createJSClient(ecommerceSupabaseUrl, ecommerceSupabaseKey)
-            const { data: webProducts, error: webErr } = await ecommerceSupabase
-                .from('ecommerce_products')
-                .select('inventory_id, regular_price, special_price')
-            
-            if (!webErr && webProducts) {
-                webProducts.forEach(wp => {
-                    if (wp.inventory_id) {
-                        websitePricesMap.set(wp.inventory_id, {
-                            regular_price: wp.regular_price ? Number(wp.regular_price) : null,
-                            special_price: wp.special_price ? Number(wp.special_price) : null
-                        })
-                    }
+    if (webProducts) {
+        webProducts.forEach((wp: any) => {
+            if (wp.inventory_id) {
+                websitePricesMap.set(wp.inventory_id, {
+                    regular_price: wp.regular_price ? Number(wp.regular_price) : null,
+                    special_price: wp.special_price ? Number(wp.special_price) : null
                 })
-            } else if (webErr) {
-                console.error('Error fetching from ecommerce_products:', webErr)
             }
-        } catch (err) {
-            console.error('Exception fetching website prices:', err)
-        }
+        })
     }
 
     // 4. Combine all data
@@ -440,19 +385,14 @@ export async function getDarazAvgPrices(days: number = 60) {
         const purchasingRemark = isCombo ? comboData.remark : baseData.remark
 
         // Latest Commission Percent
-        // Use single-item order rates first as they are 100% accurate, fallback to multi-item rates, then default to 25%
-        const commData = productCommissionDataMap.get(p.product_id)
+        // Load directly from products table if available, fallback to 25%
+        const dbComm = prodSkus.commission_percent
         let commissionPercent = 0.25
         let isDefaultCommission = true
 
-        if (commData) {
-            if (commData.singleItemRates.length > 0) {
-                const sum = commData.singleItemRates.reduce((a, b) => a + b, 0)
-                commissionPercent = sum / commData.singleItemRates.length
-                isDefaultCommission = false
-            } else if (commData.multiItemRates.length > 0) {
-                const sum = commData.multiItemRates.reduce((a, b) => a + b, 0)
-                commissionPercent = sum / commData.multiItemRates.length
+        if (dbComm !== undefined && dbComm !== null) {
+            commissionPercent = dbComm / 100
+            if (dbComm !== 25.00) {
                 isDefaultCommission = false
             }
         }
@@ -533,7 +473,8 @@ export async function getDarazAvgPrices(days: number = 60) {
             sold_qty: salesEntry ? salesEntry.total : 0,
             sold_qty_by_account: salesEntry ? salesEntry.accounts : {},
             sales_priority: prodSkus.sales_priority || false,
-            priority_seller_account: prodSkus.priority_seller_account || null
+            priority_seller_account: prodSkus.priority_seller_account || null,
+            is_price_locked: prodSkus?.is_price_locked || false
         }
     })
 
@@ -904,6 +845,13 @@ export async function syncLiveSellerPrices() {
             }
         }
 
+        // Trigger automatic website price push if discount settings are active
+        try {
+            await autoUpdateWebsitePrices()
+        } catch (err: any) {
+            console.error('[AUTO-PRICE] Auto update website prices error:', err.message)
+        }
+
         revalidatePath('/dashboard/sales/daraz/average-sales-price')
         return { success: true, count: allLivePricesToUpsert.length, message: `Successfully synced ${allLivePricesToUpsert.length} SKUs across stores` }
     } catch (error: any) {
@@ -993,6 +941,13 @@ export async function syncLiveSellerPricesForProduct(productId: string) {
                 console.error('Failed to upsert daraz live prices:', upsertErr.message)
                 throw new Error(`Failed to upsert daraz live prices: ${upsertErr.message}`)
             }
+        }
+
+        // Trigger automatic website price push if discount settings are active
+        try {
+            await autoUpdateWebsitePrices()
+        } catch (err: any) {
+            console.error('[AUTO-PRICE] Auto update website prices error:', err.message)
         }
 
         revalidatePath('/dashboard/sales/daraz/average-sales-price')
@@ -1271,10 +1226,24 @@ export async function updateWebsitePricesBulk(updates: { inventory_id: string, r
     try {
         const ecommerceSupabase = createJSClient(ecommerceSupabaseUrl, ecommerceServiceRoleKey)
         
+        const supabase = await createClient()
+        const productIds = updates.map(u => u.inventory_id)
+        const { data: dbProds } = await supabase
+            .from('products')
+            .select('id, is_price_locked')
+            .in('id', productIds)
+
+        const lockedMap = new Map<string, boolean>()
+        dbProds?.forEach(p => lockedMap.set(p.id, !!p.is_price_locked))
+
         let successCount = 0
         let errorCount = 0
 
         for (const upd of updates) {
+            if (lockedMap.get(upd.inventory_id)) {
+                console.log(`[WEBSITE-PRICE-BULK] Skipping locked product inventory_id ${upd.inventory_id}`)
+                continue
+            }
             // Only update products that already exist with this inventory_id
             const { error, count } = await ecommerceSupabase
                 .from('ecommerce_products')
@@ -1304,3 +1273,344 @@ export async function updateWebsitePricesBulk(updates: { inventory_id: string, r
         return { success: false, message: err.message || 'Unknown error occurred.' }
     }
 }
+
+export async function updateProductCommissions(productIds: string[]) {
+    if (!productIds || productIds.length === 0) return
+
+    const supabase = await createClient()
+
+    // 1. Fetch SKUs for these products to mapping
+    const { data: skusData } = await supabase
+        .from('products')
+        .select('id, seller_sku1, seller_sku2, seller_sku3, seller_sku4')
+        .in('id', productIds)
+
+    if (!skusData) return
+
+    const reverseSkuMap = new Map<string, string>()
+    const allSkus: string[] = []
+    skusData.forEach(s => {
+        if (s.seller_sku1) {
+            const sku = s.seller_sku1.toLowerCase().trim()
+            reverseSkuMap.set(sku, s.id)
+            allSkus.push(sku)
+        }
+        if (s.seller_sku2) {
+            const sku = s.seller_sku2.toLowerCase().trim()
+            reverseSkuMap.set(sku, s.id)
+            allSkus.push(sku)
+        }
+        if (s.seller_sku3) {
+            const sku = s.seller_sku3.toLowerCase().trim()
+            reverseSkuMap.set(sku, s.id)
+            allSkus.push(sku)
+        }
+        if (s.seller_sku4) {
+            const sku = s.seller_sku4.toLowerCase().trim()
+            reverseSkuMap.set(sku, s.id)
+            allSkus.push(sku)
+        }
+    })
+
+    // 2. Fetch delivered order items matching these product IDs OR matching SKUs
+    // Fetch recent 1000 items to get a stable average
+    let orderItemsQuery = supabase
+        .from('daraz_order_items')
+        .select(`
+            product_id,
+            seller_sku,
+            amount,
+            quantity,
+            daraz_orders!inner(
+                id,
+                daraz_fees,
+                order_status,
+                deleted
+            )
+        `)
+        .eq('daraz_orders.order_status', 'Delivered')
+        .eq('daraz_orders.deleted', false)
+        .not('daraz_orders.daraz_fees', 'is', null)
+
+    // Build the or filter properly
+    const filters = [`product_id.in.(${productIds.map(id => `"${id}"`).join(',')})`]
+    if (allSkus.length > 0) {
+        filters.push(`seller_sku.in.(${allSkus.map(s => `"${s}"`).join(',')})`)
+    }
+    orderItemsQuery = orderItemsQuery.or(filters.join(','))
+
+    const { data: orderItems } = await orderItemsQuery
+        .order('created_at', { ascending: false })
+        .limit(1000)
+
+    if (!orderItems || orderItems.length === 0) return
+
+    // Compile order total revenue and order items count
+    const orderRevenueMap = new Map<string, number>()
+    const orderItemCountMap = new Map<string, number>()
+
+    orderItems.forEach((item: any) => {
+        const orderId = item.daraz_orders?.id
+        if (!orderId) return
+        const itemRevenue = (item.amount || 0) * (item.quantity || 1)
+        orderRevenueMap.set(orderId, (orderRevenueMap.get(orderId) || 0) + itemRevenue)
+        orderItemCountMap.set(orderId, (orderItemCountMap.get(orderId) || 0) + 1)
+    })
+
+    // Group rates by product
+    const productRatesMap = new Map<string, { singleItemRates: number[], multiItemRates: number[] }>()
+
+    orderItems.forEach((item: any) => {
+        let pid = item.product_id
+        if (!pid && item.seller_sku) {
+            pid = reverseSkuMap.get(item.seller_sku.toLowerCase().trim())
+        }
+        if (!pid || !productIds.includes(pid)) return
+
+        const orderId = item.daraz_orders?.id
+        const orderFees = Math.abs(item.daraz_orders?.daraz_fees || 0)
+        const orderRevenue = orderRevenueMap.get(orderId) || 0
+        const orderItemCount = orderItemCountMap.get(orderId) || 1
+
+        if (orderRevenue <= 0 || orderFees <= 0) return
+
+        const rate = (orderFees + 30) / orderRevenue
+        if (rate < 0.02 || rate > 0.65) return
+
+        if (!productRatesMap.has(pid)) {
+            productRatesMap.set(pid, { singleItemRates: [], multiItemRates: [] })
+        }
+
+        const entry = productRatesMap.get(pid)!
+        if (orderItemCount === 1) {
+            entry.singleItemRates.push(rate)
+        } else {
+            entry.multiItemRates.push(rate)
+        }
+    })
+
+    // Update the products table
+    for (const pid of productIds) {
+        const commData = productRatesMap.get(pid)
+        let commissionPercent = 25.00 // Default fallback
+
+        if (commData) {
+            if (commData.singleItemRates.length > 0) {
+                const sum = commData.singleItemRates.reduce((a, b) => a + b, 0)
+                commissionPercent = (sum / commData.singleItemRates.length) * 100
+            } else if (commData.multiItemRates.length > 0) {
+                const sum = commData.multiItemRates.reduce((a, b) => a + b, 0)
+                commissionPercent = (sum / commData.multiItemRates.length) * 100
+            }
+        }
+
+        await supabase
+            .from('products')
+            .update({ commission_percent: parseFloat(commissionPercent.toFixed(2)) })
+            .eq('id', pid)
+    }
+}
+
+export async function recalculateAllProductCommissions() {
+    const supabase = await createClient()
+    const { data: products } = await supabase
+        .from('products')
+        .select('id')
+        .eq('is_deleted', false)
+
+    if (!products || products.length === 0) {
+        return { success: true, count: 0 }
+    }
+
+    const productIds = products.map(p => p.id)
+    
+    // Process in chunks of 50 to avoid big IN filters
+    const chunkSize = 50
+    for (let i = 0; i < productIds.length; i += chunkSize) {
+        const chunk = productIds.slice(i, i + chunkSize)
+        await updateProductCommissions(chunk)
+    }
+
+    return { success: true, count: productIds.length }
+}
+
+export async function autoUpdateWebsitePrices() {
+    const supabase = await createClient()
+
+    // 1. Fetch settings from app_settings
+    const { data: settingData } = await supabase
+        .from('app_settings')
+        .select('value')
+        .eq('key', 'website_discount_rules')
+        .single()
+
+    const settings = settingData?.value || { active: false, percent: 0 }
+    if (!settings.active) {
+        console.log('[AUTO-PRICE] Discount rules are inactive. Skipping auto website pricing push.')
+        return { success: true, count: 0, message: 'Settings are inactive' }
+    }
+
+    const discountPercent = parseFloat(settings.percent) || 0
+
+    // 2. Fetch all products (with pagination to bypass 1000 limit)
+    const products: any[] = []
+    let prodPage = 0
+    let hasMoreProds = true
+
+    while (hasMoreProds) {
+        const { data: prodChunk, error: prodErr } = await supabase
+            .from('products')
+            .select('id, seller_sku1, seller_sku2, seller_sku3, seller_sku4, product_name, is_price_locked')
+            .eq('is_deleted', false)
+            .range(prodPage * 1000, (prodPage + 1) * 1000 - 1)
+
+        if (prodErr) {
+            console.error('[AUTO-PRICE] products fetch error:', prodErr.message)
+            break
+        }
+        if (!prodChunk || prodChunk.length === 0) {
+            hasMoreProds = false
+            break
+        }
+
+        products.push(...prodChunk)
+
+        if (prodChunk.length < 1000) {
+            hasMoreProds = false
+        } else {
+            prodPage++
+        }
+    }
+
+    if (products.length === 0) return { success: true, count: 0 }
+
+    // 3. Fetch all live prices (with pagination to bypass 1000 limit)
+    const livePricesMap = new Map<string, number>()
+    let livePage = 0
+    let hasMoreLive = true
+
+    while (hasMoreLive) {
+        const { data: liveChunk, error: liveErr } = await supabase
+            .from('daraz_live_prices')
+            .select('seller_sku, price, special_price')
+            .range(livePage * 1000, (livePage + 1) * 1000 - 1)
+
+        if (liveErr) {
+            console.error('[AUTO-PRICE] live prices fetch error:', liveErr.message)
+            break
+        }
+        if (!liveChunk || liveChunk.length === 0) {
+            hasMoreLive = false
+            break
+        }
+
+        liveChunk.forEach(lp => {
+            if (!lp.seller_sku) return
+            const sku = lp.seller_sku.toLowerCase().trim()
+            const activePrice = lp.special_price !== null && lp.special_price > 0 ? lp.special_price : lp.price
+            if (activePrice > 0) {
+                const current = livePricesMap.get(sku) || Infinity
+                if (activePrice < current) {
+                    livePricesMap.set(sku, activePrice)
+                }
+            }
+        })
+
+        if (liveChunk.length < 1000) {
+            hasMoreLive = false
+        } else {
+            livePage++
+        }
+    }
+
+    // 4. Calculate updates for each product
+    const updates: Array<{ inventory_id: string, regular_price: number, special_price: number | null }> = []
+
+    products.forEach(p => {
+        if (p.is_price_locked) return
+
+        const skus = [p.seller_sku1, p.seller_sku2, p.seller_sku3, p.seller_sku4]
+            .filter(Boolean)
+            .map(s => s.toLowerCase().trim())
+
+        if (skus.length === 0) return
+
+        // Find the lowest active price across all SKUs
+        let lowestPrice = Infinity
+        skus.forEach(sku => {
+            if (livePricesMap.has(sku)) {
+                const price = livePricesMap.get(sku)!
+                if (price < lowestPrice) {
+                    lowestPrice = price
+                }
+            }
+        })
+
+        if (lowestPrice === Infinity || lowestPrice <= 0) return
+
+        // Calculate discounted price
+        const rawDiscountedPrice = lowestPrice * (1 - discountPercent / 100)
+        
+        // Round to nearest multiple of 5
+        const roundedDiscountedPrice = Math.round(rawDiscountedPrice / 5) * 5
+        const roundedRegularPrice = Math.round(lowestPrice / 5) * 5
+
+        updates.push({
+            inventory_id: p.id,
+            regular_price: roundedRegularPrice,
+            special_price: discountPercent > 0 ? roundedDiscountedPrice : null
+        })
+    })
+
+    if (updates.length === 0) return { success: true, count: 0 }
+
+    // 5. Connect to Ecommerce DB and push
+    const ecommerceSupabaseUrl = process.env.NEXT_PUBLIC_ECOMMERCE_SUPABASE_URL
+    const ecommerceServiceRoleKey = process.env.ECOMMERCE_SUPABASE_SERVICE_ROLE_KEY
+
+    if (!ecommerceSupabaseUrl || !ecommerceServiceRoleKey) {
+        console.warn('[AUTO-PRICE] Ecommerce credentials missing. Cannot push.')
+        return { success: false, message: 'Ecommerce credentials missing' }
+    }
+
+    const ecommerceSupabase = createJSClient(ecommerceSupabaseUrl, ecommerceServiceRoleKey)
+    let successCount = 0
+
+    // Upsert or update in chunks/loops
+    for (const upd of updates) {
+        const { error } = await ecommerceSupabase
+            .from('ecommerce_products')
+            .update({
+                regular_price: upd.regular_price,
+                special_price: upd.special_price
+            })
+            .eq('inventory_id', upd.inventory_id)
+
+        if (!error) successCount++
+    }
+
+    console.log(`[AUTO-PRICE] Successfully auto-pushed prices for ${successCount} products to storefront website.`)
+    return { success: true, count: successCount }
+}
+
+/**
+ * Toggle the price lock state for a product
+ */
+export async function toggleProductPriceLock(productId: string, isLocked: boolean) {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) throw new Error('Not authenticated')
+
+    const { error } = await supabase
+        .from('products')
+        .update({ is_price_locked: isLocked })
+        .eq('id', productId)
+
+    if (error) throw new Error(error.message)
+
+    revalidatePath('/dashboard/sales/daraz/average-sales-price')
+    return { success: true }
+}
+
+
+

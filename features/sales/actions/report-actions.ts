@@ -565,6 +565,15 @@ export async function syncOrderPurchaseCost(orderNumber: string) {
                     feeSyncResult = 'Update Failed'
                 } else {
                     feeSyncResult = `Updated (Fee: ${totalFee.toFixed(2)})`
+                    try {
+                        const productIds = order.items?.map((it: any) => it.product_id).filter(Boolean) || []
+                        if (productIds.length > 0) {
+                            const { updateProductCommissions } = await import('./avg-price-actions')
+                            await updateProductCommissions(productIds)
+                        }
+                    } catch (commErr: any) {
+                        console.error(`[SYNC COMMISSION ERROR] Failed to update product commissions:`, commErr.message)
+                    }
                 }
             }
 

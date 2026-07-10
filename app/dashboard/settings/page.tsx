@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { Store, Calendar, MapPin, CheckCircle, Database, Users, Shield, RefreshCw, Scale } from 'lucide-react'
+import { Store, Calendar, MapPin, CheckCircle, Database, Users, Shield, RefreshCw, Scale, Globe } from 'lucide-react'
 
 const settingsCards = [
     {
@@ -38,6 +38,13 @@ const settingsCards = [
         icon: Database,
         href: '/dashboard/settings/backup',
         color: 'bg-red-500',
+    },
+    {
+        title: 'Website & Marketplace Management',
+        description: 'Manage website category mapping and rules',
+        icon: Globe,
+        href: '/dashboard/settings/website-marketplace',
+        color: 'bg-indigo-600',
     },
     {
         title: 'Staff Management',

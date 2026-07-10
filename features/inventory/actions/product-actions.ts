@@ -2,6 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
+import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 
 // ============================================================================
 // TYPES & INTERFACES
@@ -31,6 +32,18 @@ export interface Product {
     product_combos?: { count: number }[]
     sales_priority?: boolean
     priority_seller_account?: string | null
+    marketplace_sync_status?: 'Pending' | 'Done'
+    website_sync_status?: 'Pending' | 'Done'
+    approval_status?: 'Pending' | 'Approved'
+    daraz_product_url?: string | null
+    product_title?: string | null
+    other_images?: string[] | null
+    description?: string | null
+    highlights?: string | null
+    special_price?: number | null
+    regular_price?: number | null
+    category_name?: string | null
+    website_category?: string | null
 }
 
 export interface ProductCombo {
@@ -123,8 +136,12 @@ export async function getProducts(params: {
         query = query.or(orQuery)
     }
 
-    // Sort alphabetically by product name (A-Z)
-    query = query.order('product_name', { ascending: true })
+    // Sort so that Pending approvals and Pending syncs appear at the top, then alphabetically by product name
+    query = query
+        .order('approval_status', { ascending: false, nullsFirst: false })
+        .order('marketplace_sync_status', { ascending: false, nullsFirst: false })
+        .order('website_sync_status', { ascending: false, nullsFirst: false })
+        .order('product_name', { ascending: true })
 
     // Apply pagination
     query = query.range(from, to)
@@ -1309,15 +1326,38 @@ export async function bulkImportProducts(products: Array<Partial<Product>>) {
 /**
  * Export products to CSV format
  */
-export async function exportProducts() {
-    const { products } = await getProducts({ page: 1, limit: 10000 })
+export async function exportProducts(filter: 'all' | 'marketplace_pending' | 'website_pending' = 'all') {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) throw new Error('Not authenticated')
+
+    let query = supabase
+        .from('products')
+        .select('*')
+        .eq('is_deleted', false)
+        .order('product_name', { ascending: true })
+
+    if (filter === 'marketplace_pending') {
+        query = query.eq('marketplace_sync_status', 'Pending')
+    } else if (filter === 'website_pending') {
+        query = query.eq('website_sync_status', 'Pending')
+    }
+
+    const { data: products, error } = await query
+
+    if (error) throw new Error(error.message)
 
     // Transform products to CSV-friendly format
-    const csvData = products.map(p => ({
+    const csvData = (products || []).map(p => ({
         product_id: p.product_id,
         product_name: p.product_name,
         image_url: p.image_url || '',
         product_type: p.product_type,
+        status: p.status || 'Active',
+        approval_status: p.approval_status || 'Approved',
+        marketplace_sync_status: p.marketplace_sync_status || 'Done',
+        website_sync_status: p.website_sync_status || 'Done',
+        daraz_product_url: p.daraz_product_url || '',
         seller_sku1: p.seller_sku1 || '',
         seller_account1: p.seller_account1 || '',
         seller_sku2: p.seller_sku2 || '',
@@ -1536,3 +1576,333 @@ export async function permanentlyDeleteAllProductsBackup() {
 
     return { success: true, message: message.trim() || 'Process complete.' }
 }
+
+/**
+ * Approves a synced product (changes approval_status to 'Approved')
+ */
+export async function approveProduct(productId: string) {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) throw new Error('Not authenticated')
+
+    const { data, error } = await supabase
+        .from('products')
+        .update({
+            approval_status: 'Approved',
+            updated_by: user.id,
+            updated_at: new Date().toISOString()
+        })
+        .eq('id', productId)
+        .select()
+        .single()
+
+    if (error) throw new Error(error.message)
+
+    revalidatePath('/dashboard/inventory/product-list')
+    return data
+}
+
+/**
+ * Rejects and deletes a synced product completely from the database
+ */
+export async function rejectProduct(productId: string) {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) throw new Error('Not authenticated')
+
+    // Perform hard delete
+    const { error } = await supabase
+        .from('products')
+        .delete()
+        .eq('id', productId)
+
+    if (error) throw new Error(error.message)
+
+    revalidatePath('/dashboard/inventory/product-list')
+    return { success: true }
+}
+
+/**
+ * Updates sync statuses (Marketplace / Website) for a product
+ */
+export async function updateSyncStatuses(
+    productId: string, 
+    marketplaceStatus: 'Pending' | 'Done', 
+    websiteStatus: 'Pending' | 'Done'
+) {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) throw new Error('Not authenticated')
+
+    const { data, error } = await supabase
+        .from('products')
+        .update({
+            marketplace_sync_status: marketplaceStatus,
+            website_sync_status: websiteStatus,
+            updated_by: user.id,
+            updated_at: new Date().toISOString()
+        })
+        .eq('id', productId)
+        .select()
+        .single()
+
+    if (error) throw new Error(error.message)
+
+    revalidatePath('/dashboard/inventory/product-list')
+    return data
+}
+
+function getEcommerceSupabaseClient() {
+    const url = process.env.NEXT_PUBLIC_ECOMMERCE_SUPABASE_URL
+    const key = process.env.ECOMMERCE_SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_ECOMMERCE_SUPABASE_ANON_KEY
+    if (!url || !key) {
+        throw new Error('Ecommerce Supabase configuration is missing in environment variables')
+    }
+    return createSupabaseClient(url, key)
+}
+
+/**
+ * Fetch all categories from the ecommerce_categories table
+ */
+export async function getEcommerceCategories() {
+    const warehouseSupabase = await createClient()
+    const { data: { user } } = await warehouseSupabase.auth.getUser()
+    if (!user) throw new Error('Not authenticated')
+
+    const ecommerceSupabase = getEcommerceSupabaseClient()
+    const { data, error } = await ecommerceSupabase
+        .from('ecommerce_categories')
+        .select('id, name, slug, parent_id')
+        .order('name')
+
+    if (error) throw new Error(error.message)
+    return data
+}
+
+/**
+ * Fetch all brands from the ecommerce_brands table
+ */
+export async function getEcommerceBrands() {
+    const warehouseSupabase = await createClient()
+    const { data: { user } } = await warehouseSupabase.auth.getUser()
+    if (!user) throw new Error('Not authenticated')
+
+    const ecommerceSupabase = getEcommerceSupabaseClient()
+    const { data, error } = await ecommerceSupabase
+        .from('ecommerce_brands')
+        .select('id, name')
+        .order('name')
+
+    if (error) throw new Error(error.message)
+    return data
+}
+
+/**
+ * Publish product to the ecommerce storefront database table
+ */
+export async function pushProductToEcommerce(productId: string, payload: any) {
+    const warehouseSupabase = await createClient()
+    const { data: { user } } = await warehouseSupabase.auth.getUser()
+    if (!user) throw new Error('Not authenticated')
+
+    const ecommerceSupabase = getEcommerceSupabaseClient()
+
+    // 1. Generate unique URL slug
+    const slug = payload.display_name
+        .toLowerCase()
+        .replace(/ /g, '-')
+        .replace(/[^\w-]+/g, '') + '-' + Math.random().toString(36).substring(2, 5)
+
+    // 2. Insert product into ecommerce_products
+    const { data, error: insertError } = await ecommerceSupabase
+        .from('ecommerce_products')
+        .insert({
+            ...payload,
+            slug,
+            status: 'active',
+            price: payload.regular_price || 0,
+            rating: 0,
+            reviews_count: 0,
+            created_at: new Date().toISOString()
+        })
+        .select()
+        .single()
+
+    if (insertError) {
+        throw new Error(insertError.message)
+    }
+
+    // 3. Update products table sync status in warehouse
+    const { error: updateError } = await warehouseSupabase
+        .from('products')
+        .update({
+            website_sync_status: 'Done',
+            updated_by: user.id,
+            updated_at: new Date().toISOString()
+        })
+        .eq('id', productId)
+
+    if (updateError) {
+        throw new Error(updateError.message)
+    }
+
+    revalidatePath('/dashboard/inventory/product-list')
+    return { success: true, data }
+}
+
+/**
+ * Fetch all category mappings
+ */
+export async function getCategoryMappings() {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) throw new Error('Not authenticated')
+
+    const { data, error } = await supabase
+        .from('daraz_website_category_mappings')
+        .select('*')
+        .order('daraz_category')
+
+    if (error) throw new Error(error.message)
+    return data
+}
+
+/**
+ * Bulk upload category mappings
+ */
+export async function bulkUploadCategoryMappings(mappings: any[]) {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) throw new Error('Not authenticated')
+
+    if (!Array.isArray(mappings) || mappings.length === 0) {
+        throw new Error('No mappings provided')
+    }
+
+    // Clean, validate and deduplicate mappings by daraz_category (case-insensitive)
+    const cleanedMap = new Map<string, any>()
+    for (const m of mappings) {
+        const darazCategory = String(m['Daraz Category'] || m.daraz_category || '').trim()
+        const websiteCategory = String(m['Website Category'] || m.website_category || '').trim()
+        if (darazCategory && websiteCategory) {
+            cleanedMap.set(darazCategory.toLowerCase().trim(), {
+                daraz_category: darazCategory,
+                website_category: websiteCategory
+            })
+        }
+    }
+    const cleaned = Array.from(cleanedMap.values())
+
+    if (cleaned.length === 0) {
+        throw new Error('No valid mapping rows found. Ensure columns are named exactly "Daraz Category" and "Website Category"')
+    }
+
+    // Perform bulk upsert in batches of 500
+    const batchSize = 500
+    for (let i = 0; i < cleaned.length; i += batchSize) {
+        const batch = cleaned.slice(i, i + batchSize)
+        const { error } = await supabase
+            .from('daraz_website_category_mappings')
+            .upsert(batch, { onConflict: 'daraz_category' })
+        if (error) throw new Error(error.message)
+    }
+
+    // Perform highly targeted updates on categories currently used in products
+    try {
+        const { data: activeProductsData } = await supabase
+            .from('products')
+            .select('category_name')
+            .not('category_name', 'is', null)
+
+        if (activeProductsData) {
+            // Get unique active category names (case-insensitive)
+            const uniqueActiveCats = Array.from(
+                new Set(activeProductsData.map(p => String(p.category_name).trim()))
+            )
+
+            // Filter mappings down to only those matching active categories
+            const activeMappings = cleaned.filter(m => 
+                uniqueActiveCats.some(cat => cat.toLowerCase() === m.daraz_category.toLowerCase())
+            )
+
+            // Run updates only for active categories
+            for (const mapItem of activeMappings) {
+                await supabase
+                    .from('products')
+                    .update({ website_category: mapItem.website_category })
+                    .ilike('category_name', mapItem.daraz_category)
+            }
+        }
+    } catch (updateErr: any) {
+        console.error('Failed to auto-update existing products website categories:', updateErr.message)
+    }
+
+    return { success: true, count: cleaned.length }
+}
+
+/**
+ * Delete a category mapping by ID
+ */
+export async function deleteCategoryMapping(id: string) {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) throw new Error('Not authenticated')
+
+    const { error } = await supabase
+        .from('daraz_website_category_mappings')
+        .delete()
+        .eq('id', id)
+
+    if (error) throw new Error(error.message)
+    return { success: true }
+}
+
+/**
+ * Fetch website live price discount settings
+ */
+export async function getWebsiteDiscountRules() {
+    const supabase = await createClient()
+    const { data, error } = await supabase
+        .from('app_settings')
+        .select('value')
+        .eq('key', 'website_discount_rules')
+        .single()
+
+    if (error && error.code !== 'PGRST116') {
+        throw new Error(error.message)
+    }
+
+    return data?.value || { active: false, percent: 0 }
+}
+
+/**
+ * Save website live price discount settings
+ */
+export async function saveWebsiteDiscountRules(rules: { active: boolean, percent: number }) {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) throw new Error('Not authenticated')
+
+    const { error } = await supabase
+        .from('app_settings')
+        .upsert({
+            key: 'website_discount_rules',
+            value: rules,
+            updated_at: new Date().toISOString()
+        }, { onConflict: 'key' })
+
+    if (error) throw new Error(error.message)
+
+    if (rules.active) {
+        try {
+            const { autoUpdateWebsitePrices } = await import('../../sales/actions/avg-price-actions')
+            await autoUpdateWebsitePrices()
+        } catch (err: any) {
+            console.error('[AUTO-PRICE] Background auto pricing failed:', err.message)
+        }
+    }
+    
+    revalidatePath('/dashboard/settings/website-marketplace')
+    return { success: true }
+}
+

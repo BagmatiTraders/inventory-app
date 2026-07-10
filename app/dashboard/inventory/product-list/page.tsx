@@ -2,10 +2,9 @@
 
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { getProducts, exportProducts, toggleProductStatus, updateProduct } from '@/features/inventory/actions/product-actions'
-import { ArrowLeft, Plus, Upload, Download, Search, X, Package, Trash2, Box, Image as ImageIcon } from 'lucide-react'
+import { getProducts, exportProducts, toggleProductStatus, updateProduct, approveProduct, rejectProduct, updateSyncStatuses } from '@/features/inventory/actions/product-actions'
+import { ArrowLeft, Plus, Upload, Download, Search, X, Package, Trash2, Box, Image as ImageIcon, Check, RefreshCw, ExternalLink } from 'lucide-react'
 import Link from 'next/link'
-import Image from 'next/image'
 import { Card } from '@/components/ui-shim'
 import { AddProductModal } from '@/features/inventory/components/AddProductModal'
 import { ViewProductModal } from '@/features/inventory/components/ViewProductModal'
@@ -13,6 +12,7 @@ import { EditProductModal } from '@/features/inventory/components/EditProductMod
 import { DeleteProductButton } from '@/features/inventory/components/DeleteProductButton'
 import { ImportCSVModal } from '@/features/inventory/components/ImportCSVModal'
 import { usePermissions } from '@/lib/permissions/PermissionContext'
+import { PushToWebsiteModal } from '@/features/inventory/components/PushToWebsiteModal'
 
 export default function ProductListPage() {
     const [page, setPage] = useState(1)
@@ -22,15 +22,68 @@ export default function ProductListPage() {
     const [isImportModalOpen, setIsImportModalOpen] = useState(false)
     const [viewProductId, setViewProductId] = useState<string | null>(null)
     const [editProductId, setEditProductId] = useState<string | null>(null)
+    const [pushProductId, setPushProductId] = useState<string | null>(null)
 
     // Priority and More menu states
     const [priorityEditId, setPriorityEditId] = useState<string | null>(null)
     const [moreMenuId, setMoreMenuId] = useState<string | null>(null)
     const [isSavingPriority, setIsSavingPriority] = useState(false)
+    const [isSyncing, setIsSyncing] = useState(false)
+    const [isExportDropdownOpen, setIsExportDropdownOpen] = useState(false)
 
     // Get real user role from permission context
     const { userRole } = usePermissions()
     const queryClient = useQueryClient()
+
+    const handleSyncDarazProducts = async () => {
+        setIsSyncing(true)
+        try {
+            const res = await fetch('/api/daraz/products/sync', { method: 'POST' })
+            const data = await res.json()
+            if (!res.ok || data.error) {
+                throw new Error(data.error || data.details || 'Failed to sync')
+            }
+            alert(data.message || 'Sync completed successfully!')
+            queryClient.invalidateQueries({ queryKey: ['products'] })
+        } catch (err: any) {
+            alert(`Sync failed: ${err.message}`)
+        } finally {
+            setIsSyncing(false)
+        }
+    }
+
+    const handleApprove = async (product: any) => {
+        try {
+            await approveProduct(product.id)
+            setEditProductId(product.id)
+            queryClient.invalidateQueries({ queryKey: ['products'] })
+        } catch (err: any) {
+            alert(`Approval failed: ${err.message}`)
+        }
+    }
+
+    const handleReject = async (productId: string, productName: string) => {
+        if (!confirm(`Are you sure you want to reject and remove "${productName}" from the database?`)) {
+            return
+        }
+        try {
+            await rejectProduct(productId)
+            queryClient.invalidateQueries({ queryKey: ['products'] })
+        } catch (err: any) {
+            alert(`Rejection failed: ${err.message}`)
+        }
+    }
+
+    const handleSyncStatusChange = async (productId: string, currentMarketplace: any, currentWebsite: any, field: 'marketplace' | 'website', value: 'Pending' | 'Done') => {
+        try {
+            const newMarketplace = field === 'marketplace' ? value : (currentMarketplace || 'Done')
+            const newWebsite = field === 'website' ? value : (currentWebsite || 'Done')
+            await updateSyncStatuses(productId, newMarketplace, newWebsite)
+            queryClient.invalidateQueries({ queryKey: ['products'] })
+        } catch (err: any) {
+            alert(`Failed to update status: ${err.message}`)
+        }
+    }
 
     const handleSetPriority = async (product: any, priority: boolean) => {
         setIsSavingPriority(true)
@@ -89,9 +142,14 @@ export default function ProductListPage() {
         setPage(1)
     }
 
-    const handleExport = async () => {
+    const handleExport = async (filter: 'all' | 'marketplace_pending' | 'website_pending' = 'all') => {
         try {
-            const csvData = await exportProducts()
+            const csvData = await exportProducts(filter)
+
+            if (csvData.length === 0) {
+                alert('No products found matching this filter.')
+                return
+            }
 
             // Convert to CSV string
             const headers = Object.keys(csvData[0] || {})
@@ -115,7 +173,7 @@ export default function ProductListPage() {
             const url = window.URL.createObjectURL(blob)
             const link = document.createElement('a')
             link.href = url
-            link.download = `products_export_${new Date().toISOString().split('T')[0]}.csv`
+            link.download = `products_export_${filter}_${new Date().toISOString().split('T')[0]}.csv`
             document.body.appendChild(link)
             link.click()
             document.body.removeChild(link)
@@ -195,14 +253,60 @@ export default function ProductListPage() {
                             <Upload size={14} className="text-gray-500" />
                             Import CSV
                         </button>
-                        <button
-                            onClick={handleExport}
-                            className="hidden md:flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 rounded-lg hover:bg-gray-50 dark:hover:bg-zinc-700 transition-all shadow-sm"
-                        >
-                            <Download size={14} className="text-gray-500" />
-                            Export
-                        </button>
+                        <div className="relative">
+                            <button
+                                onClick={() => setIsExportDropdownOpen(!isExportDropdownOpen)}
+                                className="hidden md:flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 rounded-lg hover:bg-gray-50 dark:hover:bg-zinc-700 transition-all shadow-sm"
+                            >
+                                <Download size={14} className="text-gray-500" />
+                                Export
+                            </button>
+                            {isExportDropdownOpen && (
+                                <>
+                                    {/* Backdrop */}
+                                    <div className="fixed inset-0 z-40 cursor-default" onClick={() => setIsExportDropdownOpen(false)} />
+                                    {/* Dropdown Menu */}
+                                    <div className="absolute right-0 mt-1.5 w-48 rounded-lg bg-white dark:bg-zinc-800 border border-gray-150 dark:border-zinc-700 shadow-xl z-50 py-1 overflow-hidden animate-in fade-in slide-in-from-top-1 duration-100">
+                                        <button
+                                            onClick={() => {
+                                                handleExport('all')
+                                                setIsExportDropdownOpen(false)
+                                            }}
+                                            className="w-full text-left px-4 py-2 text-xs font-semibold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-zinc-700 transition-colors"
+                                        >
+                                            All Products
+                                        </button>
+                                        <button
+                                            onClick={() => {
+                                                handleExport('marketplace_pending')
+                                                setIsExportDropdownOpen(false)
+                                            }}
+                                            className="w-full text-left px-4 py-2 text-xs font-semibold text-amber-600 dark:text-amber-400 hover:bg-amber-50/50 dark:hover:bg-amber-950/20 transition-colors"
+                                        >
+                                            Marketplace Pending
+                                        </button>
+                                        <button
+                                            onClick={() => {
+                                                handleExport('website_pending')
+                                                setIsExportDropdownOpen(false)
+                                            }}
+                                            className="w-full text-left px-4 py-2 text-xs font-semibold text-amber-600 dark:text-amber-400 hover:bg-amber-50/50 dark:hover:bg-amber-950/20 transition-colors"
+                                        >
+                                            Website Pending
+                                        </button>
+                                    </div>
+                                </>
+                            )}
+                        </div>
                         <div className="hidden md:block w-px h-6 bg-gray-200 dark:bg-zinc-700 mx-1"></div>
+                        <button
+                            onClick={handleSyncDarazProducts}
+                            disabled={isSyncing}
+                            className="hidden md:flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 rounded-lg hover:bg-gray-50 dark:hover:bg-zinc-700 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            <RefreshCw size={14} className={`text-gray-500 ${isSyncing ? 'animate-spin' : ''}`} />
+                            {isSyncing ? 'Syncing...' : 'Sync'}
+                        </button>
                         <button
                             onClick={() => setIsModalOpen(true)}
                             className="hidden md:flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-md hover:shadow-lg hover:shadow-blue-500/20 transition-all active:scale-[0.98]"
@@ -227,13 +331,16 @@ export default function ProductListPage() {
                                     <th className="hidden md:table-cell px-4 py-3 text-xs font-bold uppercase tracking-wider text-black dark:text-white">Type</th>
                                     <th className="hidden md:table-cell px-4 py-3 text-xs font-bold uppercase tracking-wider text-black dark:text-white">Status</th>
                                     <th className="px-2 md:px-4 py-3 text-xs font-bold uppercase tracking-wider text-black dark:text-white">Product ID</th>
+                                    <th className="hidden lg:table-cell px-4 py-3 text-xs font-bold uppercase tracking-wider text-black dark:text-white">Website Category</th>
+                                    <th className="hidden md:table-cell px-4 py-3 text-xs font-bold uppercase tracking-wider text-black dark:text-white">Marketplace</th>
+                                    <th className="hidden md:table-cell px-4 py-3 text-xs font-bold uppercase tracking-wider text-black dark:text-white">Website</th>
                                     <th className="hidden md:table-cell px-4 py-3 text-xs font-bold uppercase tracking-wider text-black dark:text-white text-right">Actions</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-100 dark:divide-zinc-800">
                                 {isLoading ? (
                                     <tr>
-                                        <td colSpan={7} className="px-4 py-12 text-center">
+                                        <td colSpan={9} className="px-4 py-12 text-center">
                                             <div className="flex flex-col items-center justify-center gap-2">
                                                 <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
                                                 <p className="text-sm text-gray-500">Loading products...</p>
@@ -242,13 +349,13 @@ export default function ProductListPage() {
                                     </tr>
                                 ) : error ? (
                                     <tr>
-                                        <td colSpan={7} className="px-4 py-12 text-center text-sm text-red-500 bg-red-50/50 dark:bg-red-900/10">
+                                        <td colSpan={9} className="px-4 py-12 text-center text-sm text-red-500 bg-red-50/50 dark:bg-red-900/10">
                                             Error loading products: {error.message}
                                         </td>
                                     </tr>
                                 ) : !data || data.products.length === 0 ? (
                                     <tr>
-                                        <td colSpan={7} className="px-4 py-16 text-center">
+                                        <td colSpan={9} className="px-4 py-16 text-center">
                                             <div className="flex flex-col items-center justify-center gap-3">
                                                 <div className="w-12 h-12 bg-gray-100 dark:bg-zinc-800 rounded-full flex items-center justify-center text-gray-400">
                                                     <Box size={20} />
@@ -279,12 +386,10 @@ export default function ProductListPage() {
                                                 <td className="px-2 md:px-4 py-3">
                                                     <div className="relative w-8 h-8 md:w-10 md:h-10 rounded-lg overflow-hidden bg-gray-100 dark:bg-zinc-800 border dark:border-zinc-700 shadow-sm">
                                                         {product.image_url ? (
-                                                            <Image
+                                                            <img
                                                                 src={product.image_url}
                                                                 alt={product.product_name}
                                                                 className="w-full h-full object-cover"
-                                                                width={40}
-                                                                height={40}
                                                                 onError={(e) => {
                                                                     e.currentTarget.style.display = 'none';
                                                                     e.currentTarget.nextElementSibling?.classList.remove('hidden');
@@ -298,13 +403,26 @@ export default function ProductListPage() {
                                                 </td>
                                                 <td className="px-2 md:px-4 py-3">
                                                     <div className="flex flex-col">
-                                                        <button
-                                                            onClick={() => setViewProductId(product.id)}
-                                                            className="text-sm font-medium text-gray-900 dark:text-gray-200 hover:text-blue-600 dark:hover:text-blue-400 text-left transition-colors line-clamp-1"
-                                                            title={product.product_name}
-                                                        >
-                                                            {product.product_name}
-                                                        </button>
+                                                        <div className="flex items-center gap-1.5 max-w-xs md:max-w-md">
+                                                            <button
+                                                                onClick={() => setViewProductId(product.id)}
+                                                                className="text-sm font-medium text-gray-900 dark:text-gray-200 hover:text-blue-600 dark:hover:text-blue-400 text-left transition-colors line-clamp-1"
+                                                                title={product.product_name}
+                                                            >
+                                                                {product.product_name}
+                                                            </button>
+                                                            {product.daraz_product_url && (
+                                                                <a
+                                                                    href={product.daraz_product_url}
+                                                                    target="_blank"
+                                                                    rel="noopener noreferrer"
+                                                                    className="text-orange-500 hover:text-orange-600 transition-colors flex-shrink-0"
+                                                                    title="Open on Daraz"
+                                                                >
+                                                                    <ExternalLink size={13} />
+                                                                </a>
+                                                            )}
+                                                        </div>
                                                         {product.seller_sku1 && (
                                                             <span className="text-[11px] text-gray-400 font-mono mt-0.5">SKU: {product.seller_sku1}</span>
                                                         )}
@@ -347,93 +465,173 @@ export default function ProductListPage() {
                                                 <td className="px-2 md:px-4 py-3 text-sm font-mono text-gray-500 dark:text-gray-400">
                                                     #{product.product_id}
                                                 </td>
+                                                {/* Website Category */}
+                                                <td className="hidden lg:table-cell px-4 py-3">
+                                                    {product.website_category ? (
+                                                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-blue-700 dark:bg-blue-950/20 dark:text-blue-400 border border-blue-100 dark:border-blue-900/30">
+                                                            {product.website_category}
+                                                        </span>
+                                                    ) : (
+                                                        <span className="text-gray-400 italic text-[11px]">Unmapped</span>
+                                                    )}
+                                                </td>
+                                                {/* Marketplace Sync Status */}
+                                                <td className="hidden md:table-cell px-4 py-3">
+                                                    <select
+                                                        value={product.marketplace_sync_status || 'Done'}
+                                                        onChange={(e) => handleSyncStatusChange(product.id, product.marketplace_sync_status, product.website_sync_status, 'marketplace', e.target.value as 'Pending' | 'Done')}
+                                                        className={`text-xs font-semibold px-2 py-0.5 rounded-full border cursor-pointer focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white dark:bg-zinc-800 ${
+                                                            (product.marketplace_sync_status === 'Pending')
+                                                                ? 'text-amber-700 bg-amber-50 border-amber-200 dark:text-amber-400 dark:bg-amber-900/20 dark:border-amber-900/30'
+                                                                : 'text-emerald-700 bg-emerald-50 border-emerald-200 dark:text-emerald-400 dark:bg-emerald-900/20 dark:border-emerald-900/30'
+                                                        }`}
+                                                    >
+                                                        <option value="Pending">Pending</option>
+                                                        <option value="Done">Done</option>
+                                                    </select>
+                                                </td>
+                                                {/* Website Sync Status */}
+                                                <td className="hidden md:table-cell px-4 py-3">
+                                                    <select
+                                                        value={product.website_sync_status || 'Done'}
+                                                        onChange={(e) => handleSyncStatusChange(product.id, product.marketplace_sync_status, product.website_sync_status, 'website', e.target.value as 'Pending' | 'Done')}
+                                                        className={`text-xs font-semibold px-2 py-0.5 rounded-full border cursor-pointer focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white dark:bg-zinc-800 ${
+                                                            (product.website_sync_status === 'Pending')
+                                                                ? 'text-amber-700 bg-amber-50 border-amber-200 dark:text-amber-400 dark:bg-amber-900/20 dark:border-amber-900/30'
+                                                                : 'text-emerald-700 bg-emerald-50 border-emerald-200 dark:text-emerald-400 dark:bg-emerald-900/20 dark:border-emerald-900/30'
+                                                        }`}
+                                                    >
+                                                        <option value="Pending">Pending</option>
+                                                        <option value="Done">Done</option>
+                                                    </select>
+                                                </td>
                                                 <td className="hidden md:table-cell px-4 py-3 relative">
-                                                    <div className="flex items-center justify-end gap-2">
-                                                        {/* Priority Button Wrapper */}
-                                                        <div className="relative">
+                                                    {product.approval_status === 'Pending' ? (
+                                                        <div className="flex items-center justify-end gap-1.5">
                                                             <button
-                                                                onClick={() => {
-                                                                    setPriorityEditId(priorityEditId === product.id ? null : product.id);
-                                                                    setMoreMenuId(null);
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation()
+                                                                    handleApprove(product)
                                                                 }}
-                                                                className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all shadow-sm ${
-                                                                    product.sales_priority
-                                                                        ? 'bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white border-none shadow-md shadow-amber-500/10 hover:shadow-lg hover:shadow-amber-500/20 active:scale-95'
-                                                                        : 'bg-white dark:bg-zinc-900 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-zinc-700 hover:border-amber-500 dark:hover:border-amber-500 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-amber-50/10 dark:hover:bg-amber-950/10 active:scale-95'
-                                                                }`}
+                                                                className="p-1 rounded-md text-emerald-600 bg-emerald-50 hover:bg-emerald-100 dark:text-emerald-400 dark:bg-emerald-950/20 dark:hover:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900/50 hover:scale-105 active:scale-95 transition-all"
+                                                                title="Approve Listing"
                                                             >
-                                                                Priority{product.sales_priority ? ': Yes' : ''}
+                                                                <Check size={14} />
                                                             </button>
-
-                                                            {priorityEditId === product.id && (
-                                                                <>
-                                                                    {/* Fixed full-screen backdrop to detect click-out */}
-                                                                    <div className="fixed inset-0 z-40 cursor-default" onClick={() => setPriorityEditId(null)} />
-                                                                    {/* Floating Dropdown */}
-                                                                    <div className="absolute right-0 mt-1.5 w-32 rounded-lg bg-white dark:bg-zinc-800 border border-gray-150 dark:border-zinc-700 shadow-xl z-50 py-1 overflow-hidden animate-in fade-in slide-in-from-top-1 duration-100">
-                                                                        <button
-                                                                            disabled={isSavingPriority}
-                                                                            onClick={() => handleSetPriority(product, true)}
-                                                                            className="w-full text-left px-3 py-2 text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/20 flex items-center gap-1.5 transition-colors"
-                                                                        >
-                                                                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                                                                            Yes
-                                                                        </button>
-                                                                        <button
-                                                                            disabled={isSavingPriority}
-                                                                            onClick={() => handleSetPriority(product, false)}
-                                                                            className="w-full text-left px-3 py-2 text-xs font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/20 flex items-center gap-1.5 transition-colors"
-                                                                        >
-                                                                            <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
-                                                                            No
-                                                                        </button>
-                                                                    </div>
-                                                                </>
-                                                            )}
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation()
+                                                                    handleReject(product.id, product.product_name)
+                                                                }}
+                                                                className="p-1 rounded-md text-rose-600 bg-rose-50 hover:bg-rose-100 dark:text-rose-400 dark:bg-rose-950/20 dark:hover:bg-rose-950/30 border border-rose-200 dark:border-rose-900/50 hover:scale-105 active:scale-95 transition-all"
+                                                                title="Reject & Remove"
+                                                            >
+                                                                <X size={14} />
+                                                            </button>
                                                         </div>
+                                                    ) : (
+                                                        <div className="flex items-center justify-end gap-2">
+                                                            {/* Priority Button Wrapper */}
+                                                            <div className="relative">
+                                                                <button
+                                                                    onClick={() => {
+                                                                        setPriorityEditId(priorityEditId === product.id ? null : product.id);
+                                                                        setMoreMenuId(null);
+                                                                    }}
+                                                                    className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all shadow-sm ${
+                                                                        product.sales_priority
+                                                                            ? 'bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white border-none shadow-md shadow-amber-500/10 hover:shadow-lg hover:shadow-amber-500/20 active:scale-95'
+                                                                            : 'bg-white dark:bg-zinc-900 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-zinc-700 hover:border-amber-500 dark:hover:border-amber-500 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-amber-50/10 dark:hover:bg-amber-950/10 active:scale-95'
+                                                                    }`}
+                                                                >
+                                                                    Priority{product.sales_priority ? ': Yes' : ''}
+                                                                </button>
 
-                                                        {/* More Button Wrapper */}
-                                                        <div className="relative">
-                                                            <button
-                                                                onClick={() => {
-                                                                    setMoreMenuId(moreMenuId === product.id ? null : product.id);
-                                                                    setPriorityEditId(null);
-                                                                }}
-                                                                className="px-3 py-1.5 text-xs font-semibold text-indigo-600 dark:text-indigo-400 bg-white dark:bg-zinc-900 border border-indigo-200 dark:border-indigo-900/50 hover:bg-indigo-50 dark:hover:bg-indigo-950/20 hover:border-indigo-400 dark:hover:border-indigo-800 rounded-lg shadow-sm transition-all active:scale-95"
-                                                            >
-                                                                More
-                                                            </button>
-
-                                                            {moreMenuId === product.id && (
-                                                                <>
-                                                                    {/* Fixed full-screen backdrop to detect click-out */}
-                                                                    <div className="fixed inset-0 z-40 cursor-default" onClick={() => setMoreMenuId(null)} />
-                                                                    {/* Floating Dropdown */}
-                                                                    <div className="absolute right-0 mt-1.5 w-40 rounded-lg bg-white dark:bg-zinc-800 border border-gray-150 dark:border-zinc-700 shadow-xl z-50 py-1 overflow-hidden animate-in fade-in slide-in-from-top-1 duration-100">
-                                                                        <button
-                                                                            onClick={() => {
-                                                                                setViewProductId(product.id);
-                                                                                setMoreMenuId(null);
-                                                                            }}
-                                                                            className="w-full text-left px-3 py-2 text-xs font-semibold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-zinc-700 flex items-center gap-1.5 transition-colors"
-                                                                        >
-                                                                            View
-                                                                        </button>
-                                                                        
-                                                                        <div className="border-t border-gray-100 dark:border-zinc-700 my-1" />
-                                                                        
-                                                                        <div className="px-1 py-0.5">
-                                                                            <DeleteProductButton
-                                                                                productId={product.id}
-                                                                                productName={product.product_name}
-                                                                                userRole={userRole ?? 'user'}
-                                                                            />
+                                                                {priorityEditId === product.id && (
+                                                                    <>
+                                                                        {/* Fixed full-screen backdrop to detect click-out */}
+                                                                        <div className="fixed inset-0 z-40 cursor-default" onClick={() => setPriorityEditId(null)} />
+                                                                        {/* Floating Dropdown */}
+                                                                        <div className="absolute right-0 mt-1.5 w-32 rounded-lg bg-white dark:bg-zinc-800 border border-gray-150 dark:border-zinc-700 shadow-xl z-50 py-1 overflow-hidden animate-in fade-in slide-in-from-top-1 duration-100">
+                                                                            <button
+                                                                                disabled={isSavingPriority}
+                                                                                onClick={() => handleSetPriority(product, true)}
+                                                                                className="w-full text-left px-3 py-2 text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/20 flex items-center gap-1.5 transition-colors"
+                                                                            >
+                                                                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                                                                                Yes
+                                                                            </button>
+                                                                            <button
+                                                                                disabled={isSavingPriority}
+                                                                                onClick={() => handleSetPriority(product, false)}
+                                                                                className="w-full text-left px-3 py-2 text-xs font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/20 flex items-center gap-1.5 transition-colors"
+                                                                            >
+                                                                                <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+                                                                                No
+                                                                            </button>
                                                                         </div>
-                                                                    </div>
-                                                                </>
-                                                            )}
+                                                                    </>
+                                                                )}
+                                                            </div>
+
+                                                            {/* More Button Wrapper */}
+                                                            <div className="relative">
+                                                                <button
+                                                                    onClick={() => {
+                                                                        setMoreMenuId(moreMenuId === product.id ? null : product.id);
+                                                                        setPriorityEditId(null);
+                                                                    }}
+                                                                    className="px-3 py-1.5 text-xs font-semibold text-indigo-600 dark:text-indigo-400 bg-white dark:bg-zinc-900 border border-indigo-200 dark:border-indigo-900/50 hover:bg-indigo-50 dark:hover:bg-indigo-950/20 hover:border-indigo-400 dark:hover:border-indigo-800 rounded-lg shadow-sm transition-all active:scale-95"
+                                                                >
+                                                                    More
+                                                                </button>
+
+                                                                {moreMenuId === product.id && (
+                                                                    <>
+                                                                        {/* Fixed full-screen backdrop to detect click-out */}
+                                                                        <div className="fixed inset-0 z-40 cursor-default" onClick={() => setMoreMenuId(null)} />
+                                                                        {/* Floating Dropdown */}
+                                                                        <div className="absolute right-0 mt-1.5 w-40 rounded-lg bg-white dark:bg-zinc-800 border border-gray-150 dark:border-zinc-700 shadow-xl z-50 py-1 overflow-hidden animate-in fade-in slide-in-from-top-1 duration-100">
+                                                                            <button
+                                                                                onClick={() => {
+                                                                                    setViewProductId(product.id);
+                                                                                    setMoreMenuId(null);
+                                                                                }}
+                                                                                className="w-full text-left px-3 py-2 text-xs font-semibold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-zinc-700 flex items-center gap-1.5 transition-colors"
+                                                                            >
+                                                                                View
+                                                                            </button>
+                                                                            
+                                                                            {product.website_sync_status === 'Pending' && (
+                                                                                <>
+                                                                                    <div className="border-t border-gray-100 dark:border-zinc-700 my-1" />
+                                                                                    <button
+                                                                                        onClick={() => {
+                                                                                            setPushProductId(product.id);
+                                                                                            setMoreMenuId(null);
+                                                                                        }}
+                                                                                        className="w-full text-left px-3 py-2 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/20 flex items-center gap-1.5 transition-colors"
+                                                                                    >
+                                                                                        Push to Website
+                                                                                    </button>
+                                                                                </>
+                                                                            )}
+
+                                                                            <div className="border-t border-gray-100 dark:border-zinc-700 my-1" />
+                                                                            
+                                                                            <div className="px-1 py-0.5">
+                                                                                <DeleteProductButton
+                                                                                    productId={product.id}
+                                                                                    productName={product.product_name}
+                                                                                    userRole={userRole ?? 'user'}
+                                                                                />
+                                                                            </div>
+                                                                        </div>
+                                                                    </>
+                                                                )}
+                                                            </div>
                                                         </div>
-                                                    </div>
+                                                    )}
                                                 </td>
                                             </tr>
                                         )
@@ -522,6 +720,13 @@ export default function ProductListPage() {
             <ImportCSVModal
                 isOpen={isImportModalOpen}
                 onClose={() => setIsImportModalOpen(false)}
+            />
+
+            {/* Push To Website Modal */}
+            <PushToWebsiteModal
+                productId={pushProductId}
+                isOpen={!!pushProductId}
+                onClose={() => setPushProductId(null)}
             />
         </div>
     )

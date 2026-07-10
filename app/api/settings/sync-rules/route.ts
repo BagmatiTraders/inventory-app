@@ -1,9 +1,9 @@
-import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 
 export async function GET() {
     try {
-        const supabase = await createClient()
+        const supabase = await createAdminClient()
 
         const { data, error } = await supabase
             .from('app_settings')
@@ -17,15 +17,15 @@ export async function GET() {
             console.error("Error fetching settings:", error)
         }
 
-        return NextResponse.json(data?.value || { cutoff_date: null })
+        return NextResponse.json(data?.value || { cutoff_date: null, product_cutoff_date: null })
     } catch (error) {
-        return NextResponse.json({ cutoff_date: null })
+        return NextResponse.json({ cutoff_date: null, product_cutoff_date: null })
     }
 }
 
 export async function POST(request: Request) {
     try {
-        const supabase = await createClient()
+        const supabase = await createAdminClient()
         const body = await request.json()
 
         // Upsert setting
