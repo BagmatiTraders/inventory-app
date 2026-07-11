@@ -1,6 +1,6 @@
 'use server'
 
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createAdminClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 
@@ -29,7 +29,7 @@ export interface Product {
     import_flag: boolean
     is_deleted: boolean
     status?: string // 'Active' | 'Inactive'
-    product_combos?: { count: number }[]
+    product_combos?: { count?: number; id?: string; quantity?: number; child_product_id?: string }[]
     sales_priority?: boolean
     priority_seller_account?: string | null
     marketplace_sync_status?: 'Pending' | 'Done'
@@ -98,8 +98,9 @@ export async function getProducts(params: {
     limit?: number
     search?: string
     productType?: 'single' | 'combo' | 'all'
+    syncFilter?: 'all' | 'website_pending' | 'marketplace_pending' | 'variation_product'
 }) {
-    const { page = 1, limit = 50, search = '', productType = 'all' } = params
+    const { page = 1, limit = 50, search = '', productType = 'all', syncFilter = 'all' } = params
 
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
@@ -112,8 +113,8 @@ export async function getProducts(params: {
     // Build query
     let query = supabase
         .from('products')
-        // Select all fields + count of combo items (where product is PARENT)
-        .select('*, product_combos!product_combos_parent_product_id_fkey(count)', { count: 'exact' })
+        // Select all fields + details of combo items (where product is PARENT)
+        .select('*, product_combos!product_combos_parent_product_id_fkey(id, child_product_id, quantity)', { count: 'exact' })
         .eq('is_deleted', false) // Only show non-deleted products
     // .order('is_deleted', { ascending: true }) // No longer needed as we filter filtered
 
@@ -121,6 +122,31 @@ export async function getProducts(params: {
     // Apply product type filter
     if (productType !== 'all') {
         query = query.eq('product_type', productType)
+    }
+
+    // Apply sync filters server-side
+    if (syncFilter === 'website_pending') {
+        query = query.eq('website_sync_status', 'Pending')
+    } else if (syncFilter === 'marketplace_pending') {
+        query = query.eq('marketplace_sync_status', 'Pending')
+    } else if (syncFilter === 'variation_product') {
+        // Query product_combos to find parents with exactly 1 component
+        const { data: combos } = await supabase
+            .from('product_combos')
+            .select('parent_product_id')
+        
+        const counts: Record<string, number> = {}
+        combos?.forEach(c => {
+            counts[c.parent_product_id] = (counts[c.parent_product_id] || 0) + 1
+        })
+        const variationParentIds = Object.keys(counts).filter(id => counts[id] === 1)
+        
+        if (variationParentIds.length > 0) {
+            query = query.in('id', variationParentIds)
+        } else {
+            // Force empty result if no variations exist
+            query = query.eq('id', '00000000-0000-0000-0000-000000000000')
+        }
     }
 
     // Apply search across multiple fields
@@ -2015,21 +2041,30 @@ export async function syncWebsiteStatus(): Promise<{
             }
         })
 
-        // Bulk update: mark as Done
-        if (toMarkDone.length > 0) {
+        // Bulk update in chunks of 200 to avoid PostgREST URL length limits (Bad Request)
+        const CHUNK_SIZE = 200
+
+        const chunkArray = (arr: string[], size: number) => {
+            const chunks: string[][] = []
+            for (let i = 0; i < arr.length; i += size) chunks.push(arr.slice(i, i + size))
+            return chunks
+        }
+
+        // Mark as Done (chunked)
+        for (const chunk of chunkArray(toMarkDone, CHUNK_SIZE)) {
             const { error: doneError } = await inventorySupabase
                 .from('products')
                 .update({ website_sync_status: 'Done' })
-                .in('id', toMarkDone)
+                .in('id', chunk)
             if (doneError) throw new Error(`Failed to update Done products: ${doneError.message}`)
         }
 
-        // Bulk update: mark as Pending
-        if (toMarkPending.length > 0) {
+        // Mark as Pending (chunked)
+        for (const chunk of chunkArray(toMarkPending, CHUNK_SIZE)) {
             const { error: pendingError } = await inventorySupabase
                 .from('products')
                 .update({ website_sync_status: 'Pending' })
-                .in('id', toMarkPending)
+                .in('id', chunk)
             if (pendingError) throw new Error(`Failed to update Pending products: ${pendingError.message}`)
         }
 
@@ -2046,5 +2081,138 @@ export async function syncWebsiteStatus(): Promise<{
         return { success: false, updated: 0, markedDone: 0, markedPending: 0, error: err.message }
     }
 }
+
+/**
+ * Re-maps website_category and marketplace_category for ALL existing products
+ * based on their current category_name and the latest mapping table.
+ *
+ * Strategy: group products by category_name, then do ONE bulk update per
+ * unique category (using .in('id', [ids])) — reduces ~1000 calls to ~50.
+ *
+ * Rule: if category_name is null → clear both category columns.
+ *       if category_name exists → apply mapping (or null if not in mapping).
+ */
+export async function remapAllCategories(): Promise<{
+    success: boolean
+    updated: number
+    cleared: number
+    error?: string
+}> {
+    try {
+        // Use service-role client to bypass RLS on mapping table and products table
+        const supabase = await createAdminClient()
+        // Also verify user is authenticated via user-session client
+        const userSupabase = await createClient()
+        const { data: { user } } = await userSupabase.auth.getUser()
+        if (!user) throw new Error('Not authenticated')
+
+        // 1. Fetch ALL mapping rows with pagination (Supabase has a 1000-row default limit)
+        let mappingsData: any[] = []
+        let pageFrom = 0
+        const PAGE_SIZE = 1000
+        while (true) {
+            const { data: pageData, error: pageError } = await supabase
+                .from('daraz_website_category_mappings')
+                .select('daraz_category, website_category, marketplace_category')
+                .range(pageFrom, pageFrom + PAGE_SIZE - 1)
+
+            if (pageError) {
+                // marketplace_category column may not exist — fall back
+                const { data: pageData2, error: pageError2 } = await supabase
+                    .from('daraz_website_category_mappings')
+                    .select('daraz_category, website_category')
+                    .range(pageFrom, pageFrom + PAGE_SIZE - 1)
+                if (pageError2) throw new Error(`Failed to fetch mappings: ${pageError2.message}`)
+                mappingsData = [...mappingsData, ...(pageData2 || [])]
+                break // No marketplace_category column — stop after first page with fallback
+            }
+            mappingsData = [...mappingsData, ...(pageData || [])]
+            if (!pageData || pageData.length < PAGE_SIZE) break // Last page
+            pageFrom += PAGE_SIZE
+        }
+
+        type CatMapping = { website_category: string | null; marketplace_category: string | null }
+        const mappingMap = new Map<string, CatMapping>()
+        for (const m of mappingsData) {
+            if (m.daraz_category) {
+                mappingMap.set(m.daraz_category.toLowerCase().trim(), {
+                    website_category: m.website_category || null,
+                    marketplace_category: m.marketplace_category || null,
+                })
+            }
+        }
+
+        // 2. Fetch all non-deleted products (id + category_name only)
+        const { data: products, error: prodError } = await supabase
+            .from('products')
+            .select('id, category_name')
+            .eq('is_deleted', false)
+
+        if (prodError) throw new Error(`Failed to fetch products: ${prodError.message}`)
+
+        const allProducts = products || []
+
+        const CHUNK = 200
+        let updated = 0
+        let cleared = 0
+
+        const chunkArray = (arr: string[], size: number): string[][] => {
+            const chunks: string[][] = []
+            for (let i = 0; i < arr.length; i += size) chunks.push(arr.slice(i, i + size))
+            return chunks
+        }
+
+        // 3a. Products with NO category → clear both fields (bulk, chunked)
+        const noCategoryIds = allProducts.filter(p => !p.category_name).map(p => p.id)
+        for (const chunk of chunkArray(noCategoryIds, CHUNK)) {
+            const { error } = await supabase
+                .from('products')
+                .update({ website_category: null, marketplace_category: null })
+                .in('id', chunk)
+            if (error) console.error('[RemapCategories] clear error:', error.message)
+            else cleared += chunk.length
+        }
+
+        // 3b. Group products by their category_name key (lowercased)
+        //     Then do ONE bulk update per unique category — ~50 calls instead of ~1000
+        const categoryGroups = new Map<string, { ids: string[]; original: string }>()
+        for (const p of allProducts) {
+            if (!p.category_name) continue
+            const key = p.category_name.toLowerCase().trim()
+            if (!categoryGroups.has(key)) {
+                categoryGroups.set(key, { ids: [], original: p.category_name })
+            }
+            categoryGroups.get(key)!.ids.push(p.id)
+        }
+
+        for (const [catKey, { ids }] of categoryGroups) {
+            const mapping = mappingMap.get(catKey) || null
+            const websiteCat = mapping?.website_category || null
+            const marketplaceCat = mapping?.marketplace_category || null
+
+            for (const chunk of chunkArray(ids, CHUNK)) {
+                const { error } = await supabase
+                    .from('products')
+                    .update({ website_category: websiteCat, marketplace_category: marketplaceCat })
+                    .in('id', chunk)
+                if (error) {
+                    console.error(`[RemapCategories] update error for "${catKey}":`, error.message)
+                } else {
+                    updated += chunk.length
+                }
+            }
+        }
+
+        revalidatePath('/dashboard/inventory/product-list')
+
+        return { success: true, updated, cleared }
+    } catch (err: any) {
+        console.error('[REMAP-CATEGORIES]', err.message)
+        return { success: false, updated: 0, cleared: 0, error: err.message }
+    }
+}
+
+
+
 
 

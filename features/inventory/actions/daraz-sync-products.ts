@@ -71,17 +71,25 @@ export async function syncAllDarazProductsAction() {
     type CategoryMapping = { website_category: string | null; marketplace_category: string | null }
     const mappingMap = new Map<string, CategoryMapping>()
     try {
-        const { data: mappingsData } = await supabase
+        let rawMappings: any[] = []
+        const { data: md1, error: me1 } = await supabase
             .from('daraz_website_category_mappings')
             .select('daraz_category, website_category, marketplace_category')
-        if (mappingsData) {
-            for (const m of mappingsData) {
-                if (m.daraz_category) {
-                    mappingMap.set(m.daraz_category.toLowerCase().trim(), {
-                        website_category: m.website_category || null,
-                        marketplace_category: m.marketplace_category || null,
-                    })
-                }
+        if (me1) {
+            // Column may not exist yet — fall back
+            const { data: md2 } = await supabase
+                .from('daraz_website_category_mappings')
+                .select('daraz_category, website_category')
+            rawMappings = md2 || []
+        } else {
+            rawMappings = md1 || []
+        }
+        for (const m of rawMappings) {
+            if (m.daraz_category) {
+                mappingMap.set(m.daraz_category.toLowerCase().trim(), {
+                    website_category: m.website_category || null,
+                    marketplace_category: m.marketplace_category || null,
+                })
             }
         }
     } catch (mapErr: any) {

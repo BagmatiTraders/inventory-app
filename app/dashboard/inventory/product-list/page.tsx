@@ -2,9 +2,9 @@
 
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { getProducts, exportProducts, toggleProductStatus, updateProduct, approveProduct, rejectProduct, updateSyncStatuses, syncWebsiteStatus } from '@/features/inventory/actions/product-actions'
+import { getProducts, exportProducts, toggleProductStatus, updateProduct, approveProduct, rejectProduct, updateSyncStatuses, syncWebsiteStatus, remapAllCategories } from '@/features/inventory/actions/product-actions'
 import { syncSelectedProductsFromDaraz } from '@/features/inventory/actions/daraz-sync-products'
-import { ArrowLeft, Plus, Upload, Download, Search, X, Package, Trash2, Box, Image as ImageIcon, Check, RefreshCw, ExternalLink, Filter, CheckSquare, Square, Zap } from 'lucide-react'
+import { ArrowLeft, Plus, Upload, Download, Search, X, Package, Trash2, Box, Image as ImageIcon, Check, RefreshCw, ExternalLink, Filter, CheckSquare, Square, Zap, Tags } from 'lucide-react'
 import Link from 'next/link'
 import { Card } from '@/components/ui-shim'
 import { AddProductModal } from '@/features/inventory/components/AddProductModal'
@@ -14,6 +14,82 @@ import { DeleteProductButton } from '@/features/inventory/components/DeleteProdu
 import { ImportCSVModal } from '@/features/inventory/components/ImportCSVModal'
 import { usePermissions } from '@/lib/permissions/PermissionContext'
 import { PushToWebsiteModal } from '@/features/inventory/components/PushToWebsiteModal'
+
+// Helper function to group variation products client-side under their main (single component) products
+const groupProductsByVariation = (productsList: any[]) => {
+    // Identify variations (combos with exactly 1 component)
+    const variations = productsList.filter(p => 
+        p.product_type === 'combo' && 
+        p.product_combos && 
+        p.product_combos.length === 1
+    )
+
+    // Map of child_product_id to variation products
+    const childToVariationsMap = new Map<string, any[]>()
+    variations.forEach(v => {
+        const childId = v.product_combos?.[0]?.child_product_id
+        if (childId) {
+            if (!childToVariationsMap.has(childId)) {
+                childToVariationsMap.set(childId, [])
+            }
+            childToVariationsMap.get(childId)!.push(v)
+        }
+    })
+
+    const processedIds = new Set<string>()
+    const result: any[] = []
+
+    productsList.forEach(product => {
+        if (processedIds.has(product.id)) return
+
+        // Check if this product is a main product (Single) that has variations on the page
+        if (childToVariationsMap.has(product.id)) {
+            // Add the main product
+            result.push(product)
+            processedIds.add(product.id)
+
+            // Add all variations for this main product
+            const vars = childToVariationsMap.get(product.id) || []
+            vars.forEach(v => {
+                if (!processedIds.has(v.id)) {
+                    result.push(v)
+                    processedIds.add(v.id)
+                }
+            })
+        } 
+        // Check if this product is a variation whose main product is also in the list
+        else if (product.product_type === 'combo' && 
+                 product.product_combos && 
+                 product.product_combos.length === 1) {
+            const childId = product.product_combos[0].child_product_id
+            const mainProductExists = productsList.some(p => p.id === childId)
+
+            if (mainProductExists) {
+                // This variation will be added when its main product is processed
+            } else {
+                // Main product is not in list. Group this variation with any other variations of the same child
+                if (childId) {
+                    const vars = childToVariationsMap.get(childId) || []
+                    vars.forEach(v => {
+                        if (!processedIds.has(v.id)) {
+                            result.push(v)
+                            processedIds.add(v.id)
+                        }
+                    })
+                } else {
+                    result.push(product)
+                    processedIds.add(product.id)
+                }
+            }
+        } else {
+            // Regular product
+            result.push(product)
+            processedIds.add(product.id)
+        }
+    })
+
+    return result
+}
 
 export default function ProductListPage() {
     const [page, setPage] = useState(1)
@@ -32,11 +108,12 @@ export default function ProductListPage() {
     const [isSyncing, setIsSyncing] = useState(false)
     const [isSyncingWebsite, setIsSyncingWebsite] = useState(false)
     const [isSyncingFromDaraz, setIsSyncingFromDaraz] = useState(false)
+    const [isRemapping, setIsRemapping] = useState(false)
     const [isExportDropdownOpen, setIsExportDropdownOpen] = useState(false)
 
     // Selection & filter state
     const [selectedProductIds, setSelectedProductIds] = useState<Set<string>>(new Set())
-    const [syncFilter, setSyncFilter] = useState<'all' | 'website_pending' | 'marketplace_pending'>('all')
+    const [syncFilter, setSyncFilter] = useState<'all' | 'website_pending' | 'marketplace_pending' | 'variation_product'>('all')
 
     // Get real user role from permission context
     const { userRole } = usePermissions()
@@ -76,10 +153,25 @@ export default function ProductListPage() {
     const handleSyncFromDaraz = async () => {
         const ids = Array.from(selectedProductIds)
         if (ids.length === 0) return
-        if (!confirm(`Sync ${ids.length} selected product(s) from Daraz? This will update their images, description, prices and other data.`)) return
+
+        // Filter selected products that have a valid seller SKU
+        const selectedProducts = groupedProducts.filter(p => ids.includes(p.id))
+        const productsToSync = selectedProducts.filter(p => p.seller_sku1 && p.seller_sku1.trim() !== '')
+        const skippedCount = selectedProducts.length - productsToSync.length
+
+        if (productsToSync.length === 0) {
+            alert('None of the selected products have a valid seller SKU. Sync skipped.')
+            return
+        }
+
+        const confirmMsg = skippedCount > 0
+            ? `Sync ${productsToSync.length} selected product(s) from Daraz? (${skippedCount} product(s) with no seller SKU will be skipped.)`
+            : `Sync ${productsToSync.length} selected product(s) from Daraz? This will update their images, description, prices and other data.`
+
+        if (!confirm(confirmMsg)) return
         setIsSyncingFromDaraz(true)
         try {
-            const result = await syncSelectedProductsFromDaraz(ids)
+            const result = await syncSelectedProductsFromDaraz(productsToSync.map(p => p.id))
             const errMsg = result.errors.length > 0 ? `\n\n⚠️ Errors:\n${result.errors.slice(0, 5).join('\n')}` : ''
             alert(`✅ Daraz Sync Complete!\n\n🟢 Updated: ${result.updated}\n🟡 Not found on Daraz: ${result.notFound}${errMsg}`)
             setSelectedProductIds(new Set())
@@ -88,6 +180,21 @@ export default function ProductListPage() {
             alert(`Sync from Daraz failed: ${err.message}`)
         } finally {
             setIsSyncingFromDaraz(false)
+        }
+    }
+
+    const handleRemapCategories = async () => {
+        if (!confirm('Re-map website & marketplace categories for ALL products based on current mapping table?\n\nProducts with no Daraz category will have their categories cleared.')) return
+        setIsRemapping(true)
+        try {
+            const result = await remapAllCategories()
+            if (!result.success) throw new Error(result.error)
+            alert(`✅ Category remap complete!\n\n🟢 Remapped: ${result.updated} products\n🟡 Cleared (no Daraz category): ${result.cleared} products`)
+            queryClient.invalidateQueries({ queryKey: ['products'] })
+        } catch (err: any) {
+            alert(`Category remap failed: ${err.message}`)
+        } finally {
+            setIsRemapping(false)
         }
     }
 
@@ -164,21 +271,90 @@ export default function ProductListPage() {
         }
     }
 
-    // Fetch products with pagination and search
+    // Fetch products with pagination, search, and syncFilter
     const { data, isLoading, error } = useQuery({
-        queryKey: ['products', page, search],
-        queryFn: () => getProducts({ page, search, limit: 50 })
+        queryKey: ['products', page, search, syncFilter],
+        queryFn: () => getProducts({ page, search, limit: 50, syncFilter })
     })
 
-    // Client-side sync filter applied on top of server results
-    const filteredProducts = (data?.products || []).filter(p => {
-        if (syncFilter === 'website_pending') return p.website_sync_status === 'Pending'
-        if (syncFilter === 'marketplace_pending') return p.marketplace_sync_status === 'Pending'
-        return true
+    // Filtered products are now fully server-side filtered
+    const filteredProducts = data?.products || []
+
+    // Group products client-side for visual grouping
+    const groupedProducts = groupProductsByVariation(filteredProducts)
+
+    // Identify child product IDs that have variations on this page
+    const variationChildIds = new Set<string>()
+    filteredProducts.forEach(p => {
+        if (p.product_type === 'combo' && p.product_combos && p.product_combos.length === 1) {
+            const childId = p.product_combos[0].child_product_id
+            if (childId) {
+                variationChildIds.add(childId)
+            }
+        }
     })
+
+    const isProductInVariationGroup = (product: any) => {
+        const isVariation = product.product_type === 'combo' && product.product_combos && product.product_combos.length === 1
+        const isMainProductOfVariation = variationChildIds.has(product.id)
+        return isVariation || isMainProductOfVariation
+    }
+
+    // Map of variation group ID to the ID of the single product eligible to edit Marketplace/Website
+    const groupEditableProductIdMap = new Map<string, string>()
+
+    // Group products in this page by their variation group ID (main product ID)
+    const variationGroupsMap = new Map<string, any[]>()
+    groupedProducts.forEach(p => {
+        let groupId = null
+        if (p.product_type === 'combo' && p.product_combos && p.product_combos.length === 1) {
+            groupId = p.product_combos[0].child_product_id
+        } else if (variationChildIds.has(p.id)) {
+            groupId = p.id
+        }
+
+        if (groupId) {
+            if (!variationGroupsMap.has(groupId)) {
+                variationGroupsMap.set(groupId, [])
+            }
+            variationGroupsMap.get(groupId)!.push(p)
+        }
+    })
+
+    // Find the first product in each group that has a seller SKU (or fallback to the first product)
+    variationGroupsMap.forEach((productsInGroup, groupId) => {
+        const editableProduct = productsInGroup.find(p => p.seller_sku1 && p.seller_sku1.trim() !== '') || productsInGroup[0]
+        if (editableProduct) {
+            groupEditableProductIdMap.set(groupId, editableProduct.id)
+        }
+    })
+
+    const getProductEligibility = (product: any) => {
+        // If a product has no seller SKU, it is not eligible under any circumstances
+        if (!product.seller_sku1 || product.seller_sku1.trim() === '') {
+            return { inGroup: false, isEligible: false }
+        }
+
+        let groupId = null
+        if (product.product_type === 'combo' && product.product_combos && product.product_combos.length === 1) {
+            groupId = product.product_combos[0].child_product_id
+        } else if (variationChildIds.has(product.id)) {
+            groupId = product.id
+        }
+
+        if (!groupId) {
+            return { inGroup: false, isEligible: true }
+        }
+
+        const eligibleId = groupEditableProductIdMap.get(groupId)
+        return {
+            inGroup: true,
+            isEligible: eligibleId === product.id
+        }
+    }
 
     // Select All applies to currently filtered visible products only
-    const allFilteredIds = filteredProducts.map(p => p.id)
+    const allFilteredIds = groupedProducts.map(p => p.id)
     const allSelected = allFilteredIds.length > 0 && allFilteredIds.every(id => selectedProductIds.has(id))
 
     const toggleSelectAll = () => {
@@ -306,6 +482,7 @@ export default function ProductListPage() {
                                     value={syncFilter}
                                     onChange={(e) => {
                                         setSyncFilter(e.target.value as any)
+                                        setPage(1)
                                         setSelectedProductIds(new Set())
                                     }}
                                     className="text-xs font-medium text-gray-700 dark:text-gray-300 bg-transparent border-none outline-none cursor-pointer pr-1"
@@ -313,6 +490,7 @@ export default function ProductListPage() {
                                     <option value="all">All</option>
                                     <option value="website_pending">Website Pending</option>
                                     <option value="marketplace_pending">Marketplace Pending</option>
+                                    <option value="variation_product">Variation Product</option>
                                 </select>
                             </div>
                         </div>
@@ -346,7 +524,7 @@ export default function ProductListPage() {
                                 className="hidden md:flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900/50 rounded-lg hover:bg-blue-100 transition-all"
                             >
                                 {allSelected ? <CheckSquare size={13} /> : <Square size={13} />}
-                                {allSelected ? 'Deselect All' : `Select All (${filteredProducts.length})`}
+                                {allSelected ? 'Deselect All' : `Select All (${groupedProducts.length})`}
                             </button>
                         )}
                         {/* Sync From Daraz — shown when 1+ product is selected */}
@@ -432,6 +610,15 @@ export default function ProductListPage() {
                             {isSyncingWebsite ? 'Syncing...' : 'Sync Website'}
                         </button>
                         <button
+                            onClick={handleRemapCategories}
+                            disabled={isRemapping}
+                            title="Re-map website & marketplace categories for all products"
+                            className="hidden md:flex items-center gap-2 px-4 py-2 text-sm font-medium text-violet-700 dark:text-violet-300 bg-violet-50 dark:bg-violet-950/40 border border-violet-200 dark:border-violet-800 rounded-lg hover:bg-violet-100 dark:hover:bg-violet-900/50 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            <Tags size={14} className={`text-violet-500 ${isRemapping ? 'animate-pulse' : ''}`} />
+                            {isRemapping ? 'Remapping...' : 'Remap Categories'}
+                        </button>
+                        <button
                             onClick={() => setIsModalOpen(true)}
                             className="hidden md:flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-md hover:shadow-lg hover:shadow-blue-500/20 transition-all active:scale-[0.98]"
                         >
@@ -509,14 +696,21 @@ export default function ProductListPage() {
                                         </td>
                                     </tr>
                                 ) : (
-                                    filteredProducts.map((product, index) => {
+                                    groupedProducts.map((product, index) => {
                                         const isSelected = selectedProductIds.has(product.id)
+                                        const inVariationGroup = isProductInVariationGroup(product)
                                         return (
                                             <tr
                                                 key={product.id}
-                                                className={`group hover:bg-gray-50 dark:hover:bg-zinc-800/50 transition-colors ${isSelected ? 'bg-blue-50/40 dark:bg-blue-950/10' : ''}`}
+                                                className={`group transition-colors ${
+                                                    isSelected
+                                                        ? 'bg-blue-50/40 dark:bg-blue-950/10 hover:bg-blue-100/30 dark:hover:bg-blue-900/20'
+                                                        : inVariationGroup
+                                                            ? 'bg-sky-50/60 dark:bg-sky-950/20 hover:bg-sky-100/50 dark:hover:bg-sky-900/30'
+                                                            : 'hover:bg-gray-50 dark:hover:bg-zinc-800/50'
+                                                }`}
                                             >
-                                                <td className="px-2 md:px-4 py-3">
+                                                <td className={`px-2 md:px-4 py-3 ${inVariationGroup ? 'border-l-[3px] border-sky-400 dark:border-sky-500' : 'border-l-[3px] border-transparent'}`}>
                                                     <button
                                                         onClick={() => toggleSelectProduct(product.id)}
                                                         className="flex items-center justify-center text-gray-300 hover:text-blue-500 transition-colors"
@@ -576,7 +770,7 @@ export default function ProductListPage() {
                                                 </td>
                                                 <td className="hidden md:table-cell px-4 py-3">
                                                     <span className={`inline-flex items-center gap-1.5 px-2 py-1 text-[11px] font-medium rounded-full border ${product.product_type === 'combo'
-                                                        ? (product.product_combos?.[0]?.count === 1
+                                                        ? (product.product_combos?.length === 1
                                                             ? 'bg-blue-50 text-blue-700 border-blue-100 dark:bg-blue-900/20 dark:text-blue-300 dark:border-blue-900/30'
                                                             : 'bg-purple-50 text-purple-700 border-purple-100 dark:bg-purple-900/20 dark:text-purple-300 dark:border-purple-900/30')
                                                         : 'bg-gray-50 text-gray-700 border-gray-100 dark:bg-zinc-800 dark:text-gray-300 dark:border-zinc-700'
@@ -587,7 +781,7 @@ export default function ProductListPage() {
                                                             <Box size={12} />
                                                         )}
                                                         {product.product_type === 'combo'
-                                                            ? (product.product_combos?.[0]?.count === 1 ? 'Variation' : 'Combo')
+                                                            ? (product.product_combos?.length === 1 ? 'Variation' : 'Combo')
                                                             : 'Single'}
                                                     </span>
                                                 </td>
@@ -623,33 +817,45 @@ export default function ProductListPage() {
                                                 </td>
                                                 {/* Marketplace Sync Status */}
                                                 <td className="hidden md:table-cell px-4 py-3">
-                                                    <select
-                                                        value={product.marketplace_sync_status || 'Done'}
-                                                        onChange={(e) => handleSyncStatusChange(product.id, product.marketplace_sync_status, product.website_sync_status, 'marketplace', e.target.value as 'Pending' | 'Done')}
-                                                        className={`text-xs font-semibold px-2 py-0.5 rounded-full border cursor-pointer focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white dark:bg-zinc-800 ${
-                                                            (product.marketplace_sync_status === 'Pending')
-                                                                ? 'text-amber-700 bg-amber-50 border-amber-200 dark:text-amber-400 dark:bg-amber-900/20 dark:border-amber-900/30'
-                                                                : 'text-emerald-700 bg-emerald-50 border-emerald-200 dark:text-emerald-400 dark:bg-emerald-900/20 dark:border-emerald-900/30'
-                                                        }`}
-                                                    >
-                                                        <option value="Pending">Pending</option>
-                                                        <option value="Done">Done</option>
-                                                    </select>
+                                                    {getProductEligibility(product).isEligible ? (
+                                                        <select
+                                                            value={product.marketplace_sync_status || 'Done'}
+                                                            onChange={(e) => handleSyncStatusChange(product.id, product.marketplace_sync_status, product.website_sync_status, 'marketplace', e.target.value as 'Pending' | 'Done')}
+                                                            className={`text-xs font-semibold px-2 py-0.5 rounded-full border cursor-pointer focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white dark:bg-zinc-800 ${
+                                                                (product.marketplace_sync_status === 'Pending')
+                                                                    ? 'text-amber-700 bg-amber-50 border-amber-200 dark:text-amber-400 dark:bg-amber-900/20 dark:border-amber-900/30'
+                                                                    : 'text-emerald-700 bg-emerald-50 border-emerald-200 dark:text-emerald-400 dark:bg-emerald-900/20 dark:border-emerald-900/30'
+                                                            }`}
+                                                        >
+                                                            <option value="Pending">Pending</option>
+                                                            <option value="Done">Done</option>
+                                                        </select>
+                                                    ) : (
+                                                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold border bg-gray-50 text-gray-500 border-gray-200 dark:bg-zinc-800 dark:text-gray-400 dark:border-zinc-700" title="Only the top variation SKU in this group is eligible to sync/edit status">
+                                                            Not Eligible
+                                                        </span>
+                                                    )}
                                                 </td>
                                                 {/* Website Sync Status */}
                                                 <td className="hidden md:table-cell px-4 py-3">
-                                                    <select
-                                                        value={product.website_sync_status || 'Done'}
-                                                        onChange={(e) => handleSyncStatusChange(product.id, product.marketplace_sync_status, product.website_sync_status, 'website', e.target.value as 'Pending' | 'Done')}
-                                                        className={`text-xs font-semibold px-2 py-0.5 rounded-full border cursor-pointer focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white dark:bg-zinc-800 ${
-                                                            (product.website_sync_status === 'Pending')
-                                                                ? 'text-amber-700 bg-amber-50 border-amber-200 dark:text-amber-400 dark:bg-amber-900/20 dark:border-amber-900/30'
-                                                                : 'text-emerald-700 bg-emerald-50 border-emerald-200 dark:text-emerald-400 dark:bg-emerald-900/20 dark:border-emerald-900/30'
-                                                        }`}
-                                                    >
-                                                        <option value="Pending">Pending</option>
-                                                        <option value="Done">Done</option>
-                                                    </select>
+                                                    {getProductEligibility(product).isEligible ? (
+                                                        <select
+                                                            value={product.website_sync_status || 'Pending'}
+                                                            onChange={(e) => handleSyncStatusChange(product.id, product.marketplace_sync_status, product.website_sync_status, 'website', e.target.value as 'Pending' | 'Done')}
+                                                            className={`text-xs font-semibold px-2 py-0.5 rounded-full border cursor-pointer focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white dark:bg-zinc-800 ${
+                                                                (product.website_sync_status === 'Pending' || !product.website_sync_status)
+                                                                    ? 'text-amber-700 bg-amber-50 border-amber-200 dark:text-amber-400 dark:bg-amber-900/20 dark:border-amber-900/30'
+                                                                    : 'text-emerald-700 bg-emerald-50 border-emerald-200 dark:text-emerald-400 dark:bg-emerald-900/20 dark:border-emerald-900/30'
+                                                            }`}
+                                                        >
+                                                            <option value="Pending">Pending</option>
+                                                            <option value="Done">Done</option>
+                                                        </select>
+                                                    ) : (
+                                                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold border bg-gray-50 text-gray-500 border-gray-200 dark:bg-zinc-800 dark:text-gray-400 dark:border-zinc-700" title="Only the top variation SKU in this group is eligible to sync/edit status">
+                                                            Not Eligible
+                                                        </span>
+                                                    )}
                                                 </td>
                                                 <td className="hidden md:table-cell px-4 py-3 relative">
                                                     {product.approval_status === 'Pending' ? (

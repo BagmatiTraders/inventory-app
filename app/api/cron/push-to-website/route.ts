@@ -53,26 +53,38 @@ export async function GET(request: NextRequest) {
         const ecommerceSupabase = getEcommerceSupabaseClient()
         console.log('[Cron-Push] Starting automatic product sync to ecommerce storefront...')
 
-        // 1. Fetch all products that are approved, pending website sync, and have a resolved website category
+        // 1. Fetch all products that are approved, pending website sync, and have a resolved website category and seller SKU
         const { data: products, error } = await warehouseSupabase
             .from('products')
             .select('*')
             .eq('approval_status', 'Approved')
             .eq('website_sync_status', 'Pending')
             .not('website_category', 'is', null)
+            .neq('website_category', '')
             .neq('website_category', 'Select Category')
+            .neq('website_category', 'Unmapped')
+            .not('seller_sku1', 'is', null)
+            .neq('seller_sku1', '')
 
         if (error) {
             throw new Error(`Failed to fetch pending approved products: ${error.message}`)
         }
 
-        console.log(`[Cron-Push] Found ${products?.length || 0} products eligible for automatic push.`)
+        // Additional client-side validation to ensure we only push products with a valid category AND a seller SKU
+        const eligibleProducts = (products || []).filter(product => {
+            const cat = product.website_category
+            const hasCategory = cat && cat.trim() !== '' && cat !== 'Select Category' && cat !== 'Unmapped'
+            const hasSku = product.seller_sku1 && product.seller_sku1.trim() !== ''
+            return hasCategory && hasSku
+        })
+
+        console.log(`[Cron-Push] Found ${eligibleProducts.length} products eligible for automatic push.`)
 
         const pushedProducts = []
         const failedProducts = []
 
-        if (products && products.length > 0) {
-            for (const product of products) {
+        if (eligibleProducts.length > 0) {
+            for (const product of eligibleProducts) {
                 try {
                     const displayName = product.product_title || product.product_name || 'Store Product'
                     
@@ -160,7 +172,7 @@ export async function GET(request: NextRequest) {
 
         return NextResponse.json({
             success: true,
-            total_eligible: products?.length || 0,
+            total_eligible: eligibleProducts.length,
             pushed_count: pushedProducts.length,
             pushed_items: pushedProducts,
             failed_count: failedProducts.length,
