@@ -1832,17 +1832,20 @@ export async function bulkUploadCategoryMappings(mappings: any[]) {
     for (const m of mappings) {
         const darazCategory = String(m['Daraz Category'] || m.daraz_category || '').trim()
         const websiteCategory = String(m['Website Category'] || m.website_category || '').trim()
-        if (darazCategory && websiteCategory) {
+        const marketplaceCategory = String(m['Marketplace Category'] || m.marketplace_category || '').trim()
+        
+        if (darazCategory) {
             cleanedMap.set(darazCategory.toLowerCase().trim(), {
                 daraz_category: darazCategory,
-                website_category: websiteCategory
+                website_category: websiteCategory || null,
+                marketplace_category: marketplaceCategory || null
             })
         }
     }
     const cleaned = Array.from(cleanedMap.values())
 
     if (cleaned.length === 0) {
-        throw new Error('No valid mapping rows found. Ensure columns are named exactly "Daraz Category" and "Website Category"')
+        throw new Error('No valid mapping rows found. Ensure columns are named exactly "Daraz Category", "Website Category", or "Marketplace Category"')
     }
 
     // Perform bulk upsert in batches of 500
@@ -1877,7 +1880,10 @@ export async function bulkUploadCategoryMappings(mappings: any[]) {
             for (const mapItem of activeMappings) {
                 await supabase
                     .from('products')
-                    .update({ website_category: mapItem.website_category })
+                    .update({ 
+                        website_category: mapItem.website_category,
+                        marketplace_category: mapItem.marketplace_category
+                    })
                     .ilike('category_name', mapItem.daraz_category)
             }
         }
@@ -1903,6 +1909,55 @@ export async function deleteCategoryMapping(id: string) {
 
     if (error) throw new Error(error.message)
     return { success: true }
+}
+
+/**
+ * Save (create or update) a single category mapping
+ */
+export async function saveCategoryMapping(params: {
+    darazCategory: string
+    websiteCategory?: string | null
+    marketplaceCategory?: string | null
+}) {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) throw new Error('Not authenticated')
+
+    const darazCategory = params.darazCategory.trim()
+    const websiteCategory = params.websiteCategory?.trim() || null
+    const marketplaceCategory = params.marketplaceCategory?.trim() || null
+
+    if (!darazCategory) {
+        throw new Error('Daraz Category name is required')
+    }
+
+    // Upsert into mapping table
+    const { data, error } = await supabase
+        .from('daraz_website_category_mappings')
+        .upsert({
+            daraz_category: darazCategory,
+            website_category: websiteCategory,
+            marketplace_category: marketplaceCategory
+        }, { onConflict: 'daraz_category' })
+        .select()
+        .single()
+
+    if (error) throw new Error(error.message)
+
+    // Perform updates on existing products that match this category
+    try {
+        await supabase
+            .from('products')
+            .update({ 
+                website_category: websiteCategory,
+                marketplace_category: marketplaceCategory
+            })
+            .ilike('category_name', darazCategory)
+    } catch (updateErr: any) {
+        console.error('Failed to auto-update matching products categories:', updateErr.message)
+    }
+
+    return { success: true, mapping: data }
 }
 
 /**

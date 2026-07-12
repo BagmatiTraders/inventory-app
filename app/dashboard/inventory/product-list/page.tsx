@@ -653,7 +653,7 @@ export default function ProductListPage() {
                                     <th className="hidden md:table-cell px-4 py-3 text-xs font-bold uppercase tracking-wider text-black dark:text-white">Type</th>
                                     <th className="hidden md:table-cell px-4 py-3 text-xs font-bold uppercase tracking-wider text-black dark:text-white">Status</th>
                                     <th className="px-2 md:px-4 py-3 text-xs font-bold uppercase tracking-wider text-black dark:text-white">Product ID</th>
-                                    <th className="hidden lg:table-cell px-4 py-3 text-xs font-bold uppercase tracking-wider text-black dark:text-white">Website Category</th>
+                                    <th className="hidden lg:table-cell px-4 py-3 text-xs font-bold uppercase tracking-wider text-black dark:text-white">Mapped Categories</th>
                                     <th className="hidden md:table-cell px-4 py-3 text-xs font-bold uppercase tracking-wider text-black dark:text-white">Marketplace</th>
                                     <th className="hidden md:table-cell px-4 py-3 text-xs font-bold uppercase tracking-wider text-black dark:text-white">Website</th>
                                     <th className="hidden md:table-cell px-4 py-3 text-xs font-bold uppercase tracking-wider text-black dark:text-white text-right">Actions</th>
@@ -805,15 +805,30 @@ export default function ProductListPage() {
                                                 <td className="px-2 md:px-4 py-3 text-sm font-mono text-gray-500 dark:text-gray-400">
                                                     #{product.product_id}
                                                 </td>
-                                                {/* Website Category */}
+                                                {/* Mapped Categories */}
                                                 <td className="hidden lg:table-cell px-4 py-3">
-                                                    {product.website_category ? (
-                                                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-blue-700 dark:bg-blue-950/20 dark:text-blue-400 border border-blue-100 dark:border-blue-900/30">
-                                                            {product.website_category}
-                                                        </span>
-                                                    ) : (
-                                                        <span className="text-gray-400 italic text-[11px]">Unmapped</span>
-                                                    )}
+                                                    <div className="space-y-1.5">
+                                                        <div className="flex items-center gap-1.5">
+                                                            <span className="text-[9px] font-extrabold text-gray-400 dark:text-gray-500 uppercase tracking-wider w-11 flex-shrink-0">Web:</span>
+                                                            {product.website_category ? (
+                                                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-blue-700 dark:bg-blue-950/20 dark:text-blue-400 border border-blue-100 dark:border-blue-900/30">
+                                                                    {product.website_category}
+                                                                </span>
+                                                            ) : (
+                                                                <span className="text-gray-400 dark:text-gray-500 italic text-[10px]">Unmapped</span>
+                                                            )}
+                                                        </div>
+                                                        <div className="flex items-center gap-1.5">
+                                                            <span className="text-[9px] font-extrabold text-gray-400 dark:text-gray-500 uppercase tracking-wider w-11 flex-shrink-0">Market:</span>
+                                                            {product.marketplace_category ? (
+                                                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-50 text-purple-700 dark:bg-purple-950/20 dark:text-purple-400 border border-purple-100 dark:border-purple-900/30">
+                                                                    {product.marketplace_category}
+                                                                </span>
+                                                            ) : (
+                                                                <span className="text-gray-400 dark:text-gray-500 italic text-[10px]">Unmapped</span>
+                                                            )}
+                                                        </div>
+                                                    </div>
                                                 </td>
                                                 {/* Marketplace Sync Status */}
                                                 <td className="hidden md:table-cell px-4 py-3">

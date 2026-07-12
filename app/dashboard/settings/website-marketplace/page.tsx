@@ -9,7 +9,9 @@ import {
     FileSpreadsheet, 
     CheckCircle, 
     ArrowLeftRight,
-    Loader2
+    Loader2,
+    Plus,
+    X
 } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import { 
@@ -17,7 +19,8 @@ import {
     bulkUploadCategoryMappings, 
     deleteCategoryMapping,
     getWebsiteDiscountRules,
-    saveWebsiteDiscountRules
+    saveWebsiteDiscountRules,
+    saveCategoryMapping
 } from '@/features/inventory/actions/product-actions'
 
 export default function WebsiteMarketplaceSettings() {
@@ -29,6 +32,42 @@ export default function WebsiteMarketplaceSettings() {
     const [isUploading, setIsUploading] = useState(false)
     const [uploadResult, setUploadResult] = useState<string | null>(null)
     const fileInputRef = useRef<HTMLInputElement>(null)
+
+    // Add Mapping Modal State
+    const [isAddModalOpen, setIsAddModalOpen] = useState(false)
+    const [newDarazCategory, setNewDarazCategory] = useState('')
+    const [newWebsiteCategory, setNewWebsiteCategory] = useState('')
+    const [newMarketplaceCategory, setNewMarketplaceCategory] = useState('')
+    const [isSavingMapping, setIsSavingMapping] = useState(false)
+
+    const handleSaveMapping = async (e: React.FormEvent) => {
+        e.preventDefault()
+        if (!newDarazCategory.trim()) {
+            alert('Daraz Category name is required.')
+            return
+        }
+
+        setIsSavingMapping(true)
+        try {
+            await saveCategoryMapping({
+                darazCategory: newDarazCategory,
+                websiteCategory: newWebsiteCategory || null,
+                marketplaceCategory: newMarketplaceCategory || null
+            })
+            alert('Category mapping saved successfully!')
+            setIsAddModalOpen(false)
+            // Reset fields
+            setNewDarazCategory('')
+            setNewWebsiteCategory('')
+            setNewMarketplaceCategory('')
+            // Reload mappings
+            loadMappings()
+        } catch (err: any) {
+            alert(`Failed to save mapping: ${err.message}`)
+        } finally {
+            setIsSavingMapping(false)
+        }
+    }
 
     // Discount Rules State
     const [isDiscountActive, setIsDiscountActive] = useState<boolean>(false)
@@ -190,15 +229,18 @@ export default function WebsiteMarketplaceSettings() {
                                         <tr className="bg-blue-100/50 dark:bg-blue-900/20 border-b dark:border-zinc-800">
                                             <th className="p-1.5 font-bold">Daraz Category</th>
                                             <th className="p-1.5 font-bold">Website Category</th>
+                                            <th className="p-1.5 font-bold">Marketplace Category</th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         <tr className="border-b dark:border-zinc-800">
                                             <td className="p-1.5">Fans & Cooling</td>
                                             <td className="p-1.5">Home Appliances</td>
+                                            <td className="p-1.5">Home Appliances</td>
                                         </tr>
                                         <tr>
                                             <td className="p-1.5">Smart Watches</td>
+                                            <td className="p-1.5">Smartphones & Wearables</td>
                                             <td className="p-1.5">Smartphones & Wearables</td>
                                         </tr>
                                     </tbody>
@@ -321,6 +363,13 @@ export default function WebsiteMarketplaceSettings() {
                                 </h3>
                                 <p className="text-xs text-gray-500">Mappings used to resolve matching categories on sync.</p>
                             </div>
+                            <button
+                                onClick={() => setIsAddModalOpen(true)}
+                                className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold shadow-sm transition-all flex items-center gap-1.5 cursor-pointer"
+                            >
+                                <Plus size={14} />
+                                <span>Add Mapping</span>
+                            </button>
                         </div>
 
                         {isLoadingMappings ? (
@@ -341,6 +390,7 @@ export default function WebsiteMarketplaceSettings() {
                                         <tr className="border-b dark:border-zinc-800 text-gray-400 font-bold uppercase tracking-wider h-8">
                                             <th className="pb-2 pr-4">Daraz Category</th>
                                             <th className="pb-2 pr-4">Website Category</th>
+                                            <th className="pb-2 pr-4">Marketplace Category</th>
                                             <th className="pb-2 text-right">Action</th>
                                         </tr>
                                     </thead>
@@ -349,9 +399,22 @@ export default function WebsiteMarketplaceSettings() {
                                             <tr key={m.id} className="hover:bg-gray-50 dark:hover:bg-zinc-800/30 h-10 transition-colors">
                                                 <td className="pr-4 font-semibold text-gray-800 dark:text-gray-200">{m.daraz_category}</td>
                                                 <td className="pr-4">
-                                                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-blue-700 dark:bg-blue-950/20 dark:text-blue-400 border border-blue-100 dark:border-blue-900/30">
-                                                        {m.website_category}
-                                                    </span>
+                                                    {m.website_category ? (
+                                                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-blue-700 dark:bg-blue-950/20 dark:text-blue-400 border border-blue-100 dark:border-blue-900/30">
+                                                            {m.website_category}
+                                                        </span>
+                                                    ) : (
+                                                        <span className="text-gray-400 italic text-[10px]">Unmapped</span>
+                                                    )}
+                                                </td>
+                                                <td className="pr-4">
+                                                    {m.marketplace_category ? (
+                                                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-50 text-purple-700 dark:bg-purple-950/20 dark:text-purple-400 border border-purple-100 dark:border-purple-900/30">
+                                                            {m.marketplace_category}
+                                                        </span>
+                                                    ) : (
+                                                        <span className="text-gray-400 italic text-[10px]">Unmapped</span>
+                                                    )}
                                                 </td>
                                                 <td className="text-right">
                                                     <button
@@ -383,6 +446,96 @@ export default function WebsiteMarketplaceSettings() {
                         <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 dark:bg-amber-950/20 dark:text-amber-400 border border-amber-100 dark:border-amber-900/30">
                             ⚙️ Configurations active & synced to local cron schedules
                         </span>
+                    </div>
+                </div>
+            )}
+            {/* Add Mapping Modal */}
+            {isAddModalOpen && (
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div className="bg-white dark:bg-zinc-900 border dark:border-zinc-800 rounded-xl shadow-xl w-full max-w-md overflow-hidden transform transition-all">
+                        {/* Modal Header */}
+                        <div className="px-6 py-4 border-b dark:border-zinc-800 flex items-center justify-between">
+                            <h3 className="font-bold text-gray-900 dark:text-white text-base">Add New Category Mapping</h3>
+                            <button 
+                                onClick={() => setIsAddModalOpen(false)}
+                                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors p-1 rounded-md"
+                            >
+                                <X size={18} />
+                            </button>
+                        </div>
+
+                        {/* Modal Body */}
+                        <form onSubmit={handleSaveMapping}>
+                            <div className="p-6 space-y-4">
+                                <div className="space-y-1">
+                                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wider block">
+                                        Daraz Category <span className="text-red-500">*</span>
+                                    </label>
+                                    <input
+                                        type="text"
+                                        required
+                                        placeholder="e.g. Fans & Cooling"
+                                        value={newDarazCategory}
+                                        onChange={(e) => setNewDarazCategory(e.target.value)}
+                                        className="w-full text-sm bg-gray-50 dark:bg-zinc-950/20 border border-gray-200 dark:border-zinc-800 rounded-lg p-2.5 focus:outline-none focus:border-blue-500 font-medium"
+                                    />
+                                    <p className="text-[10px] text-gray-400">The exact category name pulled from Daraz products.</p>
+                                </div>
+
+                                <div className="space-y-1">
+                                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wider block">
+                                        Website Category (Storefront)
+                                    </label>
+                                    <input
+                                        type="text"
+                                        placeholder="e.g. Home Appliances"
+                                        value={newWebsiteCategory}
+                                        onChange={(e) => setNewWebsiteCategory(e.target.value)}
+                                        className="w-full text-sm bg-gray-50 dark:bg-zinc-950/20 border border-gray-200 dark:border-zinc-800 rounded-lg p-2.5 focus:outline-none focus:border-blue-500 font-medium"
+                                    />
+                                    <p className="text-[10px] text-gray-400">Target category name on your e-commerce website storefront.</p>
+                                </div>
+
+                                <div className="space-y-1">
+                                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wider block">
+                                        Marketplace Category
+                                    </label>
+                                    <input
+                                        type="text"
+                                        placeholder="e.g. Home Appliances"
+                                        value={newMarketplaceCategory}
+                                        onChange={(e) => setNewMarketplaceCategory(e.target.value)}
+                                        className="w-full text-sm bg-gray-50 dark:bg-zinc-950/20 border border-gray-200 dark:border-zinc-800 rounded-lg p-2.5 focus:outline-none focus:border-blue-500 font-medium"
+                                    />
+                                    <p className="text-[10px] text-gray-400">Target category name on the marketplace dashboard.</p>
+                                </div>
+                            </div>
+
+                            {/* Modal Footer */}
+                            <div className="px-6 py-4 bg-gray-50 dark:bg-zinc-950/40 border-t dark:border-zinc-800 flex items-center justify-end gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => setIsAddModalOpen(false)}
+                                    className="px-4 py-2 border border-gray-200 dark:border-zinc-800 rounded-lg text-xs font-bold text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={isSavingMapping}
+                                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold shadow-sm transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                                >
+                                    {isSavingMapping ? (
+                                        <>
+                                            <Loader2 size={12} className="animate-spin" />
+                                            <span>Saving...</span>
+                                        </>
+                                    ) : (
+                                        <span>Save Mapping</span>
+                                    )}
+                                </button>
+                            </div>
+                        </form>
                     </div>
                 </div>
             )}
