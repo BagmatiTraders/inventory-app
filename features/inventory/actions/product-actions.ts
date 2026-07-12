@@ -1357,6 +1357,42 @@ export async function exportProducts(filter: 'all' | 'marketplace_pending' | 'we
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) throw new Error('Not authenticated')
 
+    // Helper to strip HTML tags, decode entities, and remove URLs
+    const cleanTextForMarketplace = (input: string | null): string => {
+        if (!input) return ''
+        
+        // 1. Strip HTML tags
+        let text = input
+            .replace(/<\/li>/gi, '\n')
+            .replace(/<br\s*\/?>/gi, '\n')
+            .replace(/<\/p>/gi, '\n\n')
+            .replace(/<\/div>/gi, '\n')
+            .replace(/<[^>]*>/g, '') // Strip remaining HTML tags
+            
+        // 2. Decode HTML entities
+        text = text
+            .replace(/&nbsp;/g, ' ')
+            .replace(/&amp;/g, '&')
+            .replace(/&quot;/g, '"')
+            .replace(/&lt;/g, '<')
+            .replace(/&gt;/g, '>')
+            .replace(/&#39;/g, "'")
+            
+        // 3. Strip URLs (http://, https://, www. patterns)
+        text = text
+            .replace(/https?:\/\/[^\s"']+/gi, '')
+            .replace(/www\.[^\s"']+/gi, '')
+            
+        // 4. Clean up consecutive spaces or newlines
+        text = text
+            .split('\n')
+            .map(line => line.trim())
+            .filter(Boolean)
+            .join('\n')
+            
+        return text.trim()
+    }
+
     let query = supabase
         .from('products')
         .select('*')
@@ -1373,7 +1409,43 @@ export async function exportProducts(filter: 'all' | 'marketplace_pending' | 'we
 
     if (error) throw new Error(error.message)
 
-    // Transform products to CSV-friendly format
+    if (filter === 'marketplace_pending') {
+        // Find max number of other images to create dynamic columns
+        let maxOtherImages = 0
+        products?.forEach(p => {
+            if (Array.isArray(p.other_images)) {
+                if (p.other_images.length > maxOtherImages) {
+                    maxOtherImages = p.other_images.length
+                }
+            }
+        })
+
+        // Transform for Marketplace Pending
+        const csvData = (products || []).map(p => {
+            const row: Record<string, any> = {
+                'Daraz Product Title': p.product_title || p.product_name || '',
+                'Marketplace Category': p.marketplace_category || '',
+                'Product Image 1': p.image_url || '',
+            }
+
+            // Add other images one by one column
+            for (let i = 0; i < maxOtherImages; i++) {
+                const imgUrl = (Array.isArray(p.other_images) && p.other_images[i]) ? p.other_images[i] : ''
+                row[`Product Image ${i + 2}`] = imgUrl
+            }
+
+            row['Regular Price'] = p.regular_price || 0
+            row['Special Price'] = p.special_price || ''
+            row['Product Description'] = cleanTextForMarketplace(p.description)
+            row['Product Highlights'] = cleanTextForMarketplace(p.highlights)
+
+            return row
+        })
+
+        return csvData
+    }
+
+    // Default transform for other filters (all, website_pending)
     const csvData = (products || []).map(p => ({
         product_id: p.product_id,
         product_name: p.product_name,

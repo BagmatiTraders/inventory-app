@@ -409,8 +409,8 @@ export default function ProductListPage() {
                 ...csvData.map(row =>
                     headers.map(header => {
                         const value = row[header as keyof typeof row]
-                        // Escape values with commas or quotes
-                        return typeof value === 'string' && (value.includes(',') || value.includes('"'))
+                        // Escape values with commas, quotes, or newlines
+                        return typeof value === 'string' && (value.includes(',') || value.includes('"') || value.includes('\n') || value.includes('\r'))
                             ? `"${value.replace(/"/g, '""')}"`
                             : value
                     }).join(',')
