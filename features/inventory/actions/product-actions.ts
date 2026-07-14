@@ -1706,20 +1706,52 @@ export async function approveProduct(productId: string) {
 }
 
 /**
- * Rejects and deletes a synced product completely from the database
+ * Rejects and deletes a synced product completely from the database if new,
+ * or reverts it back to Approved if it was an existing product.
  */
 export async function rejectProduct(productId: string) {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) throw new Error('Not authenticated')
 
-    // Perform hard delete
-    const { error } = await supabase
+    // Fetch the product first to check if it already existed in the system
+    const { data: product, error: fetchError } = await supabase
         .from('products')
-        .delete()
+        .select('created_at, pushed_at')
         .eq('id', productId)
+        .maybeSingle()
 
-    if (error) throw new Error(error.message)
+    if (fetchError) throw new Error(fetchError.message)
+    if (!product) throw new Error('Product not found')
+
+    const createdAt = new Date(product.created_at || 0).getTime()
+    const pushedAt = new Date(product.pushed_at || 0).getTime()
+
+    // If pushed_at and created_at are within 15 seconds, it's a newly pushed product.
+    // We hard delete it to remove it from the inventory list completely.
+    if (Math.abs(pushedAt - createdAt) < 15000) {
+        console.log(`[rejectProduct] Hard deleting newly pushed product: ${productId}`)
+        const { error: deleteError } = await supabase
+            .from('products')
+            .delete()
+            .eq('id', productId)
+
+        if (deleteError) throw new Error(deleteError.message)
+    } else {
+        // If it existed before, we keep the product but discard the "Pending" status and reset is_new_pushed.
+        console.log(`[rejectProduct] Reverting existing product status to Approved: ${productId}`)
+        const { error: updateError } = await supabase
+            .from('products')
+            .update({
+                approval_status: 'Approved',
+                is_new_pushed: false,
+                updated_by: user.id,
+                updated_at: new Date().toISOString()
+            })
+            .eq('id', productId)
+
+        if (updateError) throw new Error(updateError.message)
+    }
 
     revalidatePath('/dashboard/inventory/product-list')
     return { success: true }

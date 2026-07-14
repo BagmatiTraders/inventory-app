@@ -1,7 +1,17 @@
-import { createAdminClient } from '@/lib/supabase/server'
-import { NextResponse } from 'next/server'
+const { createClient } = require('@supabase/supabase-js');
+require('dotenv').config({ path: '.env.local' });
 
-const DEFAULT_PROMPT = `You are an expert e-commerce product listing optimizer for Daraz Nepal.
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+if (!supabaseUrl || !supabaseKey) {
+    console.error("Missing Supabase env variables!");
+    process.exit(1);
+}
+
+const supabase = createClient(supabaseUrl, supabaseKey);
+
+const newPrompt = `You are an expert e-commerce product listing optimizer for Daraz Nepal.
 
 Given the following product details, generate a complete product listing in a SINGLE JSON response:
 
@@ -30,84 +40,31 @@ CRITICAL RULES:
 - Forbidden words/phrases to NEVER use: "buy now", "buy", "online shopping", "cash on delivery", "daraz", "order now", "free shipping", "cod", "delivery charge".
 - Do not pressure or force the buyer to purchase; focus purely on the product features, quality, and organic content.
 
-Return ONLY a valid JSON object — no markdown, no extra text:
+Return ONLY a valid JSON object — no markdown, no extra text, no code fences:
 {
   "titles": { "StoreName1": "Unique SEO title | Key Features | Store 1", "StoreName2": "Different SEO title | Key Features | Store 2" },
   "category_suggestion": "Parent Category > Sub Category > Leaf Category",
   "description": "<p><strong>Perfect for:</strong></p><ul><li>Use Case 1</li><li>Use Case 2</li><li>Use Case 3</li></ul><p><img src=\"{imageUrl}\" alt=\"Product\" /></p><p>Beautifully written description here...</p>",
   "highlights": ["Highlight sentence 1.", "Highlight sentence 2.", "..."],
   "attributes": { "brand": "No Brand", "other_attr": "value" }
-}`
+}`;
 
-export async function GET() {
+async function run() {
     try {
-        const supabase = await createAdminClient()
-
-        // Load AI model/key settings
-        const { data: aiRow } = await supabase
+        const { data, error } = await supabase
             .from('app_settings')
-            .select('value')
-            .eq('key', 'daraz_ai_settings')
-            .maybeSingle()
+            .upsert({
+                key: 'daraz_listing_prompt',
+                value: { prompt: newPrompt },
+                updated_at: new Date().toISOString()
+            }, { onConflict: 'key' })
+            .select();
 
-        // Load prompt template
-        const { data: promptRow } = await supabase
-            .from('app_settings')
-            .select('value')
-            .eq('key', 'daraz_listing_prompt')
-            .maybeSingle()
-
-        return NextResponse.json({
-            model: aiRow?.value?.model || 'gpt-4o-mini',
-            apiKey: aiRow?.value?.apiKey || '',
-            listingPrompt: promptRow?.value?.prompt || DEFAULT_PROMPT
-        })
-    } catch (error: any) {
-        return NextResponse.json({
-            model: 'gpt-4o-mini',
-            apiKey: '',
-            listingPrompt: DEFAULT_PROMPT
-        })
+        if (error) throw error;
+        console.log("Database prompt updated successfully via Supabase JS client!", data);
+    } catch (err) {
+        console.error("Update failed:", err.message);
     }
 }
 
-export async function POST(request: Request) {
-    try {
-        const supabase = await createAdminClient()
-        const body = await request.json()
-
-        // Save model + API key
-        if (body.model !== undefined || body.apiKey !== undefined) {
-            const { error: aiError } = await supabase
-                .from('app_settings')
-                .upsert({
-                    key: 'daraz_ai_settings',
-                    value: {
-                        model: body.model || 'gpt-4o-mini',
-                        apiKey: body.apiKey || ''
-                    },
-                    updated_at: new Date().toISOString()
-                }, { onConflict: 'key' })
-
-            if (aiError) throw aiError
-        }
-
-        // Save prompt template if provided
-        if (body.listingPrompt !== undefined) {
-            const { error: promptError } = await supabase
-                .from('app_settings')
-                .upsert({
-                    key: 'daraz_listing_prompt',
-                    value: { prompt: body.listingPrompt },
-                    updated_at: new Date().toISOString()
-                }, { onConflict: 'key' })
-
-            if (promptError) throw promptError
-        }
-
-        return NextResponse.json({ success: true })
-    } catch (error: any) {
-        console.error('[SaveAiSettings] Error saving settings:', error)
-        return NextResponse.json({ error: error.message }, { status: 500 })
-    }
-}
+run();

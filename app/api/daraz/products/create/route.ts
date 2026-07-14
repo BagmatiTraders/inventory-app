@@ -75,6 +75,17 @@ export async function POST(request: NextRequest) {
                 console.log(`[DarazCreate] Migrating main images for ${sellerAccount}...`)
                 const darazMainImages = await migrateImagesToDaraz(images, accessToken)
 
+                // Automatically replace Supabase image URLs inside the description with their migrated Daraz CDN counterparts
+                let migratedDescription = description || ''
+                if (Array.isArray(images) && darazMainImages) {
+                    (images as string[]).forEach((supabaseUrl: string, index: number) => {
+                        const darazUrl = darazMainImages[index]
+                        if (supabaseUrl && darazUrl) {
+                            migratedDescription = migratedDescription.split(supabaseUrl).join(darazUrl)
+                        }
+                    })
+                }
+
                 // 3. Migrate variant-specific images
                 const enrichedSkus: DarazSkuVariant[] = []
                 for (const sku of skus) {
@@ -163,7 +174,7 @@ export async function POST(request: NextRequest) {
                     images: darazMainImages,
                     name,
                     shortDescription: formattedShortDesc,
-                    description,
+                    description: migratedDescription,
                     brand: brand || 'Remark', // Default Brand if empty
                     attributes: {
                         warranty_type: 'No Warranty', // Default fallback
@@ -188,7 +199,18 @@ export async function POST(request: NextRequest) {
 
                 if (data.code !== '0' && data.code !== 0) {
                     console.error('[DarazCreate] Full Error Response:', JSON.stringify(data, null, 2))
-                    throw new Error(data.message || data.msg || 'Push failed')
+                    
+                    let errMsg = data.message || data.msg || 'Push failed'
+                    if (data.detail && Array.isArray(data.detail) && data.detail.length > 0) {
+                        const detailedMsgs = data.detail
+                            .map((d: any) => d.message)
+                            .filter(Boolean)
+                            .join(' | ')
+                        if (detailedMsgs) {
+                            errMsg = `${errMsg}: ${detailedMsgs}`
+                        }
+                    }
+                    throw new Error(errMsg)
                 }
 
                 results.push({
@@ -267,24 +289,25 @@ export async function POST(request: NextRequest) {
                             }
                         }
 
+                        const baseUpdate = {
+                            updated_at: new Date().toISOString(),
+                            is_new_pushed: true,
+                            pushed_at: new Date().toISOString(),
+                            approval_status: 'Pending'
+                        }
+
                         if (Object.keys(updatePayload).length > 0) {
                             await supabase
                                 .from('products')
                                 .update({
                                     ...updatePayload,
-                                    updated_at: new Date().toISOString(),
-                                    is_new_pushed: true,
-                                    pushed_at: new Date().toISOString()
+                                    ...baseUpdate
                                 })
                                 .eq('id', existing.id)
                         } else {
                             await supabase
                                 .from('products')
-                                .update({
-                                    is_new_pushed: true,
-                                    pushed_at: new Date().toISOString(),
-                                    updated_at: new Date().toISOString()
-                                })
+                                .update(baseUpdate)
                                 .eq('id', existing.id)
                         }
 
@@ -307,7 +330,7 @@ export async function POST(request: NextRequest) {
                                 seller_sku4: payload.seller_sku4 || null,
                                 import_flag: false,
                                 is_deleted: false,
-                                approval_status: 'Approved',
+                                approval_status: 'Pending',
                                 marketplace_sync_status: 'Done',
                                 website_sync_status: 'Pending',
                                 product_title: name,

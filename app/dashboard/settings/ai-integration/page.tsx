@@ -12,6 +12,7 @@ const TEMPLATE_VARIABLES = [
     { key: '{categoryPath}', desc: 'Selected category breadcrumb path' },
     { key: '{attributesSchema}', desc: 'JSON schema of category attributes to fill' },
     { key: '{hasImage}', desc: '"Yes" or "No" — whether a product image was uploaded' },
+    { key: '{imageUrl}', desc: 'URL of the first product image' },
 ]
 
 export default function AiIntegrationPage() {

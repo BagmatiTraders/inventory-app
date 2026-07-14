@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { Card } from '@/components/ui-shim'
 import {
     Sparkles, Trash2, Plus, Upload, Loader2, Info, CheckCircle2,
-    RefreshCw, ChevronDown, ArrowLeft, Edit3, Send, Calendar, MoreVertical
+    RefreshCw, ChevronDown, ArrowLeft, Edit3, Send, Calendar, MoreVertical, Store
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase/client'
 import CategoryPicker from './CategoryPicker'
@@ -105,6 +105,8 @@ export default function NewListingTab({ prefilledData, onClearPrefilled }: NewLi
     // ── Drafts (from Supabase) ──────────────────────────────────────────────
     const [drafts, setDrafts] = useState<DraftListing[]>([])
     const [draftsLoading, setDraftsLoading] = useState(true)
+    const [currentPage, setCurrentPage] = useState(1)
+    const [generatingId, setGeneratingId] = useState<string | null>(null)
     const [selectedDraftIds, setSelectedDraftIds] = useState<Set<string>>(new Set())
     const [bulkGenerating, setBulkGenerating] = useState(false)
     const [bulkPushing, setBulkPushing] = useState(false)
@@ -190,7 +192,10 @@ export default function NewListingTab({ prefilledData, onClearPrefilled }: NewLi
         try {
             const res = await fetch('/api/daraz/drafts')
             const json = await res.json()
-            if (json.success) setDrafts(json.data || [])
+            if (json.success) {
+                setDrafts(json.data || [])
+                setCurrentPage(1)
+            }
         } catch (err) {
             console.error('Failed to load drafts:', err)
         } finally {
@@ -456,6 +461,82 @@ export default function NewListingTab({ prefilledData, onClearPrefilled }: NewLi
         }
     }
 
+    const handleSingleGenerate = async (draft: DraftListing) => {
+        if (!draft.raw_name?.trim()) return alert('Product name is required')
+        if (!draft.target_stores || draft.target_stores.length === 0) {
+            return alert('No target stores configured for this draft. Please edit it first.')
+        }
+
+        setGeneratingId(draft.id)
+        
+        // Mark as generating
+        await fetch('/api/daraz/drafts', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: draft.id, status: 'generating' })
+        })
+        
+        // Update local state status to generating
+        setDrafts(prev => prev.map(d => d.id === draft.id ? { ...d, status: 'generating' } : d))
+
+        try {
+            const storeNames = draft.target_stores
+                .map(id => stores.find(s => s.id === id)?.seller_account || id)
+
+            const res = await fetch('/api/daraz/products/ai-generate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    productName: draft.raw_name,
+                    price: draft.price || 500,
+                    imageUrl: draft.images?.[0] || null,
+                    storeNames: storeNames.length > 0 ? storeNames : ['Default Store'],
+                    model: aiModel
+                })
+            })
+            const data = await res.json()
+
+            if (data.success) {
+                const newTitlesPerStore: Record<string, string> = {}
+                draft.target_stores.forEach(storeId => {
+                    const storeName = stores.find(s => s.id === storeId)?.seller_account || storeId
+                    newTitlesPerStore[storeId] = data.titles?.[storeName] || draft.raw_name
+                })
+
+                await fetch('/api/daraz/drafts', {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        id: draft.id,
+                        title: Object.values(newTitlesPerStore)[0] || draft.raw_name,
+                        titles_per_store: newTitlesPerStore,
+                        description: data.description || '',
+                        highlights: data.highlights || [],
+                        attributes: data.attributes || {},
+                        category_id: data.category_id || null,
+                        category_path: data.category_suggestion || '',
+                        status: 'generated'
+                    })
+                })
+                
+                alert(`AI content generated successfully for "${draft.raw_name}"!`)
+            } else {
+                throw new Error(data.error || 'AI Generation failed')
+            }
+        } catch (err: any) {
+            console.error('Single generation failed:', err)
+            await fetch('/api/daraz/drafts', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: draft.id, status: 'failed' })
+            })
+            alert(`Generation failed: ${err.message}`)
+        } finally {
+            setGeneratingId(null)
+            fetchDrafts()
+        }
+    }
+
     // ── Bulk Add handlers ─────────────────────────────────────────────────────
     const handleStartBulkAdd = () => {
         setBulkRows([{
@@ -510,10 +591,11 @@ export default function NewListingTab({ prefilledData, onClearPrefilled }: NewLi
 
     // ── Bulk AI generation ────────────────────────────────────────────────────
     const handleBulkGenerateContent = async () => {
-        if (selectedDraftIds.size === 0) return
+        const toGen = drafts.filter(
+            d => selectedDraftIds.has(d.id) && (d.status === 'draft' || d.status === 'failed')
+        )
+        if (toGen.length === 0) return alert('No selected drafts need AI generation (already ready or pushed)')
         setBulkGenerating(true)
-
-        const toGen = drafts.filter(d => selectedDraftIds.has(d.id))
 
         // Mark all as generating
         await Promise.all(toGen.map(d =>
@@ -815,11 +897,11 @@ export default function NewListingTab({ prefilledData, onClearPrefilled }: NewLi
     }
 
     const handleBulkPush = async () => {
-        if (selectedDraftIds.size === 0) return
-        if (!confirm(`Push all ${selectedDraftIds.size} selected drafts to Daraz?`)) return
+        const toPush = drafts.filter(d => selectedDraftIds.has(d.id) && d.status === 'generated')
+        if (toPush.length === 0) return alert('No selected products are ready to push (pushed or draft status will be skipped)')
+        if (!confirm(`Push all ${toPush.length} selected ready products to Daraz?`)) return
 
         setBulkPushing(true)
-        const toPush = drafts.filter(d => selectedDraftIds.has(d.id))
         let successCount = 0
         let failCount = 0
 
@@ -908,6 +990,11 @@ export default function NewListingTab({ prefilledData, onClearPrefilled }: NewLi
             if (result.success) {
                 const anyFailed = result.results.some((r: any) => !r.success)
                 const targetStatus = anyFailed ? 'failed' : 'pushed'
+                
+                let errorSummary: string | null = null
+                if (anyFailed) {
+                    errorSummary = result.results.filter((r: any) => !r.success).map((r: any) => `${r.sellerAccount}: ${r.error}`).join('; ')
+                }
 
                 const summary = result.results
                     .map((r: any) => `${r.sellerAccount}: ${r.success ? '✅ Success' : `❌ Failed (${r.error})`}`)
@@ -921,6 +1008,7 @@ export default function NewListingTab({ prefilledData, onClearPrefilled }: NewLi
                         body: JSON.stringify({
                             id: editingDraftId,
                             status: targetStatus,
+                            error: errorSummary,
                             titles_per_store: titlesPerStore,
                             description,
                             highlights,
@@ -986,12 +1074,12 @@ export default function NewListingTab({ prefilledData, onClearPrefilled }: NewLi
     // ── Status badge helper ───────────────────────────────────────────────────
     const statusBadge = (status: DraftListing['status']) => {
         const map: Record<string, string> = {
-            draft: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-950/20 dark:text-yellow-400',
-            generating: 'bg-blue-100 text-blue-700 dark:bg-blue-950/20 dark:text-blue-400',
-            generated: 'bg-green-100 text-green-700 dark:bg-green-950/20 dark:text-green-400',
-            pushing: 'bg-orange-100 text-orange-700 dark:bg-orange-950/20 dark:text-orange-400',
-            pushed: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950/20 dark:text-indigo-400',
-            failed: 'bg-red-100 text-red-700 dark:bg-red-950/20 dark:text-red-400',
+            draft: 'bg-zinc-100 text-zinc-700 dark:bg-zinc-800/40 dark:text-zinc-300 border border-zinc-200/50 dark:border-zinc-700/30',
+            generating: 'bg-blue-50 text-blue-700 dark:bg-blue-950/20 dark:text-blue-300 border border-blue-100/50 dark:border-blue-900/20',
+            generated: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/20 dark:text-emerald-300 border border-emerald-100/50 dark:border-emerald-900/20',
+            pushing: 'bg-amber-50 text-amber-700 dark:bg-amber-950/20 dark:text-amber-300 border border-amber-100/50 dark:border-amber-900/20',
+            pushed: 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/20 dark:text-indigo-300 border border-indigo-100/50 dark:border-indigo-900/20',
+            failed: 'bg-rose-50 text-rose-700 dark:bg-rose-950/20 dark:text-rose-300 border border-rose-100/50 dark:border-rose-900/20',
         }
         const label: Record<string, string> = {
             draft: 'Draft',
@@ -1002,8 +1090,8 @@ export default function NewListingTab({ prefilledData, onClearPrefilled }: NewLi
             failed: 'Not Pushed',
         }
         return (
-            <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${map[status] || map.draft}`}>
-                {status === 'generating' && <Loader2 className="inline animate-spin mr-1" size={10} />}
+            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold ${map[status] || map.draft}`}>
+                {status === 'generating' && <Loader2 className="inline animate-spin mr-1 shrink-0" size={10} />}
                 {label[status] || status}
             </span>
         )
@@ -1063,33 +1151,40 @@ export default function NewListingTab({ prefilledData, onClearPrefilled }: NewLi
                 </div>
 
                 {/* Bulk action bar */}
-                {selectedDraftIds.size > 0 && (
-                    <Card className="p-3 bg-orange-50 dark:bg-orange-950/20 border border-orange-200 flex justify-between items-center">
-                        <span className="text-xs font-semibold text-orange-700 dark:text-orange-400">
-                            {selectedDraftIds.size} Draft{selectedDraftIds.size > 1 ? 's' : ''} Selected
-                        </span>
-                        <div className="flex gap-2">
-                            <button
-                                type="button"
-                                onClick={handleBulkGenerateContent}
-                                disabled={bulkGenerating || bulkPushing}
-                                className="px-4 py-1.5 bg-orange-500 hover:bg-orange-600 text-white rounded text-xs font-bold flex items-center gap-1.5 disabled:opacity-50 shadow"
-                            >
-                                {bulkGenerating ? <Loader2 className="animate-spin" size={12} /> : <Sparkles size={12} />}
-                                Generate AI Content ({selectedDraftIds.size})
-                            </button>
-                            <button
-                                type="button"
-                                onClick={handleBulkPush}
-                                disabled={bulkGenerating || bulkPushing}
-                                className="px-4 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded text-xs font-bold flex items-center gap-1.5 disabled:opacity-50 shadow"
-                            >
-                                {bulkPushing ? <Loader2 className="animate-spin" size={12} /> : <Send size={12} />}
-                                Push Selected ({selectedDraftIds.size})
-                            </button>
-                        </div>
-                    </Card>
-                )}
+                {(() => {
+                    const selectedDraftsList = drafts.filter(d => selectedDraftIds.has(d.id));
+                    const readyToPushCount = selectedDraftsList.filter(d => d.status === 'generated').length;
+                    const draftsToGenerateCount = selectedDraftsList.filter(d => d.status === 'draft' || d.status === 'failed').length;
+
+                    return selectedDraftIds.size > 0 && (
+                        <Card className="p-3 bg-amber-50/70 dark:bg-amber-950/10 border border-amber-200/50 flex justify-between items-center shadow-sm">
+                            <span className="text-xs font-semibold text-amber-800 dark:text-amber-400 flex items-center gap-1.5">
+                                <Info size={14} className="text-amber-600 dark:text-amber-500" />
+                                {selectedDraftIds.size} Selected | {readyToPushCount} Ready to Push
+                            </span>
+                            <div className="flex gap-2">
+                                <button
+                                    type="button"
+                                    onClick={handleBulkGenerateContent}
+                                    disabled={bulkGenerating || bulkPushing || draftsToGenerateCount === 0}
+                                    className="px-4 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded text-xs font-semibold flex items-center gap-1.5 disabled:opacity-50 shadow-sm transition-all"
+                                >
+                                    {bulkGenerating ? <Loader2 className="animate-spin" size={12} /> : <Sparkles size={12} />}
+                                    Generate AI Content ({draftsToGenerateCount})
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={handleBulkPush}
+                                    disabled={bulkGenerating || bulkPushing || readyToPushCount === 0}
+                                    className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-xs font-semibold flex items-center gap-1.5 disabled:opacity-50 shadow-sm transition-all"
+                                >
+                                    {bulkPushing ? <Loader2 className="animate-spin" size={12} /> : <Send size={12} />}
+                                    Push Selected ({readyToPushCount})
+                                </button>
+                            </div>
+                        </Card>
+                    );
+                })()}
 
                 {/* Drafts Card List */}
                 <div className="space-y-3">
@@ -1129,178 +1224,263 @@ export default function NewListingTab({ prefilledData, onClearPrefilled }: NewLi
                                 return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
                             });
 
-                            return sortedDrafts.map(draft => {
-                                const isDraftOrPushed = 
-                                    draft.status === 'draft' || 
-                                    draft.status === 'generating' || 
-                                    draft.status === 'pushed' || 
-                                    draft.status === 'pushing';
-                                    
-                                const isReady = 
-                                    draft.status === 'generated' || 
-                                    draft.status === 'failed';
+                            const ITEMS_PER_PAGE = 50;
+                            const totalPages = Math.ceil(sortedDrafts.length / ITEMS_PER_PAGE);
+                            const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+                            const paginatedDrafts = sortedDrafts.slice(startIndex, startIndex + ITEMS_PER_PAGE);
 
-                                return (
-                                    <div 
-                                        key={draft.id} 
-                                        className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 bg-white dark:bg-zinc-900 p-4 border dark:border-zinc-800 rounded-lg shadow-sm hover:shadow transition-all duration-200 relative"
-                                    >
-                                        {/* Selection Checkbox */}
-                                        <div className="flex items-center">
-                                            <input
-                                                type="checkbox"
-                                                checked={selectedDraftIds.has(draft.id)}
-                                                onChange={(e) => {
-                                                    const next = new Set(selectedDraftIds)
-                                                    if (e.target.checked) next.add(draft.id)
-                                                    else next.delete(draft.id)
-                                                    setSelectedDraftIds(next)
-                                                }}
-                                                className="w-4 h-4 text-orange-500 border-gray-300 dark:border-zinc-700 rounded focus:ring-orange-500 cursor-pointer"
-                                            />
-                                        </div>
-
-                                        {/* Product Image */}
-                                        <div className="relative flex-none">
-                                            <img
-                                                src={draft.images?.[0] || '/placeholder.png'}
-                                                className="w-16 h-16 rounded-lg object-cover border dark:border-zinc-800 bg-gray-50 dark:bg-zinc-800 shrink-0"
-                                                alt={draft.raw_name}
-                                            />
-                                        </div>
-
-                                        {/* Main info columns */}
-                                        <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-4 items-center min-w-0">
-                                            
-                                            {/* Column 1: Names */}
-                                            <div className="min-w-0 flex flex-col justify-center">
-                                                <span className="font-bold text-gray-800 dark:text-zinc-200 block truncate text-sm" title={draft.raw_name}>
-                                                    {draft.raw_name}
-                                                </span>
-                                                <span className="text-xs mt-1 block truncate" title={draft.title || 'AI Content: Not Generated'}>
-                                                    {draft.title ? (
-                                                        <span className="flex items-center gap-1 text-orange-600 dark:text-orange-400 font-medium">
-                                                            <Sparkles size={12} className="shrink-0 text-orange-500" />
-                                                            {draft.title}
-                                                        </span>
-                                                    ) : (
-                                                        <span className="italic text-gray-400">AI Content Not Generated</span>
-                                                    )}
-                                                </span>
+                            return (
+                                <>
+                                    {paginatedDrafts.map(draft => (
+                                        <div 
+                                            key={draft.id} 
+                                            className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 bg-white dark:bg-zinc-900 p-4 border dark:border-zinc-800 rounded-lg shadow-sm hover:shadow transition-all duration-200 relative"
+                                        >
+                                            {/* Selection Checkbox */}
+                                            <div className="flex items-center">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={selectedDraftIds.has(draft.id)}
+                                                    onChange={(e) => {
+                                                        const next = new Set(selectedDraftIds)
+                                                        if (e.target.checked) next.add(draft.id)
+                                                        else next.delete(draft.id)
+                                                        setSelectedDraftIds(next)
+                                                    }}
+                                                    className="w-4 h-4 text-orange-500 border-gray-300 dark:border-zinc-700 rounded focus:ring-orange-500 cursor-pointer"
+                                                />
                                             </div>
 
-                                            {/* Column 2: Seller Accounts & Category */}
-                                            <div className="min-w-0 flex flex-col justify-center">
-                                                <div className="flex flex-wrap gap-1">
-                                                    {draft.target_stores?.length > 0 ? (
-                                                        draft.target_stores.map(id => {
-                                                            const store = stores.find(s => s.id === id)
-                                                            return store ? (
-                                                                <span key={id} className="px-1.5 py-0.5 bg-gray-100 dark:bg-zinc-800 rounded text-[10px] font-semibold text-gray-600 dark:text-gray-400">
-                                                                    {store.seller_account}
+                                            {/* Product Image */}
+                                            <div className="relative flex-none">
+                                                <img
+                                                    src={draft.images?.[0] || '/placeholder.png'}
+                                                    alt="Preview"
+                                                    className="w-16 h-16 rounded object-cover border dark:border-zinc-800 bg-gray-50"
+                                                />
+                                                {draft.images && draft.images.length > 1 && (
+                                                    <span className="absolute bottom-0.5 right-0.5 bg-black/70 text-[9px] text-white px-1 rounded font-bold">
+                                                        +{draft.images.length - 1}
+                                                    </span>
+                                                )}
+                                            </div>
+
+                                            {/* Main info columns */}
+                                            <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-4 items-center min-w-0">
+                                                
+                                                {/* Column 1: Names */}
+                                                <div className="min-w-0 flex flex-col justify-center">
+                                                    <span className="font-bold text-gray-800 dark:text-zinc-200 block truncate text-sm" title={draft.raw_name}>
+                                                        {draft.raw_name}
+                                                    </span>
+                                                    <span className="text-xs mt-1 block truncate" title={draft.title || 'AI Content: Not Generated'}>
+                                                        {draft.title ? (
+                                                            <span className="flex items-center gap-1 text-amber-700 dark:text-amber-400 font-medium">
+                                                                <Sparkles size={12} className="shrink-0 text-amber-500" />
+                                                                {draft.title}
+                                                            </span>
+                                                        ) : (
+                                                            <span className="italic text-gray-400">AI Content Not Generated</span>
+                                                        )}
+                                                    </span>
+                                                </div>
+
+                                                {/* Column 2: Category & Attributes */}
+                                                <div className="flex flex-col min-w-0">
+                                                    <span className="text-xs font-semibold text-gray-600 dark:text-zinc-400 truncate">
+                                                        {draft.category_path || 'No Category Selected'}
+                                                    </span>
+                                                    <div className="flex flex-wrap gap-1 mt-1">
+                                                        {draft.target_stores && draft.target_stores.map(storeId => {
+                                                            const sName = stores.find(s => s.id === storeId)?.seller_account || 'Account'
+                                                            return (
+                                                                <span key={storeId} className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 bg-amber-50/70 dark:bg-amber-950/20 text-amber-800 dark:text-amber-300 border border-amber-200/50 dark:border-amber-900/30 rounded font-medium transition-all hover:bg-amber-100/50 dark:hover:bg-amber-950/40">
+                                                                    <Store size={10} className="shrink-0 text-amber-600 dark:text-amber-500" />
+                                                                    {sName}
                                                                 </span>
-                                                            ) : null
-                                                        })
-                                                    ) : (
-                                                        <span className="text-[10px] text-gray-400 italic">No account selected</span>
+                                                            )
+                                                        })}
+                                                    </div>
+                                                </div>
+
+                                                {/* Column 3: Price & Status */}
+                                                <div className="flex flex-col md:items-center justify-center min-w-0">
+                                                    <span className="text-sm font-semibold text-amber-700 dark:text-amber-400">
+                                                        {draft.price ? `NPR ${draft.price}` : 'Price: N/A'}
+                                                    </span>
+                                                    <div className="mt-1">
+                                                        {statusBadge(draft.status)}
+                                                    </div>
+                                                    {draft.status === 'failed' && draft.error && (
+                                                        <div className="mt-1.5 text-[10px] text-rose-600 dark:text-rose-400 md:text-center max-w-[220px] bg-rose-50/50 dark:bg-rose-950/10 border border-rose-100/50 dark:border-rose-900/10 px-2 py-1 rounded leading-tight font-medium hover:max-w-none transition-all duration-200 cursor-help" title={draft.error}>
+                                                            {draft.error}
+                                                        </div>
                                                     )}
                                                 </div>
-                                                <span className="text-xs text-gray-500 dark:text-zinc-400 mt-1 truncate" title={draft.category_path || 'No Category'}>
-                                                    Category: {draft.category_path || 'No Category'}
-                                                </span>
+
                                             </div>
 
-                                            {/* Column 3: Price & Status */}
-                                            <div className="flex flex-col md:items-center justify-center min-w-0">
-                                                <span className="text-sm font-bold text-orange-600 dark:text-orange-400">
-                                                    {draft.price ? `NPR ${draft.price}` : 'Price: N/A'}
-                                                </span>
-                                                <div className="mt-1">
-                                                    {statusBadge(draft.status)}
-                                                </div>
-                                            </div>
+                                            {/* Action Buttons Column */}
+                                            <div className="flex-none flex sm:flex-col items-stretch justify-center gap-1.5 border-t sm:border-t-0 sm:border-l border-gray-100 dark:border-zinc-800 pt-3 sm:pt-0 sm:pl-4 min-w-[110px]">
+                                                {/* 1. Draft/Failed/Generating Status Action Group */}
+                                                {(draft.status === 'draft' || draft.status === 'failed' || draft.status === 'generating') && (
+                                                    <>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleSingleGenerate(draft)}
+                                                            disabled={draft.status === 'generating' || generatingId === draft.id}
+                                                            className="px-2.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded transition-all flex items-center gap-1.5 text-xs font-semibold justify-center disabled:opacity-50 shadow-sm"
+                                                            title="Generate AI Content"
+                                                        >
+                                                            {draft.status === 'generating' || generatingId === draft.id ? (
+                                                                <Loader2 size={12} className="animate-spin" />
+                                                            ) : (
+                                                                <Sparkles size={12} />
+                                                            )}
+                                                            Generate AI
+                                                        </button>
+                                                        <div className="relative w-full">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setActiveDropdownId(activeDropdownId === draft.id ? null : draft.id)}
+                                                                className={`w-full px-2.5 py-1.5 hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-zinc-800 text-gray-600 dark:text-zinc-400 rounded transition-colors flex items-center gap-1.5 text-xs font-semibold justify-start ${activeDropdownId === draft.id ? 'bg-gray-100 text-gray-700 dark:bg-zinc-800' : ''}`}
+                                                                title="More Actions"
+                                                            >
+                                                                <MoreVertical size={14} />
+                                                                More
+                                                            </button>
+                                                            
+                                                            {activeDropdownId === draft.id && (
+                                                                <div className="absolute right-0 bottom-full sm:bottom-auto sm:top-full mt-1 mb-1 sm:mb-0 w-28 bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 rounded-md shadow-lg z-50 py-1 text-xs text-left">
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => {
+                                                                            handleEditDraft(draft);
+                                                                            setActiveDropdownId(null);
+                                                                        }}
+                                                                        className="w-full text-left px-3 py-2 hover:bg-gray-100 dark:hover:bg-zinc-700 text-gray-700 dark:text-zinc-200 flex items-center gap-1.5 font-medium"
+                                                                    >
+                                                                        <Edit3 size={12} />
+                                                                        Edit
+                                                                    </button>
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => {
+                                                                            handleDeleteDraft(draft.id);
+                                                                            setActiveDropdownId(null);
+                                                                        }}
+                                                                        className="w-full text-left px-3 py-2 hover:bg-red-50 dark:hover:bg-red-950/20 text-red-600 flex items-center gap-1.5 font-medium"
+                                                                    >
+                                                                        <Trash2 size={12} />
+                                                                        Delete
+                                                                    </button>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    </>
+                                                )}
 
-                                        </div>
+                                                {/* 2. Ready (Generated) Status Action Group */}
+                                                {draft.status === 'generated' && (
+                                                    <>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleQuickPush(draft)}
+                                                            className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded transition-all flex items-center gap-1.5 text-xs font-semibold justify-center shadow-sm"
+                                                            title="Push to Daraz"
+                                                        >
+                                                            <Send size={12} />
+                                                            Push
+                                                        </button>
+                                                        <div className="relative w-full">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setActiveDropdownId(activeDropdownId === draft.id ? null : draft.id)}
+                                                                className={`w-full px-2.5 py-1.5 hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-zinc-800 text-gray-600 dark:text-zinc-400 rounded transition-colors flex items-center gap-1.5 text-xs font-semibold justify-start ${activeDropdownId === draft.id ? 'bg-gray-100 text-gray-700 dark:bg-zinc-800' : ''}`}
+                                                                title="More Actions"
+                                                            >
+                                                                <MoreVertical size={14} />
+                                                                More
+                                                            </button>
+                                                            
+                                                            {activeDropdownId === draft.id && (
+                                                                <div className="absolute right-0 bottom-full sm:bottom-auto sm:top-full mt-1 mb-1 sm:mb-0 w-28 bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 rounded-md shadow-lg z-50 py-1 text-xs text-left">
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => {
+                                                                            handleEditDraft(draft);
+                                                                            setActiveDropdownId(null);
+                                                                        }}
+                                                                        className="w-full text-left px-3 py-2 hover:bg-gray-100 dark:hover:bg-zinc-700 text-gray-700 dark:text-zinc-200 flex items-center gap-1.5 font-medium"
+                                                                    >
+                                                                        <Edit3 size={12} />
+                                                                        Edit
+                                                                    </button>
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => {
+                                                                            handleDeleteDraft(draft.id);
+                                                                            setActiveDropdownId(null);
+                                                                        }}
+                                                                        className="w-full text-left px-3 py-2 hover:bg-red-50 dark:hover:bg-red-950/20 text-red-600 flex items-center gap-1.5 font-medium"
+                                                                    >
+                                                                        <Trash2 size={12} />
+                                                                        Delete
+                                                                    </button>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    </>
+                                                )}
 
-                                        {/* Action Buttons Column */}
-                                        <div className="flex-none flex sm:flex-col items-stretch justify-center gap-1.5 border-t sm:border-t-0 sm:border-l border-gray-100 dark:border-zinc-800 pt-3 sm:pt-0 sm:pl-4 min-w-[110px]">
-                                            {isDraftOrPushed && (
-                                                <>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => handleEditDraft(draft)}
-                                                        className="px-2.5 py-1.5 hover:bg-orange-50 hover:text-orange-500 dark:hover:bg-orange-950/20 text-gray-600 dark:text-zinc-400 rounded transition-colors flex items-center gap-1.5 text-xs font-semibold justify-start"
-                                                        title="Edit & Configure"
-                                                    >
-                                                        <Edit3 size={14} />
-                                                        Edit
-                                                    </button>
+                                                {/* 3. Pushed Status Action Group (No Edit, only Delete) */}
+                                                {(draft.status === 'pushed' || draft.status === 'pushing') && (
                                                     <button
                                                         type="button"
                                                         onClick={() => handleDeleteDraft(draft.id)}
-                                                        className="px-2.5 py-1.5 hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-950/20 text-gray-600 dark:text-zinc-400 rounded transition-colors flex items-center gap-1.5 text-xs font-semibold justify-start"
+                                                        disabled={draft.status === 'pushing'}
+                                                        className="px-2.5 py-1.5 hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-950/20 text-gray-600 dark:text-zinc-400 rounded transition-colors flex items-center gap-1.5 text-xs font-semibold justify-center disabled:opacity-50"
                                                         title="Delete"
                                                     >
                                                         <Trash2 size={14} />
                                                         Delete
                                                     </button>
-                                                </>
-                                            )}
-                                            {isReady && (
-                                                <>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => handleQuickPush(draft)}
-                                                        className="px-2.5 py-1.5 hover:bg-green-50 hover:text-green-600 dark:hover:bg-green-950/20 text-gray-600 dark:text-zinc-400 rounded transition-colors flex items-center gap-1.5 text-xs font-semibold justify-start"
-                                                        title="Push to Daraz"
-                                                    >
-                                                        <Send size={14} />
-                                                        Push
-                                                    </button>
-                                                    <div className="relative w-full">
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => setActiveDropdownId(activeDropdownId === draft.id ? null : draft.id)}
-                                                            className={`w-full px-2.5 py-1.5 hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-zinc-800 text-gray-600 dark:text-zinc-400 rounded transition-colors flex items-center gap-1.5 text-xs font-semibold justify-start ${activeDropdownId === draft.id ? 'bg-gray-100 text-gray-700 dark:bg-zinc-800' : ''}`}
-                                                            title="More Actions"
-                                                        >
-                                                            <MoreVertical size={14} />
-                                                            More
-                                                        </button>
-                                                        
-                                                        {activeDropdownId === draft.id && (
-                                                            <div className="absolute right-0 bottom-full sm:bottom-auto sm:top-full mt-1 mb-1 sm:mb-0 w-28 bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 rounded-md shadow-lg z-50 py-1 text-xs text-left">
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() => {
-                                                                        handleEditDraft(draft);
-                                                                        setActiveDropdownId(null);
-                                                                    }}
-                                                                    className="w-full text-left px-3 py-2 hover:bg-gray-100 dark:hover:bg-zinc-700 text-gray-700 dark:text-zinc-200 flex items-center gap-1.5 font-medium"
-                                                                >
-                                                                    <Edit3 size={12} />
-                                                                    Edit
-                                                                </button>
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() => {
-                                                                        handleDeleteDraft(draft.id);
-                                                                        setActiveDropdownId(null);
-                                                                    }}
-                                                                    className="w-full text-left px-3 py-2 hover:bg-red-50 dark:hover:bg-red-950/20 text-red-600 flex items-center gap-1.5 font-medium"
-                                                                >
-                                                                    <Trash2 size={12} />
-                                                                    Delete
-                                                                </button>
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                </>
-                                            )}
+                                                )}
+                                            </div>
                                         </div>
-                                    </div>
-                                )
-                            })
+                                    ))}
+
+                                    {/* Pagination Controls */}
+                                    {sortedDrafts.length > ITEMS_PER_PAGE && (
+                                        <div className="flex justify-between items-center bg-white dark:bg-zinc-900 p-4 border dark:border-zinc-800 rounded-lg shadow-sm mt-4">
+                                            <span className="text-xs text-gray-500">
+                                                Showing {startIndex + 1} to {Math.min(startIndex + ITEMS_PER_PAGE, sortedDrafts.length)} of {sortedDrafts.length} listings
+                                            </span>
+                                            <div className="flex items-center gap-2">
+                                                <button
+                                                    type="button"
+                                                    disabled={currentPage === 1}
+                                                    onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                                                    className="px-3 py-1.5 border rounded text-xs bg-white hover:bg-gray-50 dark:bg-zinc-800 dark:border-zinc-700 disabled:opacity-50 font-medium"
+                                                >
+                                                    Previous
+                                                </button>
+                                                <span className="text-xs font-semibold text-gray-700 dark:text-zinc-300">
+                                                    Page {currentPage} of {totalPages}
+                                                </span>
+                                                <button
+                                                    type="button"
+                                                    disabled={currentPage === totalPages}
+                                                    onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                                                    className="px-3 py-1.5 border rounded text-xs bg-white hover:bg-gray-50 dark:bg-zinc-800 dark:border-zinc-700 disabled:opacity-50 font-medium"
+                                                >
+                                                    Next
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
+                                </>
+                            );
                         })()
                     )}
                 </div>
