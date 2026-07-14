@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { Package, FileText, History, AlertTriangle, Menu, Camera, Tag } from 'lucide-react'
+import { Package, FileText, History, AlertTriangle, Menu, Camera, Tag, Sparkles } from 'lucide-react'
 import { Card } from '@/components/ui-shim'
 import { useDashboard } from '../context'
 import { usePermissions } from '@/lib/permissions/PermissionContext'
@@ -56,6 +56,14 @@ const ALL_INVENTORY_MODULES = [
         color: 'bg-teal-500',
         mainRole: 'Inventory',
         subRole: 'Field Data Entry',
+    },
+    {
+        name: 'Daraz Product Management',
+        icon: Sparkles,
+        href: '/dashboard/inventory/daraz-product-management',
+        color: 'bg-orange-500',
+        mainRole: 'Inventory',
+        subRole: 'Inventory List', // Shared permission with product list
     },
 ]
 

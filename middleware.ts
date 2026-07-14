@@ -39,7 +39,13 @@ export async function middleware(request: NextRequest) {
         }
     )
 
-    const { data: { user } } = await supabase.auth.getUser()
+    let user = null
+    try {
+        const { data } = await supabase.auth.getUser()
+        user = data?.user || null
+    } catch (e) {
+        console.error('[Middleware] Auth parsing failed (possible malformed cookie):', e)
+    }
 
     // Protected Routes Logic
     if (request.nextUrl.pathname.startsWith('/dashboard')) {

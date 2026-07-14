@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { Store, Calendar, MapPin, CheckCircle, Database, Users, Shield, RefreshCw, Scale, Globe } from 'lucide-react'
+import { Store, Calendar, MapPin, CheckCircle, Database, Users, Shield, RefreshCw, Scale, Globe, Brain } from 'lucide-react'
 
 const settingsCards = [
     {
@@ -10,6 +10,13 @@ const settingsCards = [
         icon: Store,
         href: '/dashboard/settings/stores',
         color: 'bg-blue-500',
+    },
+    {
+        title: 'AI Integration',
+        description: 'Configure global AI model preference and API credentials',
+        icon: Brain,
+        href: '/dashboard/settings/ai-integration',
+        color: 'bg-orange-500',
     },
     {
         title: 'Fiscal Years',

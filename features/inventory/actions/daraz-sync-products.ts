@@ -145,10 +145,10 @@ export async function syncAllDarazProductsAction() {
             } catch (catErr: any) {
                 console.error(`[ProductSync] Failed to fetch category tree request:`, catErr.message)
             }
-
-            // Call Daraz /products/get API. Pulling first 100 products (2 pages of 50)
+            // Call Daraz /products/get API. Pulling all products dynamically
             const limit = 50
-            for (let pageIndex = 0; pageIndex < 2; pageIndex++) {
+            let pageIndex = 0
+            while (true) {
                 const offset = pageIndex * limit
                 const timestamp = Date.now().toString()
 
@@ -157,7 +157,7 @@ export async function syncAllDarazProductsAction() {
                     access_token: tokenData.access_token,
                     timestamp: timestamp,
                     sign_method: 'sha256',
-                    filter: 'live',
+                    filter: 'all', // Get active, inactive, drafts etc.
                     limit: limit,
                     offset: offset
                 }
@@ -204,13 +204,6 @@ export async function syncAllDarazProductsAction() {
                         const sellerSku = (sku.SellerSku || '').trim()
                         if (!sellerSku) continue
 
-                        // Check for duplicate SKU
-                        if (existingSkusSet.has(sellerSku.toLowerCase())) {
-                            totalDuplicates++
-                            continue
-                        }
-
-                        // Insert new product
                         const skuImage = sku.Images?.[0] || mainImage || null
                         const darazProductUrl = sku.Url || null
                         
@@ -222,43 +215,71 @@ export async function syncAllDarazProductsAction() {
                         const regularPrice = sku.price ? parseFloat(sku.price) : null
                         const specialPrice = sku.special_price ? parseFloat(sku.special_price) : null
 
-                        const { error: insertError } = await supabase
+                        // Check if product with this SKU already exists
+                        const { data: existingProd } = await supabase
                             .from('products')
-                            .insert({
-                                product_name: productName,
-                                product_title: productName,
-                                image_url: skuImage,
-                                other_images: otherImages,
-                                product_type: 'single',
-                                status: 'Active',
-                                seller_sku1: sellerSku,
-                                seller_account1: store.seller_account,
-                                approval_status: 'Pending',
-                                marketplace_sync_status: 'Pending',
-                                website_sync_status: 'Pending',
-                                import_flag: true,
-                                daraz_product_url: darazProductUrl,
-                                description: description,
-                                highlights: highlights,
-                                regular_price: regularPrice,
-                                special_price: specialPrice,
-                                category_name: categoryName,
-                                website_category: matchedWebsiteCategory,
-                                marketplace_category: matchedMarketplaceCategory
-                            })
+                            .select('id')
+                            .eq('seller_sku1', sellerSku)
+                            .eq('is_deleted', false)
+                            .maybeSingle()
 
-                        if (insertError) {
-                            console.error(`[ProductSync] Failed to insert product SKU ${sellerSku}:`, insertError.message)
+                        const productData = {
+                            product_name: productName,
+                            product_title: productName,
+                            image_url: skuImage,
+                            other_images: otherImages,
+                            status: item.status || 'Active', // status mapping matching the live status
+                            regular_price: regularPrice,
+                            special_price: specialPrice,
+                            description: description,
+                            highlights: highlights,
+                            category_name: categoryName,
+                            website_category: matchedWebsiteCategory,
+                            marketplace_category: matchedMarketplaceCategory,
+                            updated_at: new Date().toISOString()
+                        }
+
+                        if (existingProd) {
+                            // Update existing product
+                            const { error: updateError } = await supabase
+                                .from('products')
+                                .update(productData)
+                                .eq('id', existingProd.id)
+                            
+                            if (updateError) {
+                                console.error(`[ProductSync] Failed to update product ID ${existingProd.id}:`, updateError.message)
+                            } else {
+                                totalSynced++
+                            }
                         } else {
-                            // Add to memory set to avoid duplicate insertion in the same batch
-                            existingSkusSet.add(sellerSku.toLowerCase())
-                            totalSynced++
+                            // Insert new product
+                            const { error: insertError } = await supabase
+                                .from('products')
+                                .insert({
+                                    ...productData,
+                                    product_type: 'single',
+                                    seller_sku1: sellerSku,
+                                    seller_account1: store.seller_account,
+                                    approval_status: 'Pending',
+                                    marketplace_sync_status: 'Pending',
+                                    website_sync_status: 'Pending',
+                                    import_flag: true,
+                                    daraz_product_url: darazProductUrl,
+                                    created_at: new Date().toISOString()
+                                })
+                            
+                            if (insertError) {
+                                console.error(`[ProductSync] Failed to insert product SKU ${sellerSku}:`, insertError.message)
+                            } else {
+                                totalSynced++
+                            }
                         }
                     }
                 }
 
                 // If less than limit returned, no more products
                 if (productsList.length < limit) break
+                pageIndex++
             }
         } catch (err: any) {
             console.error(`[ProductSync] Request failed for store ${store.seller_account}:`, err.message)
@@ -266,13 +287,13 @@ export async function syncAllDarazProductsAction() {
     }
 
     revalidatePath('/dashboard/inventory/product-list')
+    revalidatePath('/dashboard/inventory/daraz-product-management')
 
     return {
         success: true,
         totalSynced,
         totalSkipped,
-        totalDuplicates,
-        message: `Synced ${totalSynced} new products, skipped ${totalSkipped} (before cutoff), ignored ${totalDuplicates} duplicates.`
+        message: `Sync completed! Upserted ${totalSynced} products in the database.`
     }
 }
 
