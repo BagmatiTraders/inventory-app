@@ -44,6 +44,8 @@ export interface Product {
     regular_price?: number | null
     category_name?: string | null
     website_category?: string | null
+    is_new_pushed?: boolean
+    pushed_at?: string | null
 }
 
 export interface ProductCombo {
@@ -162,8 +164,11 @@ export async function getProducts(params: {
         query = query.or(orQuery)
     }
 
-    // Sort so that Pending approvals and Pending syncs appear at the top, then alphabetically by product name
+    // Sort so that just/recently pushed products appear at the absolute top,
+    // then Pending approvals and Pending syncs, then alphabetically by product name.
     query = query
+        .order('is_new_pushed', { ascending: false, nullsFirst: false })
+        .order('pushed_at', { ascending: false, nullsFirst: false })
         .order('approval_status', { ascending: false, nullsFirst: false })
         .order('marketplace_sync_status', { ascending: false, nullsFirst: false })
         .order('website_sync_status', { ascending: false, nullsFirst: false })

@@ -87,13 +87,17 @@ export async function POST(request: NextRequest) {
                     // Map variant fields like color_family or size if they are inside attributes
                     // Daraz accepts variant fields as direct child nodes under <Sku>
                     const variantAttributes: Record<string, string> = {}
+                    
+                    // Default to 'Not Specified' to satisfy Daraz mandatory SKU attribute requirements
+                    variantAttributes.color_family = 'Not Specified'
+                    
                     if (attributes) {
                         if (attributes.color_family) variantAttributes.color_family = attributes.color_family
                         if (attributes.size) variantAttributes.size = attributes.size
-                        // If user sent specific variant properties, add them
-                        if (sku.color_family) variantAttributes.color_family = sku.color_family
-                        if (sku.size) variantAttributes.size = sku.size
                     }
+                    // If user sent specific variant properties, add them
+                    if (sku.color_family) variantAttributes.color_family = sku.color_family
+                    if (sku.size) variantAttributes.size = sku.size
 
                     enrichedSkus.push({
                         sellerSku: sku.sellerSku,
@@ -268,6 +272,17 @@ export async function POST(request: NextRequest) {
                                 .from('products')
                                 .update({
                                     ...updatePayload,
+                                    updated_at: new Date().toISOString(),
+                                    is_new_pushed: true,
+                                    pushed_at: new Date().toISOString()
+                                })
+                                .eq('id', existing.id)
+                        } else {
+                            await supabase
+                                .from('products')
+                                .update({
+                                    is_new_pushed: true,
+                                    pushed_at: new Date().toISOString(),
                                     updated_at: new Date().toISOString()
                                 })
                                 .eq('id', existing.id)
@@ -299,7 +314,9 @@ export async function POST(request: NextRequest) {
                                 description: description || '',
                                 highlights: shortDescription || '',
                                 regular_price: skus[0]?.price || 0,
-                                special_price: skus[0]?.specialPrice || null
+                                special_price: skus[0]?.specialPrice || null,
+                                is_new_pushed: true,
+                                pushed_at: new Date().toISOString()
                             })
                     }
                 }

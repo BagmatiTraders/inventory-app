@@ -56,6 +56,8 @@ export interface DarazAvgPriceItem {
     sales_priority?: boolean
     priority_seller_account?: string | null
     is_price_locked?: boolean
+    is_new_pushed?: boolean
+    pushed_at?: string | null
 }
 
 async function getSoldQuantitiesMap(days: number) {
@@ -147,11 +149,12 @@ async function getSoldQuantitiesMap(days: number) {
     return soldQtyMap
 }
 
-export async function getDarazAvgPrices(days: number = 60) {
+export async function getDarazAvgPrices(days: number | string = 60) {
     const supabase = await createClient()
 
+    const daysNum = typeof days === 'number' ? days : 60
     // 1. Fetch soldQtyMap concurrently
-    const soldQtyMapPromise = getSoldQuantitiesMap(days)
+    const soldQtyMapPromise = getSoldQuantitiesMap(daysNum)
 
     // 2. Fetch inventory products from the reports view concurrently
     const productsPromise = supabase
@@ -165,10 +168,10 @@ export async function getDarazAvgPrices(days: number = 60) {
         .order('applied_date', { ascending: false })
         .order('created_at', { ascending: false })
 
-    // 4. Fetch products SKUs, priorities, lock flags concurrently
+    // 4. Fetch products SKUs, priorities, lock flags, push flags concurrently
     const skusPromise = supabase
         .from('products')
-        .select('id, seller_sku1, seller_account1, seller_sku2, seller_account2, seller_sku3, seller_account3, seller_sku4, seller_account4, sales_priority, priority_seller_account, commission_percent, is_price_locked')
+        .select('id, seller_sku1, seller_account1, seller_sku2, seller_account2, seller_sku3, seller_account3, seller_sku4, seller_account4, sales_priority, priority_seller_account, commission_percent, is_price_locked, is_new_pushed, pushed_at')
 
     // 5. Fetch combos concurrently
     const combosPromise = supabase
@@ -474,12 +477,27 @@ export async function getDarazAvgPrices(days: number = 60) {
             sold_qty_by_account: salesEntry ? salesEntry.accounts : {},
             sales_priority: prodSkus.sales_priority || false,
             priority_seller_account: prodSkus.priority_seller_account || null,
-            is_price_locked: prodSkus?.is_price_locked || false
+            is_price_locked: prodSkus?.is_price_locked || false,
+            is_new_pushed: prodSkus?.is_new_pushed || false,
+            pushed_at: prodSkus?.pushed_at || null
         }
     })
 
-    // Sort by sold_qty descending
-    result.sort((a, b) => (b.sold_qty || 0) - (a.sold_qty || 0))
+    // Sort by sold_qty descending, or by is_new_pushed desc if selected option is 'new_listed'
+    if (days === 'new_listed') {
+        result.sort((a, b) => {
+            if (a.is_new_pushed && !b.is_new_pushed) return -1
+            if (!a.is_new_pushed && b.is_new_pushed) return 1
+            if (a.is_new_pushed && b.is_new_pushed) {
+                const timeA = a.pushed_at ? new Date(a.pushed_at).getTime() : 0
+                const timeB = b.pushed_at ? new Date(b.pushed_at).getTime() : 0
+                if (timeA !== timeB) return timeB - timeA
+            }
+            return (b.sold_qty || 0) - (a.sold_qty || 0)
+        })
+    } else {
+        result.sort((a, b) => (b.sold_qty || 0) - (a.sold_qty || 0))
+    }
 
     return result
 }

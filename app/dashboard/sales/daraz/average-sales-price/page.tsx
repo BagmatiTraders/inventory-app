@@ -10,7 +10,7 @@ import { getDarazAvgPrices, updateDarazAvgPrice, bulkUpdateDarazAvgPrice, syncDa
 export default function DarazAverageSalesPricePage() {
     const [data, setData] = useState<DarazAvgPriceItem[]>([])
     const [isLoading, setIsLoading] = useState(true)
-    const [salesDays, setSalesDays] = useState<number>(60)
+    const [salesDays, setSalesDays] = useState<number | string>(60)
     const [isSyncing, setIsSyncing] = useState(false)
     const [isPulling, setIsPulling] = useState(false)
     const [isSyncingLive, setIsSyncingLive] = useState(false)
@@ -179,7 +179,7 @@ export default function DarazAverageSalesPricePage() {
         loadData(salesDays)
     }, [salesDays])
 
-    async function loadData(days: number = salesDays) {
+    async function loadData(days: number | string = salesDays) {
         setIsLoading(true)
         try {
             const result = await getDarazAvgPrices(days)
@@ -1274,12 +1274,17 @@ export default function DarazAverageSalesPricePage() {
                     <select
                         className="h-[42px] w-[160px] flex-none rounded-[12px] border border-[#E5E7EB] bg-white text-[13px] px-[16px] font-semibold text-gray-700 outline-none focus:border-[#4F46E5] focus:ring-4 focus:ring-[#4F46E5]/[0.08] cursor-pointer"
                         value={salesDays}
-                        onChange={e => { setSalesDays(Number(e.target.value)); setCurrentPage(1); }}
+                        onChange={e => {
+                            const val = e.target.value;
+                            setSalesDays(val === 'new_listed' ? val : Number(val));
+                            setCurrentPage(1);
+                        }}
                     >
                         <option value={30}>30 Days Sales</option>
                         <option value={60}>60 Days Sales</option>
                         <option value={90}>90 Days Sales</option>
                         <option value={120}>120 Days Sales</option>
+                        <option value="new_listed">New Listed Product</option>
                     </select>
 
                     <select
@@ -1582,12 +1587,21 @@ export default function DarazAverageSalesPricePage() {
                                                                         </span>
                                                                     </div>
                                                                 )}
+                                                                {item.is_new_pushed && (salesDays === 30 || salesDays === 60 || salesDays === 'new_listed') && (
+                                                                    <div className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold mt-0.5 flex items-center gap-1 select-none">
+                                                                        <span className="inline-flex items-center justify-center px-1.5 py-0.2 rounded bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 text-[10px] font-bold">
+                                                                            New Product
+                                                                        </span>
+                                                                    </div>
+                                                                )}
                                                                 {item.sold_qty !== undefined && item.sold_qty > 30 && (
                                                                     <div className="text-[11px] text-[#4F46E5] dark:text-indigo-400 font-semibold mt-0.5 flex items-center gap-1 select-none">
                                                                         <span className="inline-flex items-center justify-center px-1.5 py-0.2 rounded bg-indigo-50 dark:bg-indigo-950/40 text-[#4F46E5] dark:text-indigo-300 border border-indigo-150 dark:border-indigo-800 text-[10px] font-bold">
                                                                             {item.sold_qty} sold
                                                                         </span>
-                                                                        <span className="text-gray-400 dark:text-gray-500 font-normal">in {salesDays} days</span>
+                                                                        <span className="text-gray-400 dark:text-gray-500 font-normal">
+                                                                            in {typeof salesDays === 'number' ? `${salesDays} days` : 'recent listing'}
+                                                                        </span>
                                                                     </div>
                                                                 )}
                                                             </div>

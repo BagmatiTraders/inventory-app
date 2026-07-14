@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { Card } from '@/components/ui-shim'
 import {
     Sparkles, Trash2, Plus, Upload, Loader2, Info, CheckCircle2,
-    RefreshCw, ChevronDown, ArrowLeft, Edit3, Send, Calendar
+    RefreshCw, ChevronDown, ArrowLeft, Edit3, Send, Calendar, MoreVertical
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase/client'
 import CategoryPicker from './CategoryPicker'
@@ -68,11 +68,39 @@ const fiveYearsFromNow = () => {
     return d.toISOString().split('T')[0]
 }
 
+const COMMON_COLORS = [
+    'Not Specified',
+    'Multicolor',
+    'Black',
+    'White',
+    'Red',
+    'Blue',
+    'Green',
+    'Yellow',
+    'Pink',
+    'Purple',
+    'Orange',
+    'Grey',
+    'Gold',
+    'Silver',
+    'Brown',
+    'Beige',
+    'Bronze',
+    'Copper',
+    'Olive',
+    'Navy Blue',
+    'Maroon',
+    'Teal'
+]
+
 export default function NewListingTab({ prefilledData, onClearPrefilled }: NewListingTabProps) {
     // ── View mode ───────────────────────────────────────────────────────────
     const [viewMode, setViewMode] = useState<'list' | 'add-single' | 'add-bulk' | 'edit-single'>('list')
     const [isAddMenuOpen, setIsAddMenuOpen] = useState(false)
     const [editingDraftId, setEditingDraftId] = useState<string | null>(null)
+    const [activeDropdownId, setActiveDropdownId] = useState<string | null>(null)
+    const [singleColorFamily, setSingleColorFamily] = useState('Not Specified')
+    const [singleSize, setSingleSize] = useState('')
 
     // ── Drafts (from Supabase) ──────────────────────────────────────────────
     const [drafts, setDrafts] = useState<DraftListing[]>([])
@@ -109,6 +137,9 @@ export default function NewListingTab({ prefilledData, onClearPrefilled }: NewLi
     const [uploadingImage, setUploadingImage] = useState(false)
     const [dragImageIdx, setDragImageIdx] = useState<number | null>(null)
     const [dragOverIdx, setDragOverIdx] = useState<number | null>(null)
+    const [bulkDragSourceRowId, setBulkDragSourceRowId] = useState<string | null>(null)
+    const [bulkDragImageIdx, setBulkDragImageIdx] = useState<number | null>(null)
+    const [bulkDragOverIdx, setBulkDragOverIdx] = useState<number | null>(null)
 
     const [description, setDescription] = useState('')
     const [highlights, setHighlights] = useState<string[]>([''])
@@ -590,6 +621,8 @@ export default function NewListingTab({ prefilledData, onClearPrefilled }: NewLi
         setLength(draft.pkg_length || 1)
         setWidth(draft.pkg_width || 1)
         setHeight(draft.pkg_height || 1)
+        setSingleColorFamily(draft.attributes?.color_family || 'Not Specified')
+        setSingleSize(draft.attributes?.size || '')
         setViewMode('edit-single')
     }
 
@@ -734,7 +767,8 @@ export default function NewListingTab({ prefilledData, onClearPrefilled }: NewLi
                         packageLength: draft.pkg_length || 1,
                         packageWidth: draft.pkg_width || 1,
                         packageHeight: draft.pkg_height || 1,
-                        images: draft.images.slice(0, 1)
+                        images: draft.images.slice(0, 1),
+                        color_family: 'Not Specified'
                     }],
                     images: draft.images
                 })
@@ -813,6 +847,15 @@ export default function NewListingTab({ prefilledData, onClearPrefilled }: NewLi
         if (sellingPrice <= 0) return alert('Please enter a selling price')
 
         setSubmitting(true)
+        
+        const submissionAttributes = {
+            ...dynamicAttributes,
+            ...(!hasVariants ? {
+                color_family: singleColorFamily,
+                size: singleSize || undefined
+            } : {})
+        }
+
         try {
             const finalSkus = hasVariants
                 ? skuRows.map(row => ({
@@ -824,7 +867,9 @@ export default function NewListingTab({ prefilledData, onClearPrefilled }: NewLi
                     packageLength: length,
                     packageWidth: width,
                     packageHeight: height,
-                    images: row.images
+                    images: row.images,
+                    color_family: row.colorFamily || 'Not Specified',
+                    size: row.size
                 }))
                 : [{
                     price: Number(sellingPrice),
@@ -836,7 +881,9 @@ export default function NewListingTab({ prefilledData, onClearPrefilled }: NewLi
                     packageLength: length,
                     packageWidth: width,
                     packageHeight: height,
-                    images: images.slice(0, 1)
+                    images: images.slice(0, 1),
+                    color_family: singleColorFamily,
+                    size: singleSize || undefined
                 }]
 
             const response = await fetch('/api/daraz/products/create', {
@@ -851,7 +898,7 @@ export default function NewListingTab({ prefilledData, onClearPrefilled }: NewLi
                     shortDescription: highlights.map(h => `• ${h}`).join('\n'),
                     description,
                     brand: dynamicAttributes.brand || 'No Brand',
-                    attributes: dynamicAttributes,
+                    attributes: submissionAttributes,
                     skus: finalSkus,
                     images
                 })
@@ -871,7 +918,23 @@ export default function NewListingTab({ prefilledData, onClearPrefilled }: NewLi
                     await fetch('/api/daraz/drafts', {
                         method: 'PATCH',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ id: editingDraftId, status: targetStatus })
+                        body: JSON.stringify({
+                            id: editingDraftId,
+                            status: targetStatus,
+                            titles_per_store: titlesPerStore,
+                            description,
+                            highlights,
+                            attributes: submissionAttributes,
+                            price: Number(sellingPrice) || null,
+                            special_price: specialPrice ? Number(specialPrice) : null,
+                            special_price_from: specialPrice ? specialPriceFrom : null,
+                            special_price_to: specialPrice ? specialPriceTo : null,
+                            weight,
+                            pkg_length: length,
+                            pkg_width: width,
+                            pkg_height: height,
+                            target_stores: selectedStores
+                        })
                     })
                 }
                 handleBackToList()
@@ -882,7 +945,24 @@ export default function NewListingTab({ prefilledData, onClearPrefilled }: NewLi
                 await fetch('/api/daraz/drafts', {
                     method: 'PATCH',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ id: editingDraftId, status: 'failed', error: err.message })
+                    body: JSON.stringify({
+                        id: editingDraftId,
+                        status: 'failed',
+                        error: err.message,
+                        titles_per_store: titlesPerStore,
+                        description,
+                        highlights,
+                        attributes: submissionAttributes,
+                        price: Number(sellingPrice) || null,
+                        special_price: specialPrice ? Number(specialPrice) : null,
+                        special_price_from: specialPrice ? specialPriceFrom : null,
+                        special_price_to: specialPrice ? specialPriceTo : null,
+                        weight,
+                        pkg_length: length,
+                        pkg_width: width,
+                        pkg_height: height,
+                        target_stores: selectedStores
+                    })
                 })
             }
         } finally {
@@ -1011,41 +1091,62 @@ export default function NewListingTab({ prefilledData, onClearPrefilled }: NewLi
                     </Card>
                 )}
 
-                {/* Drafts table */}
-                <div className="bg-white dark:bg-zinc-900 border dark:border-zinc-800 rounded-lg overflow-hidden shadow-sm">
-                    <table className="w-full text-left text-sm">
-                        <thead className="bg-gray-50 dark:bg-zinc-800/50 text-gray-500 dark:text-gray-400 uppercase text-xs border-b dark:border-zinc-800">
-                            <tr>
-                                <th className="p-3 w-10">
-                                    <input
-                                        type="checkbox"
-                                        onChange={(e) => {
-                                            if (e.target.checked) setSelectedDraftIds(new Set(drafts.map(d => d.id)))
-                                            else setSelectedDraftIds(new Set())
-                                        }}
-                                        checked={drafts.length > 0 && selectedDraftIds.size === drafts.length}
-                                    />
-                                </th>
-                                <th className="p-3">Product</th>
-                                <th className="p-3 w-48 hidden md:table-cell">Accounts</th>
-                                <th className="p-3 w-28 text-center">Status</th>
-                                <th className="p-3 w-36 text-right">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-100 dark:divide-zinc-800">
-                            {draftsLoading ? (
-                                <tr><td colSpan={5} className="p-12 text-center text-gray-400">
-                                    <Loader2 className="animate-spin mx-auto mb-2" size={20} />
-                                    Loading drafts...
-                                </td></tr>
-                            ) : drafts.length === 0 ? (
-                                <tr><td colSpan={5} className="p-12 text-center text-gray-400 italic">
-                                    No draft listings. Click "Add Product" to get started.
-                                </td></tr>
-                            ) : (
-                                drafts.map(draft => (
-                                    <tr key={draft.id} className="hover:bg-gray-50/50 dark:hover:bg-zinc-800/30">
-                                        <td className="p-3 align-middle">
+                {/* Drafts Card List */}
+                <div className="space-y-3">
+                    {draftsLoading ? (
+                        <div className="bg-white dark:bg-zinc-900 border dark:border-zinc-800 rounded-lg p-12 text-center text-gray-400 shadow-sm">
+                            <Loader2 className="animate-spin mx-auto mb-2 text-orange-500" size={24} />
+                            Loading draft listings...
+                        </div>
+                    ) : drafts.length === 0 ? (
+                        <div className="bg-white dark:bg-zinc-900 border dark:border-zinc-800 rounded-lg p-12 text-center text-gray-400 italic shadow-sm">
+                            No draft listings. Click "Add Product" to get started.
+                        </div>
+                    ) : (
+                        (() => {
+                            const getStatusGroupPriority = (status: string) => {
+                                switch (status) {
+                                    case 'draft':
+                                    case 'generating':
+                                        return 1;
+                                    case 'generated':
+                                    case 'failed':
+                                        return 2;
+                                    case 'pushing':
+                                    case 'pushed':
+                                        return 3;
+                                    default:
+                                        return 4;
+                                }
+                            };
+
+                            const sortedDrafts = [...drafts].sort((a, b) => {
+                                const priorityA = getStatusGroupPriority(a.status);
+                                const priorityB = getStatusGroupPriority(b.status);
+                                if (priorityA !== priorityB) {
+                                    return priorityA - priorityB;
+                                }
+                                return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
+                            });
+
+                            return sortedDrafts.map(draft => {
+                                const isDraftOrPushed = 
+                                    draft.status === 'draft' || 
+                                    draft.status === 'generating' || 
+                                    draft.status === 'pushed' || 
+                                    draft.status === 'pushing';
+                                    
+                                const isReady = 
+                                    draft.status === 'generated' || 
+                                    draft.status === 'failed';
+
+                                return (
+                                    <div 
+                                        key={draft.id} 
+                                        className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 bg-white dark:bg-zinc-900 p-4 border dark:border-zinc-800 rounded-lg shadow-sm hover:shadow transition-all duration-200 relative"
+                                    >
+                                        {/* Selection Checkbox */}
+                                        <div className="flex items-center">
                                             <input
                                                 type="checkbox"
                                                 checked={selectedDraftIds.has(draft.id)}
@@ -1055,75 +1156,153 @@ export default function NewListingTab({ prefilledData, onClearPrefilled }: NewLi
                                                     else next.delete(draft.id)
                                                     setSelectedDraftIds(next)
                                                 }}
+                                                className="w-4 h-4 text-orange-500 border-gray-300 dark:border-zinc-700 rounded focus:ring-orange-500 cursor-pointer"
                                             />
-                                        </td>
-                                        <td className="p-3 align-middle">
-                                            <div className="flex gap-3 items-center">
-                                                <img
-                                                    src={draft.images?.[0] || '/placeholder.png'}
-                                                    className="w-10 h-10 rounded object-cover border dark:border-zinc-700 bg-gray-50 shrink-0"
-                                                    alt={draft.raw_name}
-                                                />
-                                                <div className="min-w-0">
-                                                    <span className="font-semibold block truncate max-w-xs">{draft.raw_name}</span>
-                                                    {draft.title && (
-                                                        <span className="text-xs text-gray-400 line-clamp-1">
-                                                            AI: {draft.title}
+                                        </div>
+
+                                        {/* Product Image */}
+                                        <div className="relative flex-none">
+                                            <img
+                                                src={draft.images?.[0] || '/placeholder.png'}
+                                                className="w-16 h-16 rounded-lg object-cover border dark:border-zinc-800 bg-gray-50 dark:bg-zinc-800 shrink-0"
+                                                alt={draft.raw_name}
+                                            />
+                                        </div>
+
+                                        {/* Main info columns */}
+                                        <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-4 items-center min-w-0">
+                                            
+                                            {/* Column 1: Names */}
+                                            <div className="min-w-0 flex flex-col justify-center">
+                                                <span className="font-bold text-gray-800 dark:text-zinc-200 block truncate text-sm" title={draft.raw_name}>
+                                                    {draft.raw_name}
+                                                </span>
+                                                <span className="text-xs mt-1 block truncate" title={draft.title || 'AI Content: Not Generated'}>
+                                                    {draft.title ? (
+                                                        <span className="flex items-center gap-1 text-orange-600 dark:text-orange-400 font-medium">
+                                                            <Sparkles size={12} className="shrink-0 text-orange-500" />
+                                                            {draft.title}
                                                         </span>
+                                                    ) : (
+                                                        <span className="italic text-gray-400">AI Content Not Generated</span>
                                                     )}
-                                                    {draft.price && (
-                                                        <span className="text-xs text-orange-600 font-semibold">NPR {draft.price}</span>
+                                                </span>
+                                            </div>
+
+                                            {/* Column 2: Seller Accounts & Category */}
+                                            <div className="min-w-0 flex flex-col justify-center">
+                                                <div className="flex flex-wrap gap-1">
+                                                    {draft.target_stores?.length > 0 ? (
+                                                        draft.target_stores.map(id => {
+                                                            const store = stores.find(s => s.id === id)
+                                                            return store ? (
+                                                                <span key={id} className="px-1.5 py-0.5 bg-gray-100 dark:bg-zinc-800 rounded text-[10px] font-semibold text-gray-600 dark:text-gray-400">
+                                                                    {store.seller_account}
+                                                                </span>
+                                                            ) : null
+                                                        })
+                                                    ) : (
+                                                        <span className="text-[10px] text-gray-400 italic">No account selected</span>
                                                     )}
                                                 </div>
+                                                <span className="text-xs text-gray-500 dark:text-zinc-400 mt-1 truncate" title={draft.category_path || 'No Category'}>
+                                                    Category: {draft.category_path || 'No Category'}
+                                                </span>
                                             </div>
-                                        </td>
-                                        <td className="p-3 align-middle hidden md:table-cell">
-                                            <div className="flex flex-wrap gap-1">
-                                                {draft.target_stores?.map(id => {
-                                                    const store = stores.find(s => s.id === id)
-                                                    return store ? (
-                                                        <span key={id} className="px-1.5 py-0.5 bg-gray-100 dark:bg-zinc-800 rounded text-[10px] font-semibold text-gray-600 dark:text-gray-400">
-                                                            {store.seller_account}
-                                                        </span>
-                                                    ) : null
-                                                })}
+
+                                            {/* Column 3: Price & Status */}
+                                            <div className="flex flex-col md:items-center justify-center min-w-0">
+                                                <span className="text-sm font-bold text-orange-600 dark:text-orange-400">
+                                                    {draft.price ? `NPR ${draft.price}` : 'Price: N/A'}
+                                                </span>
+                                                <div className="mt-1">
+                                                    {statusBadge(draft.status)}
+                                                </div>
                                             </div>
-                                        </td>
-                                        <td className="p-3 text-center align-middle">
-                                            {statusBadge(draft.status)}
-                                        </td>
-                                        <td className="p-3 text-right align-middle">
-                                            <div className="flex justify-end items-center gap-1">
-                                                {(draft.status === 'generated' || draft.status === 'failed') && (
+
+                                        </div>
+
+                                        {/* Action Buttons Column */}
+                                        <div className="flex-none flex sm:flex-col items-stretch justify-center gap-1.5 border-t sm:border-t-0 sm:border-l border-gray-100 dark:border-zinc-800 pt-3 sm:pt-0 sm:pl-4 min-w-[110px]">
+                                            {isDraftOrPushed && (
+                                                <>
                                                     <button
+                                                        type="button"
+                                                        onClick={() => handleEditDraft(draft)}
+                                                        className="px-2.5 py-1.5 hover:bg-orange-50 hover:text-orange-500 dark:hover:bg-orange-950/20 text-gray-600 dark:text-zinc-400 rounded transition-colors flex items-center gap-1.5 text-xs font-semibold justify-start"
+                                                        title="Edit & Configure"
+                                                    >
+                                                        <Edit3 size={14} />
+                                                        Edit
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleDeleteDraft(draft.id)}
+                                                        className="px-2.5 py-1.5 hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-950/20 text-gray-600 dark:text-zinc-400 rounded transition-colors flex items-center gap-1.5 text-xs font-semibold justify-start"
+                                                        title="Delete"
+                                                    >
+                                                        <Trash2 size={14} />
+                                                        Delete
+                                                    </button>
+                                                </>
+                                            )}
+                                            {isReady && (
+                                                <>
+                                                    <button
+                                                        type="button"
                                                         onClick={() => handleQuickPush(draft)}
-                                                        className="p-1.5 hover:text-orange-500 rounded text-gray-400"
+                                                        className="px-2.5 py-1.5 hover:bg-green-50 hover:text-green-600 dark:hover:bg-green-950/20 text-gray-600 dark:text-zinc-400 rounded transition-colors flex items-center gap-1.5 text-xs font-semibold justify-start"
                                                         title="Push to Daraz"
                                                     >
                                                         <Send size={14} />
+                                                        Push
                                                     </button>
-                                                )}
-                                                <button
-                                                    onClick={() => handleEditDraft(draft)}
-                                                    className="p-1.5 hover:text-orange-500 rounded text-gray-400"
-                                                    title="Edit & Configure"
-                                                >
-                                                    <Edit3 size={14} />
-                                                </button>
-                                                <button
-                                                    onClick={() => handleDeleteDraft(draft.id)}
-                                                    className="p-1.5 hover:text-red-500 rounded text-gray-400"
-                                                    title="Delete"
-                                                >
-                                                    <Trash2 size={14} />
-                                                </button>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                ))
-                            )}
-                        </tbody>
-                    </table>
+                                                    <div className="relative w-full">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setActiveDropdownId(activeDropdownId === draft.id ? null : draft.id)}
+                                                            className={`w-full px-2.5 py-1.5 hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-zinc-800 text-gray-600 dark:text-zinc-400 rounded transition-colors flex items-center gap-1.5 text-xs font-semibold justify-start ${activeDropdownId === draft.id ? 'bg-gray-100 text-gray-700 dark:bg-zinc-800' : ''}`}
+                                                            title="More Actions"
+                                                        >
+                                                            <MoreVertical size={14} />
+                                                            More
+                                                        </button>
+                                                        
+                                                        {activeDropdownId === draft.id && (
+                                                            <div className="absolute right-0 bottom-full sm:bottom-auto sm:top-full mt-1 mb-1 sm:mb-0 w-28 bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 rounded-md shadow-lg z-50 py-1 text-xs text-left">
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        handleEditDraft(draft);
+                                                                        setActiveDropdownId(null);
+                                                                    }}
+                                                                    className="w-full text-left px-3 py-2 hover:bg-gray-100 dark:hover:bg-zinc-700 text-gray-700 dark:text-zinc-200 flex items-center gap-1.5 font-medium"
+                                                                >
+                                                                    <Edit3 size={12} />
+                                                                    Edit
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        handleDeleteDraft(draft.id);
+                                                                        setActiveDropdownId(null);
+                                                                    }}
+                                                                    className="w-full text-left px-3 py-2 hover:bg-red-50 dark:hover:bg-red-950/20 text-red-600 flex items-center gap-1.5 font-medium"
+                                                                >
+                                                                    <Trash2 size={12} />
+                                                                    Delete
+                                                                </button>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </>
+                                            )}
+                                        </div>
+                                    </div>
+                                )
+                            })
+                        })()
+                    )}
                 </div>
             </div>
         )
@@ -1219,12 +1398,62 @@ export default function NewListingTab({ prefilledData, onClearPrefilled }: NewLi
                                 </div>
 
                                 {/* Image upload */}
-                                <div className="space-y-1 flex-1 min-w-[120px]">
-                                    <label className="text-xs font-bold text-gray-600 block">Images (multiple)</label>
+                                <div className="space-y-1 flex-1 min-w-[200px]">
+                                    <label className="text-xs font-bold text-gray-600 block">Images (Drag to reorder)</label>
                                     <div className="flex flex-wrap gap-1.5 items-center">
                                         {row.images.map((img, imgIdx) => (
-                                            <div key={imgIdx} className="relative w-12 h-12 border rounded overflow-hidden group">
+                                            <div 
+                                                key={imgIdx} 
+                                                draggable
+                                                onDragStart={() => {
+                                                    setBulkDragSourceRowId(row.id);
+                                                    setBulkDragImageIdx(imgIdx);
+                                                }}
+                                                onDragOver={(e) => {
+                                                    e.preventDefault();
+                                                    if (bulkDragSourceRowId === row.id) {
+                                                        setBulkDragOverIdx(imgIdx);
+                                                    }
+                                                }}
+                                                onDragLeave={() => setBulkDragOverIdx(null)}
+                                                onDrop={(e) => {
+                                                    e.preventDefault();
+                                                    if (bulkDragSourceRowId !== row.id || bulkDragImageIdx === null || bulkDragImageIdx === imgIdx) return;
+                                                    
+                                                    const next = [...bulkRows];
+                                                    const reordered = [...row.images];
+                                                    const [moved] = reordered.splice(bulkDragImageIdx, 1);
+                                                    reordered.splice(imgIdx, 0, moved);
+                                                    
+                                                    next[idx].images = reordered;
+                                                    setBulkRows(next);
+                                                    
+                                                    setBulkDragSourceRowId(null);
+                                                    setBulkDragImageIdx(null);
+                                                    setBulkDragOverIdx(null);
+                                                }}
+                                                onDragEnd={() => {
+                                                    setBulkDragSourceRowId(null);
+                                                    setBulkDragImageIdx(null);
+                                                    setBulkDragOverIdx(null);
+                                                }}
+                                                className={`relative w-20 h-20 border-2 rounded overflow-hidden group cursor-grab active:cursor-grabbing transition-all
+                                                    ${bulkDragSourceRowId === row.id && bulkDragOverIdx === imgIdx 
+                                                        ? 'border-orange-500 scale-105' 
+                                                        : imgIdx === 0 
+                                                            ? 'border-orange-400' 
+                                                            : 'border-gray-200 dark:border-zinc-700'
+                                                    }`}
+                                            >
                                                 <img src={img} className="w-full h-full object-cover" alt="" />
+                                                
+                                                {/* Primary badge */}
+                                                {imgIdx === 0 && (
+                                                    <span className="absolute top-0 left-0 bg-orange-500 text-white text-[9px] font-bold px-1 py-0.5 rounded-br select-none">
+                                                        Primary
+                                                    </span>
+                                                )}
+
                                                 <button
                                                     type="button"
                                                     onClick={() => {
@@ -1239,10 +1468,10 @@ export default function NewListingTab({ prefilledData, onClearPrefilled }: NewLi
                                             </div>
                                         ))}
                                         {row.images.length < 8 && (
-                                            <label className="w-12 h-12 border border-dashed rounded flex flex-col items-center justify-center cursor-pointer hover:border-orange-500 transition-colors">
+                                            <label className="w-20 h-20 border border-dashed rounded flex flex-col items-center justify-center cursor-pointer hover:border-orange-500 transition-colors shrink-0">
                                                 {bulkUploadingId === row.id
-                                                    ? <Loader2 className="animate-spin text-gray-400" size={14} />
-                                                    : <Upload className="text-gray-400" size={14} />
+                                                    ? <Loader2 className="animate-spin text-gray-400" size={16} />
+                                                    : <Upload className="text-gray-400" size={16} />
                                                 }
                                                 <input
                                                     type="file"
@@ -1641,6 +1870,37 @@ export default function NewListingTab({ prefilledData, onClearPrefilled }: NewLi
                                     </div>
                                 </div>
 
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    <div className="space-y-1">
+                                        <label className="text-xs font-semibold text-gray-600 dark:text-zinc-400 block">
+                                            Color Family
+                                        </label>
+                                        <input
+                                            type="text"
+                                            list="variant-color-options"
+                                            value={singleColorFamily}
+                                            onChange={(e) => setSingleColorFamily(e.target.value)}
+                                            placeholder="e.g. Multicolour, Red, Black, etc."
+                                            className="w-full py-1.5 px-3 border rounded text-sm bg-white dark:bg-zinc-800 dark:border-zinc-700 focus:outline-none focus:ring-1 focus:ring-orange-500"
+                                        />
+                                        <p className="text-[10px] text-gray-400">Defaults to "Not Specified" if left empty or unchanged</p>
+                                    </div>
+
+                                    <div className="space-y-1">
+                                        <label className="text-xs font-semibold text-gray-600 dark:text-zinc-400 block">
+                                            Size
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={singleSize}
+                                            onChange={(e) => setSingleSize(e.target.value)}
+                                            placeholder="e.g. S, M, L, XL, 16 CM, etc."
+                                            className="w-full py-1.5 px-3 border rounded text-sm bg-white dark:bg-zinc-800 dark:border-zinc-700 focus:outline-none focus:ring-1 focus:ring-orange-500"
+                                        />
+                                        <p className="text-[10px] text-gray-400">Optional. Enter product size if applicable</p>
+                                    </div>
+                                </div>
+
                                 {/* Special Price Date Range (Always rendered when discount price is active) */}
                                 {specialPrice && (
                                     <div className="border dark:border-zinc-800 rounded-lg p-4 space-y-3 bg-gray-50/50 dark:bg-zinc-800/20">
@@ -1689,6 +1949,7 @@ export default function NewListingTab({ prefilledData, onClearPrefilled }: NewLi
                                         <div className="flex gap-2">
                                             <input
                                                 type="text"
+                                                list={prop.name === 'color_family' || prop.label?.toLowerCase() === 'color family' ? "variant-color-options" : undefined}
                                                 placeholder={`Add value (e.g. ${idx === 0 ? 'Blue, Red' : 'M, L, XL'})`}
                                                 onKeyDown={(e) => {
                                                     if (e.key === 'Enter') {
@@ -1924,6 +2185,12 @@ export default function NewListingTab({ prefilledData, onClearPrefilled }: NewLi
                     </Card>
                 </div>
             </form>
+
+            <datalist id="variant-color-options">
+                {COMMON_COLORS.map(color => (
+                    <option key={color} value={color} />
+                ))}
+            </datalist>
         </div>
     )
 }
