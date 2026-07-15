@@ -290,6 +290,17 @@ export async function syncDarazChatMessages(storeId: string, sessionId: string) 
             } else {
                 newMessagesCached++
 
+                // Detect Daraz follower confirmation — persist on session so it survives message retention cleanup
+                const contentLower = String(msg.content || '').toLowerCase()
+                if (contentLower.includes('store follower') || contentLower.includes('now your store')) {
+                    await supabase
+                        .from('daraz_chat_sessions')
+                        .update({ is_follower: true, followed_at: sendTime })
+                        .eq('session_id', sessionId)
+                        .eq('is_follower', false) // Only update if not already marked
+                    console.log(`[ChatSync] Marked session ${sessionId} as follower`)
+                }
+
                 // Trigger AI or Keyword auto-reply process ONLY if message is:
                 // - Sent by buyer (from_account_type = '1')
                 // - Received recently (last 5 minutes)

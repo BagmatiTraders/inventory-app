@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect, useRef, Suspense } from 'react'
+import React, { useState, useEffect, useRef, Suspense, forwardRef, useImperativeHandle } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase/client'
 import {
@@ -59,6 +59,8 @@ interface ChatSession {
     last_message_id?: string | null
     last_message_time?: string | null
     last_message_summary?: string | null
+    is_follower?: boolean
+    followed_at?: string | null
     updated_at: string
 }
 
@@ -102,6 +104,10 @@ function parseSummaryDisplay(summary: string | null | undefined): string {
                 parsed.promotionId || parsed.promotion_id) {
                 return 'Voucher Card'
             }
+            // Image message
+            if (parsed.imgUrl) {
+                return 'Image'
+            }
             // Template 10015 welcome message with txt field
             if (parsed.txt) {
                 const txtVal = parsed.txt
@@ -128,66 +134,78 @@ interface ChatRule {
     reply_content: string
 }
 
-const ChatInputBar = ({ onSendMessage }: { onSendMessage: (text: string) => Promise<boolean> }) => {
-    const [text, setText] = useState('')
-    const [sending, setSending] = useState(false)
-
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault()
-        if (!text.trim() || sending) return
-
-        const textToSend = text
-        setSending(true)
-        const success = await onSendMessage(textToSend)
-        setSending(false)
-        if (success) {
-            setText('')
-        }
-    }
-
-    return (
-        <div className="bg-white dark:bg-zinc-900 border-t border-zinc-200 dark:border-zinc-800 p-4 shrink-0">
-            {/* Presets suggestions bar */}
-            <div className="flex gap-2 overflow-x-auto pb-3 scrollbar-none">
-                <span className="text-[10px] font-bold text-zinc-400 self-center shrink-0 uppercase tracking-wider">Quick:</span>
-                {[
-                    'Hello, how can I help you today?',
-                    'Thank you for your inquiry. Checking stock right now.',
-                    'Your order has been shipped and is in transit.',
-                    'Please follow our store for discount vouchers!'
-                ].map(template => (
-                    <button
-                        key={template}
-                        type="button"
-                        onClick={() => setText(template)}
-                        className="bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 text-zinc-700 dark:text-zinc-300 text-xs px-3 py-1.5 rounded-full shrink-0 border border-zinc-200/50 dark:border-zinc-700/50 transition-colors cursor-pointer active:scale-95"
-                    >
-                        {template}
-                    </button>
-                ))}
-            </div>
-
-            {/* Message form */}
-            <form onSubmit={handleSubmit} className="flex gap-2">
-                <input
-                    type="text"
-                    value={text}
-                    disabled={sending}
-                    onChange={(e) => setText(e.target.value)}
-                    placeholder={sending ? "Sending..." : "Write your response..."}
-                    className="flex-1 bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 text-zinc-800 dark:text-zinc-100 disabled:opacity-50"
-                />
-                <button
-                    type="submit"
-                    disabled={sending}
-                    className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 active:scale-95 text-white shadow px-5 rounded-xl flex items-center justify-center transition-all disabled:opacity-50"
-                >
-                    <Send size={16} />
-                </button>
-            </form>
-        </div>
-    )
+interface ChatInputBarHandle {
+    focus: () => void
 }
+
+const ChatInputBar = forwardRef<ChatInputBarHandle, { onSendMessage: (text: string) => Promise<boolean> }>(
+    ({ onSendMessage }, ref) => {
+        const [text, setText] = useState('')
+        const [sending, setSending] = useState(false)
+        const inputRef = useRef<HTMLInputElement>(null)
+
+        // Expose focus() so parent components can refocus the input
+        useImperativeHandle(ref, () => ({
+            focus: () => setTimeout(() => inputRef.current?.focus(), 0)
+        }))
+
+        const handleSubmit = async (e: React.FormEvent) => {
+            e.preventDefault()
+            if (!text.trim() || sending) return
+
+            const textToSend = text
+            setSending(true)
+            const success = await onSendMessage(textToSend)
+            setSending(false)
+            if (success) {
+                setText('')
+            }
+            // Defer focus so it fires AFTER React re-enables the input in the DOM
+            setTimeout(() => inputRef.current?.focus(), 0)
+        }
+
+        return (
+            <div className="bg-white dark:bg-zinc-900 border-t border-zinc-200 dark:border-zinc-800 p-4 shrink-0">
+                {/* Presets suggestions bar */}
+                <div className="flex gap-2 overflow-x-auto pb-3 scrollbar-none">
+                    <span className="text-[10px] font-bold text-zinc-400 self-center shrink-0 uppercase tracking-wider">Quick:</span>
+                    {[
+                        'Follow our store to stay updated on new deals and offers.'
+                    ].map(template => (
+                        <button
+                            key={template}
+                            type="button"
+                            onClick={() => { setText(template); inputRef.current?.focus() }}
+                            className="bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 text-zinc-700 dark:text-zinc-300 text-xs px-3 py-1.5 rounded-full shrink-0 border border-zinc-200/50 dark:border-zinc-700/50 transition-colors cursor-pointer active:scale-95"
+                        >
+                            {template}
+                        </button>
+                    ))}
+                </div>
+
+                {/* Message form */}
+                <form onSubmit={handleSubmit} className="flex gap-2">
+                    <input
+                        ref={inputRef}
+                        type="text"
+                        value={text}
+                        disabled={sending}
+                        onChange={(e) => setText(e.target.value)}
+                        placeholder={sending ? "Sending..." : "Write your response..."}
+                        className="flex-1 bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 text-zinc-800 dark:text-zinc-100 disabled:opacity-50"
+                    />
+                    <button
+                        type="submit"
+                        disabled={sending}
+                        className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 active:scale-95 text-white shadow px-5 rounded-xl flex items-center justify-center transition-all disabled:opacity-50"
+                    >
+                        <Send size={16} />
+                    </button>
+                </form>
+            </div>
+        )
+    }
+)
 
 function ChatAiDashboardContent() {
     const searchParams = useSearchParams()
@@ -214,6 +232,13 @@ function ChatAiDashboardContent() {
         activeSessionRef.current = activeSessionId
     }, [activeSessionId])
 
+    // Auto-focus message input whenever the active customer changes
+    useEffect(() => {
+        if (activeSessionId) {
+            setTimeout(() => chatInputRef.current?.focus(), 50)
+        }
+    }, [activeSessionId])
+
     const [messages, setMessages] = useState<ChatMessage[]>([])
     const [isZoomed, setIsZoomed] = useState(false)
     
@@ -228,6 +253,7 @@ function ChatAiDashboardContent() {
     const [newRuleReply, setNewRuleReply] = useState('')
     const [savingSettings, setSavingSettings] = useState(false)
     const [settingsCategoryTab, setSettingsCategoryTab] = useState<'positive' | 'neutral' | 'negative'>('positive')
+    const [lightboxUrl, setLightboxUrl] = useState<string | null>(null)
 
     // Loaders
     const [loadingSessions, setLoadingSessions] = useState(false)
@@ -249,6 +275,7 @@ function ChatAiDashboardContent() {
 
     const chatEndRef = useRef<HTMLDivElement>(null)
     const messagesContainerRef = useRef<HTMLDivElement>(null)
+    const chatInputRef = useRef<ChatInputBarHandle>(null)
 
     const scrollToBottom = (behavior: 'smooth' | 'auto' = 'smooth') => {
         if (messagesContainerRef.current) {
@@ -468,6 +495,13 @@ function ChatAiDashboardContent() {
                         return [...prev, payload.new as ChatMessage]
                     })
                     setTimeout(() => scrollToBottom('smooth'), 50)
+                    // Real-time follower detection: update session badge instantly
+                    const newContent = String((payload.new as ChatMessage).content || '').toLowerCase()
+                    if (newContent.includes('store follower') || newContent.includes('now your store')) {
+                        setSessions(prev => prev.map(s =>
+                            s.session_id === activeSessionId ? { ...s, is_follower: true } : s
+                        ))
+                    }
                 } else if (payload.eventType === 'UPDATE') {
                     setMessages(prev => prev.map(m => m.message_id === payload.new.message_id ? payload.new as ChatMessage : m))
                 } else if (payload.eventType === 'DELETE') {
@@ -815,6 +849,9 @@ function ChatAiDashboardContent() {
             }
         } catch (err: any) {
             toast.error(err.message || 'Failed to send order card')
+        } finally {
+            // Return focus to message input after order card sent (or failed)
+            chatInputRef.current?.focus()
         }
     }
 
@@ -845,6 +882,9 @@ function ChatAiDashboardContent() {
             }
         } catch (err: any) {
             toast.error(err.message || 'Failed to send guide link')
+        } finally {
+            // Return focus to message input after guide link sent (or failed)
+            chatInputRef.current?.focus()
         }
     }
 
@@ -874,6 +914,9 @@ function ChatAiDashboardContent() {
             }
         } catch (err: any) {
             toast.error(err.message || 'Failed to send follow invitation')
+        } finally {
+            // Return focus to message input after invitation sent (or failed)
+            chatInputRef.current?.focus()
         }
     }
 
@@ -1190,6 +1233,9 @@ function ChatAiDashboardContent() {
                                             const isProductCard = String(message.template_id) === '10006'
                                             const isOrderCard = String(message.template_id) === '10007'
                                             const isFollowCard = String(message.template_id) === '10010'
+                                            // Detect Daraz system "buyer followed" confirmation message
+                                            const rawContent = message.content || ''
+                                            const isFollowerConfirmation = rawContent.toLowerCase().includes('store follower') || rawContent.toLowerCase().includes('now your store')
 
                                             return (
                                                 <div
@@ -1268,6 +1314,25 @@ function ChatAiDashboardContent() {
                                                                 </div>
                                                                 <p className="text-[10px] text-zinc-405 mt-0.5">An invitation to follow our store was shared in conversation.</p>
                                                             </div>
+                                                        ) : isFollowerConfirmation ? (
+                                                            // Daraz system: buyer followed the store
+                                                            <div className="flex items-center gap-2 py-0.5">
+                                                                <span className="text-green-400 text-base">✓</span>
+                                                                <span className="font-semibold text-green-300 text-xs">The buyer is now your store follower.</span>
+                                                            </div>
+                                                        ) : parsed.imgUrl ? (
+                                                            // Image message from customer
+                                                            <div className="p-1">
+                                                                <img
+                                                                    src={parsed.imgUrl}
+                                                                    alt={parsed.o || 'Image'}
+                                                                    onClick={() => setLightboxUrl(parsed.imgUrl)}
+                                                                    className="max-w-[240px] max-h-[280px] rounded-xl object-cover cursor-zoom-in border border-white/20 shadow-sm hover:opacity-90 transition-opacity"
+                                                                />
+                                                                {parsed.o && (
+                                                                    <p className="text-[10px] mt-1 opacity-60 truncate max-w-[240px]">{parsed.o}</p>
+                                                                )}
+                                                            </div>
                                                         ) : (
                                                             // Regular text
                                                             <p className="whitespace-pre-wrap">{parsed.txt || parsed.content || message.content}</p>
@@ -1333,7 +1398,7 @@ function ChatAiDashboardContent() {
                                     )}
                                     <div ref={chatEndRef} />
                                 </div>                                {/* Quick Replies & Input Bar */}
-                                <ChatInputBar onSendMessage={handleSendMessage} />
+                                <ChatInputBar ref={chatInputRef} onSendMessage={handleSendMessage} />
                             </>
                         ) : (
                             <div className="flex-1 flex flex-col items-center justify-center text-zinc-500 text-sm">
@@ -1361,13 +1426,22 @@ function ChatAiDashboardContent() {
                                 
                                 {/* Follow Invitation button */}
                                 <div className="w-full pt-1.5">
-                                    <button 
-                                        onClick={handleSendFollowInvitation}
-                                        className="w-full py-2 bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-650 hover:to-red-600 active:scale-95 text-xs font-bold text-white shadow rounded-lg transition-all flex items-center justify-center gap-1.5"
-                                    >
-                                        <User size={14} />
-                                        Send Follow Invitation
-                                    </button>
+                                    {/* is_follower from DB (persists past message deletion) OR live scan of current messages */}
+                                    {(activeSession.is_follower || messages.some(m => (m.content || '').toLowerCase().includes('store follower') || (m.content || '').toLowerCase().includes('now your store'))) ? (
+                                        // Buyer already follows — locked state
+                                        <div className="w-full py-2 bg-gradient-to-r from-green-500 to-emerald-600 text-xs font-bold text-white shadow rounded-lg flex items-center justify-center gap-1.5 cursor-not-allowed opacity-90 select-none">
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                                            Buyer is Already a Follower
+                                        </div>
+                                    ) : (
+                                        <button 
+                                            onClick={handleSendFollowInvitation}
+                                            className="w-full py-2 bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 active:scale-95 text-xs font-bold text-white shadow rounded-lg transition-all flex items-center justify-center gap-1.5"
+                                        >
+                                            <User size={14} />
+                                            Send Follow Invitation
+                                        </button>
+                                    )}
                                 </div>
                             </div>
 
@@ -2176,6 +2250,27 @@ function ChatAiDashboardContent() {
                             </form>
                         </div>
                     </div>
+                </div>
+            )}
+
+            {/* Image Lightbox Overlay */}
+            {lightboxUrl && (
+                <div
+                    className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm"
+                    onClick={() => setLightboxUrl(null)}
+                >
+                    <button
+                        onClick={() => setLightboxUrl(null)}
+                        className="absolute top-4 right-4 text-white bg-black/50 hover:bg-black/80 rounded-full p-2 transition-colors z-10"
+                    >
+                        <X size={20} />
+                    </button>
+                    <img
+                        src={lightboxUrl}
+                        alt="Full size"
+                        onClick={(e) => e.stopPropagation()}
+                        className="max-w-[90vw] max-h-[90vh] rounded-2xl shadow-2xl object-contain border border-white/10"
+                    />
                 </div>
             )}
 
