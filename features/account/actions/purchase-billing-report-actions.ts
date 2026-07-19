@@ -9,6 +9,7 @@ export interface PurchaseBillingReportItem {
     buyer_company_name: string | null
     total_bill_amount: number
     bill_count: number
+    transaction_amount: number
 }
 
 export async function getPurchaseBillingReport(filters?: {
@@ -51,11 +52,42 @@ export async function getPurchaseBillingReport(filters?: {
         throw error
     }
 
+    // Fetch cheque transactions matching selected fiscal year date range
+    let txQuery = supabase
+        .from('supplier_transactions')
+        .select('cheque_name, amount')
+        .eq('transaction_mode', 'Cheque')
+
+    if (filters?.startDate && filters?.endDate) {
+        txQuery = txQuery
+            .gte('cheque_date', filters.startDate)
+            .lte('cheque_date', filters.endDate)
+    }
+
+    const { data: txData, error: txError } = await txQuery
+    if (txError) {
+        console.error('Error fetching cheque transactions for report:', txError)
+    }
+
+    // Map transaction amounts by cheque_name (case-insensitive)
+    const txAmounts: Record<string, number> = {}
+    if (txData) {
+        txData.forEach(tx => {
+            if (tx.cheque_name) {
+                const nameKey = tx.cheque_name.trim().toLowerCase()
+                txAmounts[nameKey] = (txAmounts[nameKey] || 0) + (tx.amount || 0)
+            }
+        })
+    }
+
     // Group and aggregate the data by supplier and buyer
     const aggregated = data.reduce((acc, bill) => {
         const key = `${bill.supplier_company_id || 'null'}_${bill.buyer_company_id || 'null'}`
 
         if (!acc[key]) {
+            const companyNameKey = (bill.supplier_company_name || '').trim().toLowerCase()
+            const transaction_amount = txAmounts[companyNameKey] || 0
+
             acc[key] = {
                 supplier_company_id: bill.supplier_company_id,
                 supplier_company_name: bill.supplier_company_name || 'Unknown Supplier',
@@ -63,6 +95,7 @@ export async function getPurchaseBillingReport(filters?: {
                 buyer_company_name: bill.buyer_company_name || 'Unknown Buyer',
                 total_bill_amount: 0,
                 bill_count: 0,
+                transaction_amount: transaction_amount,
             }
         }
 

@@ -6,6 +6,7 @@ import type { PanVatBill } from './pan-vat-bill-actions'
 export interface PurchaseBillingDetailParams {
     supplierCompanyId: string | null
     buyerCompanyId: string | null
+    supplierCompanyName?: string | null
     fiscalYearId?: string | null
     startDate?: string
     endDate?: string
@@ -16,6 +17,8 @@ export interface PurchaseBillingDetailResult {
     totalAmount: number
     supplierCompanyName: string | null
     buyerCompanyName: string | null
+    chequeTransactions: any[]
+    totalChequeAmount: number
 }
 
 export async function getPurchaseBillingDetail(params: PurchaseBillingDetailParams): Promise<PurchaseBillingDetailResult> {
@@ -59,14 +62,45 @@ export async function getPurchaseBillingDetail(params: PurchaseBillingDetailPara
     // Calculate total amount
     const totalAmount = bills.reduce((sum, bill) => sum + bill.total_amount, 0)
 
-    // Get supplier and buyer names (from first bill if available)
-    const supplierCompanyName = bills[0]?.supplier_company_name || null
-    const buyerCompanyName = bills[0]?.buyer_company_name || null
+    // Get supplier and buyer names (from params or first bill if available)
+    const resolvedSupplierName = params.supplierCompanyName || bills[0]?.supplier_company_name || null
+    const resolvedBuyerName = bills[0]?.buyer_company_name || null
+
+    // Fetch cheque transactions matching the supplier company name and fiscal year range
+    let chequeTransactions: any[] = []
+    let totalChequeAmount = 0
+
+    if (resolvedSupplierName) {
+        let txQuery = supabase
+            .from('supplier_transactions')
+            .select(`
+                *,
+                supplier:suppliers(supplier_name)
+            `)
+            .eq('transaction_mode', 'Cheque')
+            .eq('cheque_name', resolvedSupplierName)
+
+        if (params.startDate && params.endDate) {
+            txQuery = txQuery
+                .gte('cheque_date', params.startDate)
+                .lte('cheque_date', params.endDate)
+        }
+
+        const { data: txData, error: txError } = await txQuery
+        if (txError) {
+            console.error('Error fetching cheque transactions for detail modal:', txError)
+        } else if (txData) {
+            chequeTransactions = txData
+            totalChequeAmount = txData.reduce((sum, tx) => sum + (tx.amount || 0), 0)
+        }
+    }
 
     return {
         bills: bills as PanVatBill[],
         totalAmount,
-        supplierCompanyName,
-        buyerCompanyName,
+        supplierCompanyName: resolvedSupplierName,
+        buyerCompanyName: resolvedBuyerName,
+        chequeTransactions,
+        totalChequeAmount,
     }
 }

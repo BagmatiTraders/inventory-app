@@ -133,19 +133,20 @@ export function PurchaseBillingReport() {
                                 <th className="px-3 py-2 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Billed From</th>
                                 <th className="px-3 py-2 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Billed To</th>
                                 <th className="px-3 py-2 text-right text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Total Bill Amount</th>
+                                <th className="px-3 py-2 text-right text-xs font-bold text-purple-700 dark:text-purple-400 uppercase tracking-wider bg-purple-50/50 dark:bg-purple-950/10">Transaction Amount</th>
                                 <th className="px-3 py-2 text-center text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Action</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-200 dark:divide-zinc-800">
                             {isLoading ? (
                                 <tr>
-                                    <td colSpan={5} className="px-3 py-8 text-center text-gray-500 text-[13px]">
+                                    <td colSpan={6} className="px-3 py-8 text-center text-gray-500 text-[13px]">
                                         Loading report...
                                     </td>
                                 </tr>
                             ) : reportData.length === 0 ? (
                                 <tr>
-                                    <td colSpan={5} className="px-3 py-8 text-center text-gray-500 text-[13px]">
+                                    <td colSpan={6} className="px-3 py-8 text-center text-gray-500 text-[13px]">
                                         No records found
                                     </td>
                                 </tr>
@@ -161,6 +162,9 @@ export function PurchaseBillingReport() {
                                         </td>
                                         <td className="px-3 py-2 text-[13px] text-right font-medium text-blue-600 dark:text-blue-400">
                                             {formatNepaliCurrency(item.total_bill_amount)}
+                                        </td>
+                                        <td className="px-3 py-2 text-[13px] text-right font-bold text-purple-700 dark:text-purple-400 bg-purple-50/30 dark:bg-purple-950/5">
+                                            {formatNepaliCurrency(item.transaction_amount || 0)}
                                         </td>
                                         <td className="px-3 py-2 text-center">
                                             <button
@@ -185,6 +189,9 @@ export function PurchaseBillingReport() {
                                     </td>
                                     <td className="px-3 py-3 text-right text-base font-bold text-blue-600 dark:text-blue-400">
                                         {formatNepaliCurrency(reportData.reduce((sum, item) => sum + item.total_bill_amount, 0))}
+                                    </td>
+                                    <td className="px-3 py-3 text-right text-base font-bold text-purple-700 dark:text-purple-400 bg-purple-50/50 dark:bg-purple-950/20">
+                                        {formatNepaliCurrency(reportData.reduce((sum, item) => sum + (item.transaction_amount || 0), 0))}
                                     </td>
                                     <td className="px-3 py-3"></td>
                                 </tr>
