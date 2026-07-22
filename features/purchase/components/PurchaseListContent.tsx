@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useMemo } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { getPurchases, Purchase } from '@/features/purchase/actions/purchase-actions'
 import { getSuppliers } from '@/features/suppliers/actions/supplier-actions'
 import { getFiscalYears } from '@/features/purchase/actions/purchase-analytics-actions'
@@ -23,6 +23,7 @@ export default function PurchaseListContent({ isEmbedded = false }: PurchaseList
     const [page, setPage] = useState(1)
     const [editingPurchase, setEditingPurchase] = useState<Purchase | null>(null)
     const [viewingPurchase, setViewingPurchase] = useState<Purchase | null>(null)
+    const queryClient = useQueryClient()
 
     // Date formatter for DD/MM/YYYY
     const formatDateDDMMYYYY = (dateStr: string) => {
@@ -447,8 +448,12 @@ export default function PurchaseListContent({ isEmbedded = false }: PurchaseList
                         <PurchaseForm
                             editMode={true}
                             purchaseData={editingPurchase}
+                            showExtraFields={true}
                             onClose={() => setEditingPurchase(null)}
-                            onSuccess={() => { }}
+                            onSuccess={() => {
+                                queryClient.invalidateQueries({ queryKey: ['all-purchases'] })
+                                setEditingPurchase(null)
+                            }}
                         />
                     </div>
                 </div>

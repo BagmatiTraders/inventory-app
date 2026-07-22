@@ -13,18 +13,20 @@ export interface SupplierLedgerEntry {
 
 // Helper to check debit conditions (Logic defined in requirement)
 const isDebitPurchase = (p: any) => {
-    const isCashOrOnline = p.payment_type !== 'Due';
-    if (p.purchase_type === 'Buy' && isCashOrOnline) return true;
-    if (p.purchase_type === 'Sell' && isCashOrOnline) return true;
-    if (p.purchase_type === 'Sell' && p.payment_type === 'Due') return true;
+    const isCashOrOnline = (p.payment_type || '').toLowerCase() !== 'due';
+    const type = (p.purchase_type || 'Buy').toLowerCase();
+    if (type === 'buy' && isCashOrOnline) return true;
+    if (type === 'sell' && isCashOrOnline) return true;
+    if (type === 'sell' && !isCashOrOnline) return true;
     return false;
 }
 
 const isCreditPurchase = (p: any) => {
-    const isCashOrOnline = p.payment_type !== 'Due';
-    if (p.purchase_type === 'Buy' && isCashOrOnline) return true;
-    if (p.purchase_type === 'Sell' && isCashOrOnline) return true;
-    if (p.purchase_type === 'Buy' && p.payment_type === 'Due') return true;
+    const isCashOrOnline = (p.payment_type || '').toLowerCase() !== 'due';
+    const type = (p.purchase_type || 'Buy').toLowerCase();
+    if (type === 'buy' && isCashOrOnline) return true;
+    if (type === 'sell' && isCashOrOnline) return true;
+    if (type === 'buy' && !isCashOrOnline) return true;
     return false;
 }
 
@@ -268,19 +270,20 @@ export async function getSupplierStats({
 
     prevPurchases?.forEach(p => {
         const amount = Number(p.total_amount) || 0;
-        const isCashOrOnline = p.payment_type !== 'Due';
+        const isCashOrOnline = (p.payment_type || '').toLowerCase() !== 'due';
+        const type = (p.purchase_type || 'Buy').toLowerCase();
 
         // Credit Contributions
-        if ((p.purchase_type === 'Buy' && isCashOrOnline) ||
-            (p.purchase_type === 'Sell' && isCashOrOnline) ||
-            (p.purchase_type === 'Buy' && p.payment_type === 'Due')) {
+        if ((type === 'buy' && isCashOrOnline) ||
+            (type === 'sell' && isCashOrOnline) ||
+            (type === 'buy' && !isCashOrOnline)) {
             openingBalance += amount;
         }
 
         // Debit Contributions
-        if ((p.purchase_type === 'Buy' && isCashOrOnline) ||
-            (p.purchase_type === 'Sell' && isCashOrOnline) ||
-            (p.purchase_type === 'Sell' && p.payment_type === 'Due')) {
+        if ((type === 'buy' && isCashOrOnline) ||
+            (type === 'sell' && isCashOrOnline) ||
+            (type === 'sell' && !isCashOrOnline)) {
             openingBalance -= amount;
         }
     })
@@ -301,12 +304,13 @@ export async function getSupplierStats({
 
     purchases?.forEach(p => {
         const amount = Number(p.total_amount) || 0;
-        const isCashOrOnline = p.payment_type !== 'Due';
+        const isCashOrOnline = (p.payment_type || '').toLowerCase() !== 'due';
+        const type = (p.purchase_type || 'Buy').toLowerCase();
 
-        if (p.purchase_type === 'Buy' && isCashOrOnline) cashBuy += amount;
-        if (p.purchase_type === 'Sell' && isCashOrOnline) cashSell += amount;
-        if (p.purchase_type === 'Sell' && p.payment_type === 'Due') dueSell += amount;
-        if (p.purchase_type === 'Buy' && p.payment_type === 'Due') dueBuy += amount;
+        if (type === 'buy' && isCashOrOnline) cashBuy += amount;
+        if (type === 'sell' && isCashOrOnline) cashSell += amount;
+        if (type === 'sell' && !isCashOrOnline) dueSell += amount;
+        if (type === 'buy' && !isCashOrOnline) dueBuy += amount;
     })
 
     transactions?.forEach(t => {
@@ -405,31 +409,41 @@ export async function getSupplierDetailedTransactions({
             .range(from, to)
 
         // Filter Type (Buy/Sell)
-        if (isBuy) query = query.eq('purchase_type', 'Buy')
-        else query = query.eq('purchase_type', 'Sell')
+        if (isBuy) {
+            query = query.or('purchase_type.eq.Buy,purchase_type.eq.buy,purchase_type.is.null')
+        } else {
+            query = query.or('purchase_type.eq.Sell,purchase_type.eq.sell')
+        }
 
         // Filter Payment
         if (isCash) {
-            query = query.neq('payment_type', 'Due')
+            query = query.not('payment_type', 'ilike', 'due')
         } else {
-            query = query.eq('payment_type', 'Due')
+            query = query.ilike('payment_type', 'due')
         }
 
         const { data: resData, count: resCount, error } = await query
         if (error) return { error: error.message }
 
         // Normalize
-        const resTransactions = (resData || []).map((p: any) => ({
-            id: p.id,
-            date: p.purchase_date,
-            description: `${p.purchase_type} - ${p.product?.product_name}`,
-            reference: p.payment_type,
-            amount: p.total_amount,
-            type: p.purchase_type, // 'Buy' | 'Sell'
-            quantity: p.quantity,
-            unit_amount: p.unit_amount,
-            meta: p
-        }))
+        const resTransactions = (resData || []).map((p: any) => {
+            const isCashOrOnline = (p.payment_type || '').toLowerCase() !== 'due'
+            const paymentLabel = isCashOrOnline ? 'Cash' : 'Due'
+            const typeLabel = p.purchase_type || 'Buy'
+
+            return {
+                id: p.id,
+                date: p.purchase_date,
+                description: p.product?.product_name || 'Unknown Product',
+                particular_detail: `${paymentLabel} ${typeLabel}`,
+                reference: p.payment_type,
+                amount: p.total_amount,
+                type: p.purchase_type, // 'Buy' | 'Sell'
+                quantity: p.quantity,
+                unit_amount: p.unit_amount,
+                meta: p
+            }
+        })
 
         // Fetch comments for these purchases
         const purchaseIds = resTransactions.map(t => t.id)
@@ -522,25 +536,26 @@ export async function getSupplierFullLedger({
 
     // Process purchases
     purchases?.forEach(p => {
-        const isCashOrOnline = p.payment_type !== 'Due'
+        const pType = (p.purchase_type || 'Buy').toLowerCase()
+        const isCashOrOnline = (p.payment_type || '').toLowerCase() !== 'due'
         let debit = 0
         let credit = 0
 
         // Calculate debit and credit
-        if (p.purchase_type === 'Buy' && isCashOrOnline) {
+        if (pType === 'buy' && isCashOrOnline) {
             debit = p.total_amount
             credit = p.total_amount
-        } else if (p.purchase_type === 'Sell' && isCashOrOnline) {
+        } else if (pType === 'sell' && isCashOrOnline) {
             debit = p.total_amount
             credit = p.total_amount
-        } else if (p.purchase_type === 'Sell' && p.payment_type === 'Due') {
+        } else if (pType === 'sell' && !isCashOrOnline) {
             debit = p.total_amount
-        } else if (p.purchase_type === 'Buy' && p.payment_type === 'Due') {
+        } else if (pType === 'buy' && !isCashOrOnline) {
             credit = p.total_amount
         }
 
         const paymentLabel = isCashOrOnline ? 'Cash' : 'Due'
-        const typeLabel = p.purchase_type
+        const typeLabel = p.purchase_type || 'Buy'
 
         ledgerEntries.push({
             id: p.id,
@@ -552,7 +567,8 @@ export async function getSupplierFullLedger({
             debit,
             credit,
             running_amount: 0,
-            type: 'purchase'
+            type: 'purchase',
+            purchase_type: typeLabel
         })
     })
 
@@ -579,10 +595,24 @@ export async function getSupplierFullLedger({
     })
 
     // 6. Sort by date descending (latest first)
+    // Within the same date: Transactions first, Sells second, Buys third
     ledgerEntries.sort((a, b) => {
         const dateA = new Date(a.date).getTime()
         const dateB = new Date(b.date).getTime()
-        return dateB - dateA
+        
+        if (dateB !== dateA) {
+            return dateB - dateA
+        }
+
+        // Helper to assign sorting priority weight
+        const getWeight = (item: any) => {
+            if (item.type === 'transaction') return 1 // Transaction is topmost
+            const type = (item.purchase_type || '').toLowerCase()
+            if (type === 'sell') return 2 // Sell is middle
+            return 3 // Buy is bottom
+        }
+
+        return getWeight(a) - getWeight(b)
     })
 
     // 7. Calculate running balance

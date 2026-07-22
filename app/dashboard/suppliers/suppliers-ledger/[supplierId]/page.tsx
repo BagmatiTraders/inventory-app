@@ -181,7 +181,15 @@ export default function SupplierLedgerPage({ params }: { params: Promise<{ suppl
                                                                     </span>
                                                                 )}
                                                                 {entry.particular_detail && (
-                                                                    <div className="text-xs text-gray-500 dark:text-gray-400 font-normal mt-0.5">{entry.particular_detail}</div>
+                                                                    <div className={`text-[11px] px-1.5 py-0.5 rounded font-semibold block w-fit mt-1 ${
+                                                                        entry.particular_detail.toLowerCase().includes('sell')
+                                                                            ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                                                                            : entry.particular_detail.toLowerCase().includes('buy')
+                                                                            ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                                                                            : 'text-gray-500 dark:text-gray-400'
+                                                                    }`}>
+                                                                        {entry.particular_detail}
+                                                                    </div>
                                                                 )}
                                                             </div>
                                                             <button
@@ -226,7 +234,17 @@ export default function SupplierLedgerPage({ params }: { params: Promise<{ suppl
 
                                                         <div>
                                                             <div className="text-sm font-medium text-gray-800 dark:text-gray-200 leading-tight">{entry.particular}</div>
-                                                            {entry.particular_detail && <div className="text-[11px] text-gray-500 mt-0.5">{entry.particular_detail}</div>}
+                                                            {entry.particular_detail && (
+                                                                <div className={`text-[11px] px-1.5 py-0.5 rounded font-semibold block w-fit mt-1 ${
+                                                                    entry.particular_detail.toLowerCase().includes('sell')
+                                                                        ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                                                                        : entry.particular_detail.toLowerCase().includes('buy')
+                                                                        ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                                                                        : 'text-gray-500'
+                                                                }`}>
+                                                                    {entry.particular_detail}
+                                                                </div>
+                                                            )}
                                                             {entry.quantity !== undefined && entry.quantity > 0 && (
                                                                 <div className="text-[10px] font-bold text-blue-500 mt-1 uppercase">
                                                                     Qty: {entry.quantity} × {entry.unit_amount}

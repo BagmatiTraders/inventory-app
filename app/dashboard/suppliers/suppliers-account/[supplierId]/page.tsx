@@ -232,12 +232,23 @@ export default function SupplierDetailLedgerPage({ params }: { params: Promise<{
                                         return (
                                             <tr key={t.id} className={`hover:bg-gray-50 dark:hover:bg-zinc-800/50 ${isZeroAmount ? 'bg-red-50 dark:bg-red-900/20' : ''}`}>
                                                 <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">{t.date}</td>
-                                                <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-gray-100">
-                                                    {t.description}
-                                                    {t.quantity !== undefined && (
-                                                        <span className="ml-2 text-xs text-gray-500 dark:text-gray-400 font-normal">
+                                                <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-gray-100 align-top">
+                                                    <div className="font-semibold">{t.description}</div>
+                                                    {t.quantity !== undefined && t.quantity > 0 && (
+                                                        <span className="text-xs text-gray-500 dark:text-gray-400 font-normal">
                                                             ({t.quantity} × {t.unit_amount})
                                                         </span>
+                                                    )}
+                                                    {t.particular_detail && (
+                                                        <div className={`text-[11px] px-1.5 py-0.5 rounded font-semibold block w-fit mt-1 ${
+                                                            t.particular_detail.toLowerCase().includes('sell')
+                                                                ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                                                                : t.particular_detail.toLowerCase().includes('buy')
+                                                                ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                                                                : 'text-gray-500'
+                                                        }`}>
+                                                            {t.particular_detail}
+                                                        </div>
                                                     )}
                                                 </td>
                                                 <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">{t.reference}</td>
