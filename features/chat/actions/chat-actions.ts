@@ -70,7 +70,7 @@ function parseSummary(content: string | null): string | null {
     return content;
 }
 
-// 1. Get Store Tokens & App Config
+// 1. Get Store Tokens & App Config — with auto-refresh for the Chat app
 async function getStoreTokenAndSecret(storeId: string) {
     const appKey = process.env.NEXT_PUBLIC_DARAZ_CHAT_APP_KEY?.trim()
     const appSecret = process.env.DARAZ_CHAT_APP_SECRET?.trim()
@@ -91,6 +91,58 @@ async function getStoreTokenAndSecret(storeId: string) {
         throw new Error(`No active chat connection or token found for store: ${storeId}. Please connect your Daraz account for Chat.`)
     }
 
+    // Auto-refresh: check if token is near expiry (within 2 days)
+    const updatedAt = new Date(tokenData.updated_at).getTime()
+    const expiresIn = tokenData.expires_in || 1296000 // default 15 days
+    const expiryTime = updatedAt + expiresIn * 1000
+    const twoDays = 2 * 24 * 60 * 60 * 1000
+    const isNearExpiry = Date.now() > (expiryTime - twoDays)
+
+    if (isNearExpiry && tokenData.refresh_token) {
+        try {
+            console.log(`[ChatToken] Token near expiry for store ${storeId}, attempting refresh...`)
+            const refreshParams: Record<string, unknown> = {
+                app_key: appKey,
+                refresh_token: tokenData.refresh_token,
+                timestamp: Date.now().toString(),
+                sign_method: 'sha256',
+            }
+            const apiPath = '/auth/token/refresh'
+            // Sign the refresh request using CHAT app secret
+            const keys = Object.keys(refreshParams).sort()
+            let str = apiPath
+            keys.forEach(k => { str += k + String(refreshParams[k]) })
+            refreshParams.sign = crypto.createHmac('sha256', appSecret).update(str).digest('hex').toUpperCase()
+
+            const refreshResponse = await axios.post(`${API_URL}${apiPath}`, null, { params: refreshParams, timeout: 10000 })
+            const refreshData = refreshResponse.data
+
+            if (refreshData.access_token) {
+                await supabase
+                    .from('daraz_api_tokens')
+                    .update({
+                        access_token: refreshData.access_token,
+                        refresh_token: refreshData.refresh_token || tokenData.refresh_token,
+                        expires_in: refreshData.expires_in || expiresIn,
+                        updated_at: new Date().toISOString(),
+                    })
+                    .eq('store_id', storeId)
+                    .eq('app_type', 'chat')
+
+                console.log(`[ChatToken] Token refreshed successfully for store ${storeId}`)
+                return { appKey, appSecret, accessToken: refreshData.access_token }
+            } else {
+                console.warn(`[ChatToken] Refresh response missing access_token for store ${storeId}:`, refreshData)
+            }
+        } catch (refreshErr) {
+            const msg = refreshErr instanceof Error ? refreshErr.message : String(refreshErr)
+            console.error(`[ChatToken] Token refresh failed for store ${storeId}:`, msg)
+            // Fall through and try the existing token anyway
+        }
+    } else if (isNearExpiry && !tokenData.refresh_token) {
+        console.warn(`[ChatToken] Token near expiry but no refresh_token stored for store ${storeId}. Please reconnect the Chat account.`)
+    }
+
     return { appKey, appSecret, accessToken: tokenData.access_token }
 }
 
@@ -108,12 +160,14 @@ export async function syncDarazChatSessions(storeId: string) {
         }
 
         const timestamp = Date.now().toString()
+        // Fetch sessions updated in the last 7 days
+        const sevenDaysAgo = (Date.now() - 7 * 24 * 60 * 60 * 1000).toString()
         const params: Record<string, unknown> = {
             app_key: appKey,
             access_token: accessToken,
             timestamp,
             sign_method: 'sha256',
-            start_time: Date.now().toString(), // Start from current time to fetch recent sessions
+            start_time: sevenDaysAgo,
             page_size: '50'
         }
 
@@ -208,13 +262,15 @@ export async function syncDarazChatMessages(storeId: string, sessionId: string) 
         const supabase = await createAdminClient()
 
         const timestamp = Date.now().toString()
+        // Fetch messages from the last 30 days for this session
+        const thirtyDaysAgo = (Date.now() - 30 * 24 * 60 * 60 * 1000).toString()
         const params: Record<string, unknown> = {
             app_key: appKey,
             access_token: accessToken,
             timestamp,
             sign_method: 'sha256',
             session_id: sessionId,
-            start_time: Date.now().toString(), // Start from current time to fetch recent messages
+            start_time: thirtyDaysAgo,
             page_size: '50'
         }
 

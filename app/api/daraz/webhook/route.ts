@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createAdminClient } from '@/lib/supabase/server'
 import crypto from 'crypto'
 import { syncSingleDarazOrderAction } from '@/features/sales/actions/daraz-sync-order'
+import { processIncomingMessageAutoReply } from '@/features/chat/actions/chat-actions'
 
 // Signature verification using HMAC-SHA256
 function verifySignature(appKey: string, body: string, appSecret: string, receivedSignature: string): boolean {
@@ -174,6 +175,120 @@ export async function POST(request: NextRequest) {
                     error: syncError.message
                 })
             }
+        }
+
+        // Type 5: New IM Message from Buyer
+        // Type 6: Message Read Notification (session-level update)
+        if ((message_type === 5 || message_type === 6) && data) {
+            const sessionId = data.session_id || data.sessionId
+            const msgContent = data.content || data.message || data.txt || ''
+            const fromAccountType = String(data.from_account_type || data.sender_type || '1')
+            const sendTime = data.send_time || data.timestamp || String(Date.now())
+            const messageId = data.message_id || data.msgId || `webhook_${Date.now()}`
+            const templateId = String(data.template_id || '1')
+
+            if (!sessionId) {
+                console.warn('[Webhook] Chat event missing session_id:', data)
+                return NextResponse.json({ success: true, message: 'Missing session_id' })
+            }
+
+            console.log(`[Webhook] Processing chat message_type: ${message_type}, session: ${sessionId}`)
+
+            const supabase = await createAdminClient()
+
+            // 1. Find the store matching the seller_id from the webhook payload
+            const { data: store } = await supabase
+                .from('online_stores')
+                .select('id')
+                .eq('seller_id', String(seller_id))
+                .maybeSingle()
+
+            if (!store) {
+                console.error(`[Webhook] Store not found for seller_id: ${seller_id}`)
+                return NextResponse.json({ success: true, message: 'Store not found' })
+            }
+
+            const storeId = store.id
+
+            if (message_type === 6) {
+                // Read receipt — just update unread count to 0 for this session
+                await supabase
+                    .from('daraz_chat_sessions')
+                    .update({ unread_count: 0 })
+                    .eq('session_id', sessionId)
+                return NextResponse.json({ success: true, message: 'Read receipt processed' })
+            }
+
+            // 2. Check if message already cached
+            const { data: existing } = await supabase
+                .from('daraz_chat_messages')
+                .select('message_id')
+                .eq('message_id', messageId)
+                .maybeSingle()
+
+            if (!existing) {
+                // 3. Save the incoming message
+                const sendTimeISO = isNaN(Number(sendTime))
+                    ? sendTime
+                    : new Date(parseInt(String(sendTime))).toISOString()
+
+                await supabase.from('daraz_chat_messages').insert({
+                    message_id: messageId,
+                    session_id: sessionId,
+                    from_account_id: String(data.from_account_id || data.sender_id || ''),
+                    from_account_type: fromAccountType,
+                    to_account_id: String(data.to_account_id || data.receiver_id || ''),
+                    to_account_type: String(data.to_account_type || data.receiver_type || '2'),
+                    content: msgContent,
+                    template_id: templateId,
+                    send_time: sendTimeISO,
+                    auto_reply: false,
+                    tags: []
+                })
+
+                // 4. Update session last message & unread count
+                await supabase
+                    .from('daraz_chat_sessions')
+                    .update({
+                        last_message_id: messageId,
+                        last_message_time: new Date(parseInt(String(sendTime)) || Date.now()).toISOString(),
+                        last_message_summary: msgContent.substring(0, 100),
+                        updated_at: new Date().toISOString()
+                    })
+                    .eq('session_id', sessionId)
+
+                // Increment unread count — try RPC first, fallback to manual read-then-update
+                const { error: rpcError } = await supabase.rpc('increment_unread_count', { p_session_id: sessionId })
+                if (rpcError) {
+                    const { data: sessionRow } = await supabase
+                        .from('daraz_chat_sessions')
+                        .select('unread_count')
+                        .eq('session_id', sessionId)
+                        .single()
+                    if (sessionRow) {
+                        await supabase
+                            .from('daraz_chat_sessions')
+                            .update({ unread_count: (sessionRow.unread_count || 0) + 1 })
+                            .eq('session_id', sessionId)
+                    }
+                }
+
+                // 5. Trigger auto-reply if message is from buyer
+                if (fromAccountType === '1') {
+                    const isRecent = (Date.now() - parseInt(String(sendTime))) < 10 * 60 * 1000
+                    if (isRecent) {
+                        processIncomingMessageAutoReply(storeId, sessionId, {
+                            content: msgContent,
+                            from_account_type: fromAccountType,
+                            send_time: String(sendTime)
+                        }).catch(err => console.error('[Webhook] Auto-reply error:', err))
+                    }
+                }
+            } else {
+                console.log(`[Webhook] Chat message ${messageId} already cached, skipping.`)
+            }
+
+            return NextResponse.json({ success: true, message: 'Chat message processed' })
         }
 
         console.log(`[Webhook] Received message_type: ${message_type} (no specific handler)`)
