@@ -7,6 +7,7 @@ import { Search, ChevronLeft, ChevronRight, Edit2, Check, X, Loader2, RefreshCw,
 import Image from 'next/image'
 import Link from 'next/link'
 import { getDarazAvgPrices, updateDarazAvgPrice, bulkUpdateDarazAvgPrice, syncDarazAvgPricesGoogleSheets, pullDarazAvgPricesFromGoogleSheets, syncLiveSellerPrices, pushPriceToDaraz, DarazAvgPriceItem, updateWebsitePricesBulk, syncLiveSellerPricesForProduct, toggleProductPriceLock, autoUpdateWebsitePrices } from '@/features/sales/actions/avg-price-actions'
+
 export default function DarazAverageSalesPricePage() {
     const [data, setData] = useState<DarazAvgPriceItem[]>([])
     const [isLoading, setIsLoading] = useState(true)
@@ -29,7 +30,7 @@ export default function DarazAverageSalesPricePage() {
         const markup = parseFloat(markupPercent) || 0
         setCompareRows(prev => prev.map(row => {
             if (row.is_manually_edited) return row
-            
+
             let basePrice = 0
             if (markupBaseCol === 'breakeven') {
                 basePrice = row.breakeven_price || 0
@@ -38,7 +39,7 @@ export default function DarazAverageSalesPricePage() {
             } else if (markupBaseCol === 'required') {
                 basePrice = row.required_price || 0
             }
-            
+
             const calculated = basePrice * (1 + markup / 100)
             const rounded = Math.ceil(calculated / 5) * 5
             return { ...row, custom_price: rounded }
@@ -48,7 +49,7 @@ export default function DarazAverageSalesPricePage() {
     const [syncingLiveProductId, setSyncingLiveProductId] = useState<string | null>(null)
 
     const [isUpdatingStock, setIsUpdatingStock] = useState(false)
-    const [showOnlyStockOut, setShowOnlyStockOut] = useState(false)
+    const [stockFilter, setStockFilter] = useState<'all' | 'stock_out' | 'low_stock'>('all')
     const [showPriorityOnly, setShowPriorityOnly] = useState<boolean>(false)
     const [filterAccount, setFilterAccount] = useState<string>('')
     const [livePriceFilter, setLivePriceFilter] = useState<'' | 'daraz' | 'website' | 'mrp'>('')
@@ -103,11 +104,11 @@ export default function DarazAverageSalesPricePage() {
     const [search, setSearch] = useState('')
     const [debouncedSearch, setDebouncedSearch] = useState('')
 
-    const hasFilters = search || filterAccount || showOnlyStockOut || livePriceFilter || filterHasPurchasing || showPriorityOnly;
+    const hasFilters = search || filterAccount || stockFilter !== 'all' || livePriceFilter || filterHasPurchasing || showPriorityOnly;
     const clearFilters = () => {
         setSearch('')
         setFilterAccount('')
-        setShowOnlyStockOut(false)
+        setStockFilter('all')
         setLivePriceFilter('')
         setFilterHasPurchasing(false)
         setShowPriorityOnly(false)
@@ -230,7 +231,7 @@ export default function DarazAverageSalesPricePage() {
         try {
             const res = await syncLiveSellerPrices()
             if (res.success) {
-                alert(`Successfully synced ${res.count} items from Daraz!`)
+                alert(`✓ Successfully synced Live Prices & Live Stock for ${res.count} products from Daraz!`)
                 loadData()
             } else {
                 alert(`Sync failed: ${res.message}`)
@@ -396,7 +397,7 @@ export default function DarazAverageSalesPricePage() {
             }
 
             let newCampaignPrice = item.campaign_price || 0
-            
+
             if (type === 'regular') {
                 newCampaignPrice = item.regular_sales_price || 0
             } else if (type === 'discount_pct') {
@@ -447,13 +448,13 @@ export default function DarazAverageSalesPricePage() {
         }
         const storeLabel = targetStoreIds && targetStoreIds.length > 0 ? "selected store account(s)" : "all connected accounts"
         if (!confirm(`Push Daraz Prices for ${selected.length} products sequentially to ${storeLabel}?\nThis may take a few minutes.`)) return
-        
+
         setIsBulkPushing(true)
         setBulkPushProgress({ current: 0, total: selected.length })
-        
+
         let successCount = 0
         let failedProducts: string[] = []
-        
+
         for (let i = 0; i < selected.length; i++) {
             setBulkPushProgress({ current: i + 1, total: selected.length })
             try {
@@ -467,7 +468,7 @@ export default function DarazAverageSalesPricePage() {
                 failedProducts.push(`${selected[i].product_name} (${err.message})`)
             }
         }
-        
+
         setIsBulkPushing(false)
         let alertMsg = `Bulk push completed!\nSuccessful: ${successCount}\nFailed: ${failedProducts.length}`
         if (failedProducts.length > 0) {
@@ -533,7 +534,7 @@ export default function DarazAverageSalesPricePage() {
 
                     if (!rawSku) return null
 
-                    const matchedProd = data.find(p => 
+                    const matchedProd = data.find(p =>
                         p.seller_sku1?.toLowerCase().trim() === rawSku.toLowerCase() ||
                         p.seller_sku2?.toLowerCase().trim() === rawSku.toLowerCase() ||
                         p.seller_sku3?.toLowerCase().trim() === rawSku.toLowerCase() ||
@@ -585,10 +586,10 @@ export default function DarazAverageSalesPricePage() {
     const handleCustomPriceChange = (sku: string, val: string) => {
         setCompareRows(prev => prev.map(row => {
             if (row.sku === sku) {
-                return { 
-                    ...row, 
-                    custom_price: val === '' ? '' : parseFloat(val), 
-                    is_manually_edited: true 
+                return {
+                    ...row,
+                    custom_price: val === '' ? '' : parseFloat(val),
+                    is_manually_edited: true
                 }
             }
             return row
@@ -600,7 +601,7 @@ export default function DarazAverageSalesPricePage() {
             return Number(row.custom_price)
         }
         const markup = parseFloat(markupPercent) || 0
-        
+
         let basePrice = 0
         if (markupBaseCol === 'breakeven') {
             basePrice = row.breakeven_price || 0
@@ -609,7 +610,7 @@ export default function DarazAverageSalesPricePage() {
         } else if (markupBaseCol === 'required') {
             basePrice = row.required_price || 0
         }
-        
+
         const calculated = basePrice * (1 + markup / 100)
         return Math.ceil(calculated / 5) * 5
     }
@@ -638,16 +639,16 @@ export default function DarazAverageSalesPricePage() {
 
     const getSortedCompareRows = () => {
         if (!compareSortOrder) return compareRows
-        
+
         return [...compareRows].sort((a, b) => {
             const aNotFound = a.product_name === 'Product Not Found'
             const bNotFound = b.product_name === 'Product Not Found'
-            
+
             // "Product Not Found" is forced to the bottom always
             if (aNotFound && !bNotFound) return 1
             if (!aNotFound && bNotFound) return -1
             if (aNotFound && bNotFound) return 0
-            
+
             // Standard alphabetical sorting
             if (compareSortOrder === 'asc') {
                 return a.product_name.localeCompare(b.product_name)
@@ -664,10 +665,10 @@ export default function DarazAverageSalesPricePage() {
                 const custom = getCustomPrice(row)
                 const commissionAmt = custom * ((row.commission_percent || 0) / 100)
                 const profit = custom - commissionAmt - (row.purchasing_price || 0) - 30
-                
+
                 const diffVal = getPriceOfCol(row, diffCol1) - getPriceOfCol(row, diffCol2)
                 const diffLabel = `${getColLabel(diffCol1)} - ${getColLabel(diffCol2)}`
-                
+
                 return {
                     'Seller Sku': row.sku,
                     'Product Name': row.product_name,
@@ -686,7 +687,7 @@ export default function DarazAverageSalesPricePage() {
             const worksheet = XLSX.utils.json_to_sheet(exportData)
             const workbook = XLSX.utils.book_new()
             XLSX.utils.book_append_sheet(workbook, worksheet, 'Price Comparison')
-            
+
             XLSX.writeFile(workbook, 'daraz_price_comparison.xlsx')
         } catch (err: any) {
             alert(`Download failed: ${err.message}`)
@@ -750,14 +751,14 @@ export default function DarazAverageSalesPricePage() {
             alert('No valid items selected or all selected items have locked prices.')
             return
         }
-        
+
         let val = parseFloat(websiteDiscountValue)
         if ((websiteDiscountType === 'amount' || websiteDiscountType === 'percent') && (isNaN(val) || websiteDiscountValue.trim() === '')) {
             alert('Please enter a valid discount value.')
             return
         }
 
-        const confirmMsg = lockedCount > 0 
+        const confirmMsg = lockedCount > 0
             ? `Calculate and push Website Prices for ${activeNonLocked.length} products? (${lockedCount} locked products will be skipped).\nRounding to nearest Rs. 5 will be applied.`
             : `Calculate and push Website Prices for ${selected.length} products?\nRounding to nearest Rs. 5 will be applied.`
 
@@ -767,7 +768,7 @@ export default function DarazAverageSalesPricePage() {
         try {
             const updates = activeNonLocked.map(item => {
                 let activeDarazPrice = 0
-                
+
                 if (websiteDiscountType === 'daraz_campaign') {
                     // Use campaign price
                     activeDarazPrice = item.campaign_price || 0
@@ -807,7 +808,7 @@ export default function DarazAverageSalesPricePage() {
                 }
 
                 const finalSpecial = newSpecialPrice < activeDarazPrice ? newSpecialPrice : activeDarazPrice
-                
+
                 return {
                     inventory_id: item.product_id,
                     regular_price: activeDarazPrice,
@@ -954,10 +955,23 @@ export default function DarazAverageSalesPricePage() {
             matches = (!item.campaign_price || item.campaign_price === 0);
         }
 
-        if (showOnlyStockOut && matches) {
-            // A product is "Stock Out" if ALL linked SKUs across all stores have 0 quantity
-            const totalStock = Object.values(item.live_prices || {}).reduce((sum, lp) => sum + (lp.quantity || 0), 0)
-            matches = totalStock === 0
+        if (stockFilter !== 'all' && matches) {
+            // Get active live prices for this product (exclude inactive SKUs)
+            const activeLivePrices = Object.values(item.live_prices || {}).filter(lp => {
+                const statusStr = (lp.status || '').toLowerCase().trim()
+                return statusStr !== 'inactive' && statusStr !== 'deleted' && statusStr !== 'suspended' && statusStr !== 'deactivated'
+            })
+
+            // If a product has no active live price 1-4, hide/exclude it
+            if (activeLivePrices.length === 0) {
+                matches = false
+            } else if (stockFilter === 'stock_out') {
+                // Show if at least one active Live price has quantity === 0
+                matches = activeLivePrices.some(lp => (lp.quantity || 0) === 0)
+            } else if (stockFilter === 'low_stock') {
+                // Show if at least one active Live price has stock > 0 and stock < 15
+                matches = activeLivePrices.some(lp => (lp.quantity || 0) > 0 && (lp.quantity || 0) < 15)
+            }
         }
 
         if (filterHasPurchasing && matches) {
@@ -1131,7 +1145,7 @@ export default function DarazAverageSalesPricePage() {
                                         </select>
                                     </div>
                                 </div>
-                                
+
                                 <div className="text-[11px] text-gray-400 italic">
                                     * Custom Price is rounded to nearest Rs. 5
                                 </div>
@@ -1319,10 +1333,10 @@ export default function DarazAverageSalesPricePage() {
 
                     <select
                         value={livePriceFilter}
-                        onChange={(e) => { 
+                        onChange={(e) => {
                             const val = e.target.value as '' | 'daraz' | 'website' | 'mrp';
-                            setLivePriceFilter(val); 
-                            setCurrentPage(1); 
+                            setLivePriceFilter(val);
+                            setCurrentPage(1);
                             if (val === 'daraz') setTargetPlatform('daraz');
                             if (val === 'website') setTargetPlatform('website');
                         }}
@@ -1334,14 +1348,18 @@ export default function DarazAverageSalesPricePage() {
                         <option value="mrp">Show Mrp Price</option>
                     </select>
 
-                    <button
-                        onClick={() => setShowOnlyStockOut(!showOnlyStockOut)}
-                        className={`h-[42px] min-w-[120px] px-[16px] rounded-[12px] flex flex-row items-center justify-center gap-[8px] transition-all border text-[13px] font-semibold ${showOnlyStockOut ? 'bg-[#F3F4F6] text-[#111827] border-[#D1D5DB]' : 'bg-white text-gray-700 border-[#E5E7EB] hover:bg-gray-50'}`}
-                        title={showOnlyStockOut ? "Show All Products" : "Show Only Out of Stock"}
+                    <select
+                        value={stockFilter}
+                        onChange={(e) => {
+                            setStockFilter(e.target.value as 'all' | 'stock_out' | 'low_stock');
+                            setCurrentPage(1);
+                        }}
+                        className={`h-[42px] min-w-[150px] px-[12px] rounded-[12px] transition-all border text-[13px] font-semibold outline-none focus:ring-4 focus:ring-indigo-500/10 cursor-pointer ${stockFilter !== 'all' ? 'bg-[#F3F4F6] text-[#111827] border-[#D1D5DB]' : 'bg-white text-gray-700 border-[#E5E7EB] hover:bg-gray-50'}`}
                     >
-                        <AlertTriangle size={16} className={showOnlyStockOut ? "animate-pulse text-amber-500" : "text-gray-400"} />
-                        <span className="hidden md:inline whitespace-nowrap">Filter Stock Out</span>
-                    </button>
+                        <option value="all">All Stock</option>
+                        <option value="stock_out">Stock Out</option>
+                        <option value="low_stock">Low Stock (&lt;15)</option>
+                    </select>
 
                     <a
                         href="https://docs.google.com/spreadsheets/d/1ztKJH0rrE1Od2lXJA2f8AoQ_FQ3fmnpqQietx2ZulZE/edit"
@@ -1373,10 +1391,11 @@ export default function DarazAverageSalesPricePage() {
                     <button
                         onClick={handleSyncLive}
                         disabled={isSyncingLive}
-                        className="flex flex-row items-center justify-center gap-[8px] h-[42px] min-w-[160px] px-[16px] bg-[#4F46E5] hover:bg-[#4338ca] text-[13px] font-semibold text-white rounded-[12px] transition-colors border-none whitespace-nowrap"
+                        className="flex flex-row items-center justify-center gap-[8px] h-[42px] min-w-[180px] px-[16px] bg-[#4F46E5] hover:bg-[#4338ca] text-[13px] font-semibold text-white rounded-[12px] transition-all border-none whitespace-nowrap cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow active:scale-[0.98]"
+                        title="Sync Live Prices & Live Stock from Daraz"
                     >
                         {isSyncingLive ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
-                        Sync Live Prices
+                        Sync Live Prices & Stock
                     </button>
 
                     <button
@@ -1398,516 +1417,490 @@ export default function DarazAverageSalesPricePage() {
                 </div>
             </div>
 
-            {/* Content */}
-            <div className="flex-1 px-4 md:px-6 py-4 pb-0 flex flex-col overflow-hidden bg-gray-50 dark:bg-zinc-900">
-                <div className="flex-1 overflow-hidden bg-white dark:bg-zinc-900 rounded-[20px] border border-[#EEF2F7] dark:border-zinc-800 flex flex-col">
-                    <div
-                        ref={scrollContainerRef}
-                        className={`flex-1 overflow-auto relative z-0 ${isDragging ? 'cursor-grabbing select-none' : 'cursor-grab'}`}
-                        onMouseDown={startDrag}
-                        onMouseLeave={stopDrag}
-                        onMouseUp={stopDrag}
-                        onMouseMove={onDrag}
-                    >
-                        <table className="w-full text-sm min-w-[1200px] border-collapse relative">
-                            <thead className="uppercase text-[#6B7280] bg-[#F8FAFC] dark:bg-zinc-800 dark:text-gray-400">
-                                <tr style={{ height: '52px', fontSize: '12px', fontWeight: 700, letterSpacing: '0.4px' }}>
-                                    <th className="w-16 text-center p-3 align-middle sticky left-0 top-0 z-40 bg-[#F8FAFC] dark:bg-zinc-800 shadow-[1px_1px_0_0_#e5e7eb] dark:shadow-[1px_1px_0_0_#27272a]">
-                                        <div className="flex items-center justify-center gap-2">
-                                            <input type="checkbox" className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600 cursor-pointer" onChange={handleBulkSelectAll} checked={paginatedData.length > 0 && paginatedData.every(d => selectedProductIds.has(d.product_id))} />
-                                            <span>S.N</span>
+            {/* Content - Card Based Layout */}
+            <div className="flex-1 px-4 md:px-6 py-4 pb-0 flex flex-col overflow-hidden bg-[#F9FAFB] dark:bg-zinc-900">
+                <div
+                    ref={scrollContainerRef}
+                    className={`flex-1 overflow-auto ${isDragging ? 'cursor-grabbing select-none' : 'cursor-default'}`}
+                    onMouseDown={startDrag}
+                    onMouseLeave={stopDrag}
+                    onMouseUp={stopDrag}
+                    onMouseMove={onDrag}
+                >
+
+                    {isLoading ? (
+                        <div className="flex flex-col items-center justify-center h-48 text-gray-500">
+                            <Loader2 className="w-8 h-8 animate-spin mb-3 text-indigo-400" />
+                            <span className="text-sm font-medium">Evaluating metrics...</span>
+                        </div>
+                    ) : paginatedData.length === 0 ? (
+                        <div className="flex items-center justify-center h-24 text-gray-400 text-sm">No products found.</div>
+                    ) : (
+                        <div className="flex flex-col gap-2.5 min-w-[1450px] pb-4 pt-1">
+                            {paginatedData.map((item, index) => {
+                                // === Derived values ===
+                                const totalStock = Object.values(item.live_prices || {}).reduce((sum, lp) => sum + (lp.quantity || 0), 0)
+                                const isOutOfStock = totalStock === 0 && Object.keys(item.live_prices || {}).length > 0
+
+                                const commPct = item.commission_percent !== null ? item.commission_percent : 25
+                                const rawReg = item.breakeven_price * (1 + regularPct / 100)
+                                const regPrice = Math.ceil(rawReg / 5) * 5
+
+                                const isBestSelling = (item.sold_qty || 0) > 30
+                                const mrpVal = item.mrp_price
+                                const mrpViolations: string[] = []
+                                if (mrpVal != null) {
+                                    if (item.market_price != null && item.market_price > mrpVal) mrpViolations.push('Daraz')
+                                    if (item.campaign_price != null && item.campaign_price > mrpVal) mrpViolations.push('Campaign')
+                                }
+                                const hasMrpViolation = mrpViolations.length > 0
+
+                                const isHighlight = (() => {
+                                    if (!item.market_price) return false;
+                                    const liveSkus = [item.seller_sku1, item.seller_sku2, item.seller_sku3, item.seller_sku4];
+                                    for (const sku of liveSkus) {
+                                        if (!sku) continue;
+                                        const liveDet = item.live_prices?.[sku];
+                                        if (liveDet) {
+                                            const activePrice = liveDet.special_price || liveDet.price;
+                                            const diff = Math.abs(activePrice - item.market_price) / item.market_price;
+                                            if (diff > 0.05) return true;
+                                        }
+                                    }
+                                    return false;
+                                })()
+
+                                // Left border color
+                                let leftBorderColor = 'border-l-transparent'
+                                if (isOutOfStock) leftBorderColor = 'border-l-[#EF4444]'
+                                else if (hasMrpViolation || isHighlight) leftBorderColor = 'border-l-[#F97316]'
+                                else if (isBestSelling) leftBorderColor = 'border-l-[#2563EB]'
+
+                                const skusToShow = item.seller_skus.slice(0, 3)
+                                const extraSkus = Math.max(0, item.seller_skus.length - 3)
+
+                                const storeAliasMap: Record<string, string> = {
+                                    'Bagmati Online': 'BAGMATI',
+                                    'Ram': 'BALAJU',
+                                    'Lamichhane Suppliers': 'COSMETICS',
+                                    'Bagmati Traders': 'BTAS',
+                                }
+                                const storeColorMap: Record<string, string> = {
+                                    'BAGMATI': 'bg-teal-50 text-teal-700 border-teal-200',
+                                    'BALAJU': 'bg-blue-50 text-blue-700 border-blue-200',
+                                    'COSMETICS': 'bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200',
+                                    'BTAS': 'bg-amber-50 text-amber-700 border-amber-200',
+                                }
+
+                                // Helper profit calculator for Daraz / Campaign prices based on purchasing price & commission
+                                const calcPriceProfit = (price: number | null | undefined) => {
+                                    if (price == null || price <= 0 || item.purchasing_price <= 0) return null
+                                    const commPct = item.commission_percent !== null ? item.commission_percent : 25
+                                    const netPayout = price * (1 - commPct / 100)
+                                    return netPayout - item.purchasing_price
+                                }
+
+                                const darazProfit = item.market_price_profit !== null && item.market_price_profit !== undefined
+                                    ? item.market_price_profit
+                                    : calcPriceProfit(item.market_price)
+
+                                const campaignProfit = item.campaign_price_profit !== null && item.campaign_price_profit !== undefined
+                                    ? item.campaign_price_profit
+                                    : calcPriceProfit(item.campaign_price)
+
+                                return (
+                                    <div
+                                        key={item.product_id}
+                                        className={`flex items-center bg-white rounded-2xl border border-[#E5E7EB] shadow-sm overflow-visible border-l-[4px] ${leftBorderColor} gap-6 p-5 min-h-[136px] max-h-[140px]`}
+                                        style={{ fontFamily: 'Inter, sans-serif' }}
+                                    >
+                                        {/* ─── Checkbox & Row Number ─── */}
+                                        <div className="flex flex-col items-center justify-center gap-2 shrink-0 w-[44px]">
+                                            <input
+                                                type="checkbox"
+                                                className="w-4 h-4 rounded border-gray-300 text-[#4F46E5] focus:ring-[#4F46E5] cursor-pointer"
+                                                checked={selectedProductIds.has(item.product_id)}
+                                                onChange={() => toggleSelection(item.product_id)}
+                                            />
+                                            <span className="text-[11px] font-medium text-[#9CA3AF] tabular-nums">
+                                                #{((currentPage - 1) * itemsPerPage) + index + 1}
+                                            </span>
                                         </div>
-                                    </th>
-                                    <th className="w-16 text-center p-3 align-middle sticky left-[64px] top-0 z-40 bg-[#F8FAFC] dark:bg-zinc-800 shadow-[1px_1px_0_0_#e5e7eb] dark:shadow-[1px_1px_0_0_#27272a]">Img</th>
-                                    <th className="w-64 p-3 text-left align-middle sticky left-[128px] top-0 z-40 bg-[#F8FAFC] dark:bg-zinc-800 shadow-[1px_1px_0_0_#e5e7eb] dark:shadow-[1px_1px_0_0_#27272a]">Product</th>
-                                    <th className="w-48 p-3 text-left align-middle sticky top-0 z-30 bg-[#F8FAFC] dark:bg-zinc-800 shadow-[0_1px_0_0_#e5e7eb] dark:shadow-[0_1px_0_0_#27272a]">SKUs</th>
-                                    <th className="text-right p-3 text-left align-middle sticky top-0 z-30 bg-[#F8FAFC] dark:bg-zinc-800 shadow-[0_1px_0_0_#e5e7eb] dark:shadow-[0_1px_0_0_#27272a]">
-                                        <div className="flex items-center justify-end gap-1.5 select-none group/purchasing">
-                                            <span>Purchasing</span>
-                                            <button
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    setFilterHasPurchasing(!filterHasPurchasing);
-                                                    setCurrentPage(1);
-                                                }}
-                                                className={`p-1 rounded transition-all ${filterHasPurchasing ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/50 dark:text-indigo-300 opacity-100' : 'text-gray-400 hover:bg-gray-150 dark:hover:bg-zinc-700 opacity-0 group-hover/purchasing:opacity-100 focus:opacity-100'}`}
-                                                title={filterHasPurchasing ? "Showing only products with purchasing price > 0" : "Filter out 0 / empty purchasing prices"}
-                                            >
-                                                <ArrowDown size={14} className={`transition-transform duration-200 ${filterHasPurchasing ? 'rotate-180 text-indigo-600 dark:text-indigo-400' : 'text-gray-400'}`} />
-                                            </button>
-                                        </div>
-                                    </th>
-                                    <th className="text-right p-3 text-left align-middle sticky top-0 z-30 bg-[#F8FAFC] dark:bg-zinc-800 shadow-[0_1px_0_0_#e5e7eb] dark:shadow-[0_1px_0_0_#27272a]">Commission</th>
-                                    <th className="text-right text-orange-600 p-3 text-left align-middle sticky top-0 z-30 bg-[#F8FAFC] dark:bg-zinc-800 shadow-[0_1px_0_0_#e5e7eb] dark:shadow-[0_1px_0_0_#27272a]">Breakeven</th>
 
-                                    {/* Toggle Live Prices Button */}
-                                    <th className="p-3 bg-[#F8FAFC] dark:bg-zinc-800 sticky top-0 z-30 align-middle w-10 shadow-[0_1px_0_0_#e5e7eb] dark:shadow-[0_1px_0_0_#27272a]">
-                                        <button
-                                            onClick={() => setShowLivePriceColumns(!showLivePriceColumns)}
-                                            className={`p-1.5 rounded-full transition-all ${showLivePriceColumns ? 'bg-purple-100 text-purple-600' : 'bg-gray-100 text-gray-400'}`}
-                                            title={showLivePriceColumns ? "Hide Store Prices" : "Show Store Prices"}
-                                        >
-                                            {showLivePriceColumns ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
-                                        </button>
-                                    </th>
-
-                                    {/* 4 Fixed Live Price Columns */}
-                                    {showLivePriceColumns && [1, 2, 3, 4].map(idx => (
-                                        <th key={idx} className="text-right text-purple-600 whitespace-nowrap min-w-[120px] border-l border-gray-200 dark:border-gray-700 bg-purple-50 dark:bg-purple-950 p-3 align-middle sticky top-0 z-30 shadow-[0_1px_0_0_#e5e7eb] dark:shadow-[0_1px_0_0_#27272a]">
-                                            Live Price {idx}
-                                        </th>
-                                    ))}
-
-                                    <th className="text-right text-blue-600 min-w-[140px] p-3 text-left align-middle sticky top-0 z-30 bg-[#F8FAFC] dark:bg-zinc-800 shadow-[0_1px_0_0_#e5e7eb] dark:shadow-[0_1px_0_0_#27272a]">
-                                        <div className="flex items-center justify-end gap-1">
-                                            <span>Regular</span>
-                                            <select
-                                                value={regularPct}
-                                                onChange={(e) => setRegularPct(Number(e.target.value) as 15 | 20 | 25)}
-                                                onClick={(e) => e.stopPropagation()}
-                                                className="ml-1 text-xs font-bold text-blue-600 bg-blue-50 border border-blue-200 rounded px-1 py-0.5 cursor-pointer focus:outline-none focus:ring-1 focus:ring-blue-400 dark:bg-blue-950 dark:border-blue-700 dark:text-blue-300"
-                                            >
-                                                <option value={15}>15%</option>
-                                                <option value={20}>20%</option>
-                                                <option value={25}>25%</option>
-                                            </select>
-                                        </div>
-                                    </th>
-                                    <th className="text-right w-32 border-l border-gray-200 dark:border-gray-700 p-3 text-left align-middle sticky top-0 z-30 bg-[#F8FAFC] dark:bg-zinc-800 shadow-[0_1px_0_0_#e5e7eb] dark:shadow-[0_1px_0_0_#27272a]">Website Price</th>
-                                    <th className="text-right w-32 border-l border-gray-200 dark:border-gray-700 p-3 text-left align-middle sticky top-0 z-30 bg-[#F8FAFC] dark:bg-zinc-800 shadow-[0_1px_0_0_#e5e7eb] dark:shadow-[0_1px_0_0_#27272a]">Daraz Price</th>
-                                    <th className="text-right w-32 p-3 text-left align-middle sticky top-0 z-30 bg-[#F8FAFC] dark:bg-zinc-800 shadow-[0_1px_0_0_#e5e7eb] dark:shadow-[0_1px_0_0_#27272a]">Campaign</th>
-                                    <th className="text-center w-24 p-3 text-left align-middle sticky top-0 z-30 bg-[#F8FAFC] dark:bg-zinc-800 shadow-[0_1px_0_0_#e5e7eb] dark:shadow-[0_1px_0_0_#27272a]">Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {isLoading ? (
-                                    <tr className="border-b dark:border-zinc-800">
-                                        <td colSpan={12} className="h-48 text-center text-gray-500 p-4 align-middle">
-                                            <Loader2 className="w-8 h-8 animate-spin mx-auto mb-2" />
-                                            Evaluating metrics...
-                                        </td>
-                                    </tr>
-                                ) : paginatedData.length === 0 ? (
-                                    <tr className="border-b dark:border-zinc-800">
-                                        <td colSpan={12} className="h-24 text-center text-gray-500 p-4 align-middle">
-                                            No products found.
-                                        </td>
-                                    </tr>
-                                ) : (
-                                    paginatedData.map((item, index) => {
-                                        const isHighlight = (() => {
-                                            if (!item.market_price) return false;
-                                            const liveSkus = [item.seller_sku1, item.seller_sku2, item.seller_sku3, item.seller_sku4];
-                                            for (const sku of liveSkus) {
-                                                if (!sku) continue;
-                                                const liveDet = item.live_prices?.[sku];
-                                                if (liveDet) {
-                                                    const activePrice = liveDet.special_price || liveDet.price;
-                                                    const diff = Math.abs(activePrice - item.market_price) / item.market_price;
-                                                    if (diff > 0.05) return true;
-                                                }
-                                            }
-                                            return false;
-                                        })();
-
-                                        return (
-                                            <tr key={item.product_id} className={`transition-colors group ${isHighlight ? 'bg-red-50 hover:bg-red-100 dark:bg-red-950/30 dark:hover:bg-red-900/40 border-l-4 border-l-red-500' : 'hover:bg-gray-50 dark:hover:bg-zinc-800'}`}>
-                                                <td className="text-center text-gray-500 p-4 align-middle sticky left-0 z-20 bg-white dark:bg-zinc-900 border-r dark:border-zinc-800">
-                                                    <div className="flex items-center justify-center gap-2">
-                                                        <input type="checkbox" className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600 cursor-pointer" checked={selectedProductIds.has(item.product_id)} onChange={() => toggleSelection(item.product_id)} />
-                                                        <span>{((currentPage - 1) * itemsPerPage) + index + 1}</span>
+                                        {/* ─── 1. Product Information ─── */}
+                                        <div className="flex items-center gap-3 w-[310px] shrink-0">
+                                            <div className="w-[72px] h-[72px] rounded-[12px] border border-[#E5E7EB] bg-[#F9FAFB] overflow-hidden shrink-0 shadow-sm flex items-center justify-center">
+                                                {item.image_url ? (
+                                                    <img src={item.image_url} alt="" className="w-full h-full object-cover" />
+                                                ) : (
+                                                    <div className="w-full h-full flex items-center justify-center">
+                                                        <div className="w-8 h-8 rounded-full border-2 border-gray-200 opacity-50" />
                                                     </div>
-                                                </td>
-                                                <td className="text-center p-4 align-middle sticky left-[64px] z-20 bg-white dark:bg-zinc-900 border-r dark:border-zinc-800">
-                                                    <div className="w-10 h-10 relative bg-gray-100 dark:bg-zinc-800 rounded overflow-hidden mx-auto">
-                                                        {item.image_url ? (
-                                                            <img src={item.image_url} alt="img" className="w-full h-full object-cover" />
-                                                        ) : (
-                                                            <div className="w-full h-full flex items-center justify-center text-gray-300">
-                                                                <div className="w-4 h-4 rounded-full border-2 border-current opacity-50" />
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                </td>
-                                                <td className="p-4 align-middle sticky left-[128px] z-20 bg-white dark:bg-zinc-900 hover:bg-gray-50 dark:hover:bg-zinc-800 border-r dark:border-zinc-800 group-hover:bg-gray-50 dark:group-hover:bg-zinc-800 shadow-[1px_0_0_0_#e5e7eb] dark:shadow-[1px_0_0_0_#27272a]">
-                                                    {(() => {
-                                                        const totalStock = Object.values(item.live_prices || {}).reduce((sum, lp) => sum + (lp.quantity || 0), 0)
-                                                        const isOutOfStock = totalStock === 0 && Object.keys(item.live_prices || {}).length > 0;
-                                                        
-                                                        // Calculate MRP Violations
-                                                        const mrpViolations: string[] = [];
-                                                        const mrpVal = item.mrp_price;
-                                                        if (mrpVal != null) {
-                                                            if (item.market_price != null && item.market_price > mrpVal) {
-                                                                mrpViolations.push("Daraz Price");
-                                                            }
-                                                            if (item.campaign_price != null && item.campaign_price > mrpVal) {
-                                                                mrpViolations.push("Campaign Price");
-                                                            }
-                                                            const skus = [item.seller_sku1, item.seller_sku2, item.seller_sku3, item.seller_sku4];
-                                                            skus.forEach((sku, idx) => {
-                                                                if (!sku) return;
-                                                                const liveDet = item.live_prices?.[sku];
-                                                                if (liveDet) {
-                                                                    const sellingPrice = liveDet.special_price || liveDet.price;
-                                                                    if (sellingPrice > mrpVal) {
-                                                                        const storeAlias = { 
-                                                                            'Bagmati Online': 'Bagmati', 
-                                                                            'Ram': 'Balaju', 
-                                                                            'Lamichhane Suppliers': 'Cosmetics', 
-                                                                            'Bagmati Traders': 'BTAS' 
-                                                                        }[liveDet.store_name] || liveDet.store_name;
-                                                                        mrpViolations.push(`Live Price ${idx + 1} (${storeAlias})`);
-                                                                    }
-                                                                }
-                                                            });
-                                                        }
-                                                        const hasMrpViolation = mrpViolations.length > 0;
-                                                        const violationTooltip = hasMrpViolation 
-                                                            ? `Above MRP Price in: ${mrpViolations.join(', ')}`
-                                                            : item.product_name;
-
-                                                        let nameColorClass = 'text-gray-900 dark:text-gray-100';
-                                                        if (hasMrpViolation) {
-                                                            nameColorClass = 'text-red-600 dark:text-red-400 font-bold underline decoration-dotted cursor-help';
-                                                        } else if (isOutOfStock) {
-                                                            nameColorClass = 'text-red-800 dark:text-red-400 font-bold';
-                                                        }
-
-                                                        return (
-                                                            <div className="flex flex-col gap-0.5">
-                                                                <div className={`font-medium truncate w-60 ${nameColorClass}`} title={violationTooltip}>
-                                                                    {item.product_name}
-                                                                    {isOutOfStock && <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300">OUT</span>}
-                                                                </div>
-                                                                {item.sales_priority && item.priority_seller_account && (
-                                                                    <div className="mt-0.5 flex items-center select-none">
-                                                                        <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800 text-[10px] font-bold">
-                                                                            Priority Account: {item.priority_seller_account}
-                                                                        </span>
-                                                                    </div>
-                                                                )}
-                                                                {item.is_new_pushed && (salesDays === 30 || salesDays === 60 || salesDays === 'new_listed') && (
-                                                                    <div className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold mt-0.5 flex items-center gap-1 select-none">
-                                                                        <span className="inline-flex items-center justify-center px-1.5 py-0.2 rounded bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 text-[10px] font-bold">
-                                                                            New Product
-                                                                        </span>
-                                                                    </div>
-                                                                )}
-                                                                {item.sold_qty !== undefined && item.sold_qty > 30 && (
-                                                                    <div className="text-[11px] text-[#4F46E5] dark:text-indigo-400 font-semibold mt-0.5 flex items-center gap-1 select-none">
-                                                                        <span className="inline-flex items-center justify-center px-1.5 py-0.2 rounded bg-indigo-50 dark:bg-indigo-950/40 text-[#4F46E5] dark:text-indigo-300 border border-indigo-150 dark:border-indigo-800 text-[10px] font-bold">
-                                                                            {item.sold_qty} sold
-                                                                        </span>
-                                                                        <span className="text-gray-400 dark:text-gray-500 font-normal">
-                                                                            in {typeof salesDays === 'number' ? `${salesDays} days` : 'recent listing'}
-                                                                        </span>
-                                                                    </div>
-                                                                )}
-                                                            </div>
-                                                        )
-                                                    })()}
-                                                </td>
-                                                <td className="p-4 align-middle">
-                                                    <div className="text-xs text-gray-500 font-mono flex flex-col gap-1">
-                                                        {item.seller_skus.length > 0 ? (
-                                                            item.seller_skus.map((sku, i) => (
-                                                                <span key={i} className="truncate w-40 block" title={sku}>{sku}</span>
-                                                            ))
-                                                        ) : (
-                                                            <span className="text-gray-400 italic">No SKUs</span>
-                                                        )}
-                                                    </div>
-                                                </td>
-                                                <td className="text-right font-medium text-gray-700 dark:text-gray-300 p-4 align-middle">
-                                                    <div className="flex flex-col items-end">
-                                                        <span>Rs. {item.purchasing_price.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
-                                                        {item.purchasing_remark && (
-                                                            <span className="text-[10px] text-amber-600 dark:text-amber-500 italic font-medium">
-                                                                {item.purchasing_remark}
-                                                            </span>
-                                                        )}
-                                                        {item.mrp_price !== undefined && item.mrp_price !== null && (
-                                                            <span className="text-[11px] font-bold text-violet-700 dark:text-violet-400 bg-violet-50 dark:bg-violet-950/40 border border-violet-200 dark:border-violet-800/80 px-1.5 py-0.5 rounded mt-1 inline-block whitespace-nowrap shadow-sm">
-                                                                MRP: Rs. {item.mrp_price.toLocaleString(undefined, { maximumFractionDigits: 2 })}
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                </td>
-                                                <td className="text-right p-4 align-middle">
-                                                    {item.is_default_commission ? (
-                                                        <span className="inline-flex items-center px-2 py-0.5 rounded bg-amber-50 text-amber-700 font-medium border border-amber-200 text-xs" title="Estimated Default Commission">
-                                                            {item.commission_percent?.toFixed(2)}% (Default)
+                                                )}
+                                            </div>
+                                            <div className="flex flex-col flex-1 min-w-0 gap-1">
+                                                <p
+                                                    className={`font-bold text-[14.5px] leading-snug ${hasMrpViolation ? 'text-[#DC2626]' : isOutOfStock ? 'text-[#DC2626]' : 'text-[#111827]'}`}
+                                                    style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as any, overflow: 'hidden' }}
+                                                    title={hasMrpViolation ? `MRP Violation: ${mrpViolations.join(', ')}` : item.product_name}
+                                                >
+                                                    {item.product_name}
+                                                </p>
+                                                <div className="flex items-center flex-wrap gap-1.5 mt-0.5">
+                                                    {(item.sold_qty || 0) > 0 && (
+                                                        <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#4F46E5] bg-[#EEF2FF] px-[7px] py-[2px] rounded-full whitespace-nowrap">
+                                                            🛒 {item.sold_qty} Sold
                                                         </span>
-                                                    ) : item.commission_percent !== null ? (
-                                                        <span className="inline-flex items-center px-2 py-0.5 rounded bg-red-50 text-red-700 font-medium border border-red-100 text-xs">
-                                                            {item.commission_percent.toFixed(2)}%
+                                                    )}
+                                                    <span className="text-[11px] font-medium text-[#9CA3AF]">
+                                                        {typeof salesDays === 'number' ? `Last ${salesDays} Days` : 'Last 60 Days'}
+                                                    </span>
+                                                    {isOutOfStock && (
+                                                        <span className="inline-flex text-[11px] font-semibold text-[#DC2626] bg-[#FEE2E2] px-[7px] py-[2px] rounded-full">
+                                                            OUT
+                                                        </span>
+                                                    )}
+                                                    {item.is_new_pushed && (
+                                                        <span className="inline-flex text-[11px] font-semibold text-[#16A34A] bg-[#DCFCE7] px-[7px] py-[2px] rounded-full">
+                                                            NEW
+                                                        </span>
+                                                    )}
+                                                    {item.sales_priority && item.priority_seller_account && (
+                                                        <span className="inline-flex text-[11px] font-semibold text-[#B45309] bg-[#FEF3C7] px-[7px] py-[2px] rounded-full whitespace-nowrap">
+                                                            ⭐ {item.priority_seller_account}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <div className="space-y-0.5 mt-0.5">
+                                                    {skusToShow.map((sku, i) => (
+                                                        <div key={i} className="font-mono text-[11px] font-medium text-[#6B7280] leading-[15px] truncate max-w-[200px]" title={sku}>
+                                                            {sku}
+                                                        </div>
+                                                    ))}
+                                                    {extraSkus > 0 && (
+                                                        <span className="font-mono text-[11px] font-medium text-[#9CA3AF] italic">
+                                                            +{extraSkus} More
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* ─── 2. Cost Information ─── */}
+                                        <div className="flex flex-col justify-center gap-1.5 w-[150px] shrink-0 border-l border-[#ECEEF3] pl-5">
+                                            <div className="flex flex-col">
+                                                <span className="text-[10.5px] font-semibold uppercase tracking-[0.8px] text-[#9CA3AF]">💰 PURCHASING</span>
+                                                <span className="text-[15px] font-bold text-[#111827] leading-tight mt-0.5">
+                                                    Rs.{item.purchasing_price.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                                                </span>
+                                            </div>
+                                            <div className="flex flex-col">
+                                                <span className="text-[10.5px] font-semibold uppercase tracking-[0.8px] text-[#9CA3AF]">📈 COMMISSION</span>
+                                                <div className="mt-0.5">
+                                                    {item.commission_percent !== null ? (
+                                                        <span className="inline-flex items-center bg-gray-100 text-[#111827] border border-gray-200 text-[11px] font-bold px-[7px] py-[1.5px] rounded-full">
+                                                            {item.commission_percent.toFixed(2)}%{item.is_default_commission ? ' (est)' : ''}
                                                         </span>
                                                     ) : (
-                                                        <span className="text-gray-400 text-xs italic">No orders</span>
+                                                        <span className="text-[11px] font-medium text-[#9CA3AF] italic">No orders</span>
                                                     )}
-                                                </td>
-                                                <td className="text-right font-bold text-orange-600 dark:text-orange-400 bg-orange-50/30 dark:bg-orange-950/20 p-4 align-middle">
-                                                    Rs. {item.breakeven_price.toLocaleString(undefined, { maximumFractionDigits: 2 })}
-                                                </td>
+                                                </div>
+                                            </div>
+                                            <div className="flex flex-col">
+                                                <span className="text-[10.5px] font-semibold uppercase tracking-[0.8px] text-[#9CA3AF]">🔥 BREAKEVEN</span>
+                                                <span className="text-[15px] font-bold text-[#111827] leading-tight mt-0.5">
+                                                    Rs.{item.breakeven_price.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                                                </span>
+                                            </div>
+                                        </div>
 
-                                                {/* Filler for Toggle Column */}
-                                                <td className="w-10 bg-white dark:bg-zinc-900 border-r dark:border-zinc-800"></td>
+                                        {/* ─── 3. Live Price Section (4 Mini Cards) ─── */}
+                                        <div className="flex items-center gap-2.5 w-[580px] shrink-0 border-l border-[#ECEEF3] pl-5">
+                                            {[item.seller_sku1, item.seller_sku2, item.seller_sku3, item.seller_sku4].map((sku, idx) => {
+                                                const liveDetails = sku ? item.live_prices?.[sku] : null
+                                                const isInactive = liveDetails?.status && ['inactive', 'deleted', 'suspended', 'deactivated'].includes(liveDetails.status.toLowerCase())
+                                                const accountName = [item.seller_account1, item.seller_account2, item.seller_account3, item.seller_account4][idx]
+                                                const accountSoldQty = accountName ? (item.sold_qty_by_account?.[accountName] || 0) : 0
 
-                                                {/* 4 Fixed Live Price Cells */}
-                                                {showLivePriceColumns && [item.seller_sku1, item.seller_sku2, item.seller_sku3, item.seller_sku4].map((sku, idx) => {
-                                                    const liveDetails = sku ? item.live_prices?.[sku] : null;
-                                                    if (!liveDetails) {
-                                                        return <td key={idx} className="text-right border-l border-gray-100 dark:border-zinc-800 pt-3 bg-purple-50/10 dark:bg-purple-900/10 text-gray-300 dark:text-gray-600 p-4 align-middle">-</td>
-                                                    }
-                                                    const sellingPrice = liveDetails.special_price || liveDetails.price;
-                                                    const regularPrice = liveDetails.special_price ? liveDetails.price : null;
-                                                    const isAboveMrp = item.mrp_price != null && sellingPrice > item.mrp_price;
-
-                                                    // Identify the matching account for this SKU index
-                                                    const accountName = [item.seller_account1, item.seller_account2, item.seller_account3, item.seller_account4][idx];
-                                                    const accountSoldQty = accountName ? (item.sold_qty_by_account?.[accountName] || 0) : 0;
-
+                                                if (!liveDetails || isInactive) {
                                                     return (
-                                                        <td key={idx} className="text-right border-l border-gray-100 dark:border-zinc-800 align-top pt-3 bg-purple-50/10 dark:bg-purple-900/10 p-4 align-middle">
-                                                            <div className="flex flex-col items-end gap-0.5">
-                                                                <span 
-                                                                    className={`font-bold whitespace-nowrap ${isAboveMrp ? 'text-red-600 dark:text-red-400 underline decoration-dotted cursor-help' : 'text-purple-900 dark:text-purple-100'}`}
-                                                                    title={isAboveMrp ? `Price is above MRP Price (MRP: Rs. ${item.mrp_price})` : undefined}
-                                                                >
-                                                                    Rs. {sellingPrice.toLocaleString()}
+                                                        <div key={idx} className="flex-1 rounded-xl border border-dashed border-[#E5E7EB] bg-[#F9FAFB] flex flex-col items-center justify-center gap-1 h-[112px]">
+                                                            <span className="text-[11px] font-semibold uppercase tracking-[0.8px] text-[#9CA3AF]">LIVE {idx + 1}</span>
+                                                            <span className="text-[11px] text-[#9CA3AF]">—</span>
+                                                        </div>
+                                                    )
+                                                }
+
+                                                const sellingPrice = liveDetails.special_price || liveDetails.price
+                                                const originalPrice = liveDetails.special_price ? liveDetails.price : null
+                                                const stockQty = liveDetails.quantity || 0
+                                                const isStockOut = stockQty === 0
+                                                const isLowStock = stockQty > 0 && stockQty <= 5
+                                                const isAboveMrpLive = mrpVal != null && sellingPrice > mrpVal
+
+                                                const liveProfit = calcPriceProfit(sellingPrice)
+
+                                                const storeAlias = storeAliasMap[liveDetails.store_name] || (liveDetails.store_name?.toUpperCase() || 'STORE')
+
+                                                let miniCardBg = 'bg-white border-[#E5E7EB]'
+                                                let priceClass = isAboveMrpLive ? 'text-[#DC2626]' : 'text-[#111827]'
+                                                let stockText = `📦 ${stockQty}`
+                                                let stockBadgeClass = 'bg-[#DCFCE7] text-[#16A34A] border-transparent'
+
+                                                if (isStockOut) {
+                                                    miniCardBg = 'bg-[#FEF2F2] border-[#F87171]'
+                                                    priceClass = 'text-[#DC2626]'
+                                                    stockBadgeClass = 'bg-[#FEE2E2] text-[#DC2626] border-transparent font-semibold'
+                                                    stockText = '⚠ Out of Stock'
+                                                } else if (isLowStock) {
+                                                    miniCardBg = 'bg-[#FFF7ED] border-[#F97316]'
+                                                    stockBadgeClass = 'bg-[#FFEDD5] text-[#EA580C] border-transparent font-semibold'
+                                                    stockText = `Low Stock (${stockQty})`
+                                                }
+
+                                                return (
+                                                    <div
+                                                        key={idx}
+                                                        className={`flex-1 rounded-xl border ${miniCardBg} p-2 flex flex-col justify-between h-[112px] cursor-default overflow-hidden`}
+                                                        title={isAboveMrpLive ? `Price is above MRP (MRP: Rs.${mrpVal})` : undefined}
+                                                    >
+                                                        <div className="flex items-center justify-between">
+                                                            <span className="text-[11px] font-semibold uppercase tracking-[0.8px] text-[#6C4CF1]">LIVE {idx + 1}</span>
+                                                            <span className="inline-flex text-[10px] font-bold bg-[#DCFCE7] text-[#16A34A] px-[6px] py-[2px] rounded-[6px]">
+                                                                {storeAlias}
+                                                            </span>
+                                                        </div>
+
+                                                        <div className="flex items-baseline justify-between gap-1 leading-tight my-0.5">
+                                                            <div className="flex items-baseline gap-1 truncate">
+                                                                <span className={`text-[14px] font-bold ${priceClass}`}>
+                                                                    Rs.{sellingPrice.toLocaleString()}
                                                                 </span>
-                                                                {regularPrice && (
-                                                                    <span className="text-[10px] text-gray-500 line-through font-medium whitespace-nowrap">
-                                                                        Rs. {regularPrice.toLocaleString()}
-                                                                    </span>
-                                                                )}
-
-                                                                {(() => {
-                                                                    const storeAlias = { 'Bagmati Online': 'Bagmati', 'Ram': 'Balaju', 'Lamichhane Suppliers': 'Cosmetics', 'Bagmati Traders': 'BTAS' }[liveDetails.store_name] || liveDetails.store_name;
-                                                                    const colorClass = {
-                                                                        'Bagmati': 'bg-teal-50 text-teal-700 border-teal-200 dark:bg-teal-950/40 dark:text-teal-400 dark:border-teal-800',
-                                                                        'Balaju': 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-blue-400 dark:border-blue-800',
-                                                                        'Cosmetics': 'bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200 dark:bg-fuchsia-950/40 dark:text-fuchsia-400 dark:border-fuchsia-800',
-                                                                        'BTAS': 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-400 dark:border-amber-800'
-                                                                    }[storeAlias] || 'bg-gray-50 text-gray-700 border-gray-200 dark:bg-zinc-800 dark:text-gray-400 dark:border-gray-700';
-                                                                    return (
-                                                                        <span className={`text-[9.5px] font-bold uppercase tracking-wider mt-1 border px-1.5 py-0.5 rounded shadow-sm ${colorClass}`} title={sku || ''}>
-                                                                            {storeAlias}
-                                                                        </span>
-                                                                    );
-                                                                })()}
-
-                                                                {/* Account specific sold quantity display */}
-                                                                {accountSoldQty > 0 && (
-                                                                    <span className="text-[10px] text-[#4F46E5] dark:text-indigo-400 font-bold mt-1 bg-indigo-50/50 dark:bg-indigo-950/30 px-1.5 py-0.5 rounded border border-indigo-100 dark:border-indigo-850 select-none">
-                                                                        {accountSoldQty} sold
+                                                                {originalPrice && (
+                                                                    <span className="text-[10px] font-medium text-[#9CA3AF] line-through">
+                                                                        Rs.{originalPrice.toLocaleString()}
                                                                     </span>
                                                                 )}
                                                             </div>
-                                                        </td>
-                                                    )
-                                                })}
-
-                                                <td className="text-right font-bold text-blue-600 dark:text-blue-400 bg-blue-50/30 dark:bg-blue-950/20 p-4 align-middle">
-                                                    {(() => {
-                                                        const commPct = item.commission_percent !== null ? item.commission_percent : 25
-                                                        const breakeven = item.purchasing_price / (1 - commPct / 100)
-                                                        const rawReg = breakeven * (1 + regularPct / 100)
-                                                        const reg = Math.ceil(rawReg / 5) * 5
-                                                        return `Rs. ${reg.toLocaleString(undefined, { maximumFractionDigits: 2 })}`
-                                                    })()}
-                                                </td>
-
-                                                {/* Website Price */}
-                                                <td className="text-right border-l border-gray-100 dark:border-zinc-800 align-top pt-3 p-4 align-middle bg-[#fdfaf6] dark:bg-amber-950/10">
-                                                    <div className="flex items-center justify-end gap-1.5">
-                                                        <button
-                                                            onClick={() => handleToggleLock(item.product_id, !!item.is_price_locked)}
-                                                            disabled={togglingLockId === item.product_id}
-                                                            className="p-1 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded transition-all focus:outline-none shrink-0"
-                                                            title={item.is_price_locked ? "Unlock Website Price" : "Lock Website Price"}
-                                                        >
-                                                            {togglingLockId === item.product_id ? (
-                                                                <Loader2 size={12} className="animate-spin text-blue-500" />
-                                                            ) : item.is_price_locked ? (
-                                                                <Lock size={12} className="text-red-500 dark:text-red-400" />
-                                                            ) : (
-                                                                <Unlock size={12} className="text-gray-300 dark:text-zinc-700 hover:text-gray-500 dark:hover:text-zinc-500 transition-colors" />
-                                                            )}
-                                                        </button>
-
-                                                        <div className="flex flex-col items-end gap-0.5">
-                                                            {item.website_special_price || item.website_regular_price ? (
-                                                                <>
-                                                                    <span className="font-bold text-emerald-700 dark:text-emerald-400">
-                                                                        Rs. {(item.website_special_price || item.website_regular_price)!.toLocaleString()}
-                                                                    </span>
-                                                                    {item.website_special_price && item.website_regular_price && (
-                                                                        <span className="text-[10px] text-gray-500 line-through font-medium whitespace-nowrap">
-                                                                            Rs. {item.website_regular_price.toLocaleString()}
-                                                                        </span>
-                                                                    )}
-                                                                </>
-                                                            ) : (
-                                                                <span className="text-gray-400 italic text-sm">-</span>
+                                                            {liveProfit !== null && (
+                                                                <span className={`text-[11px] font-bold shrink-0 ${liveProfit >= 0 ? 'text-[#16A34A]' : 'text-[#DC2626]'}`}>
+                                                                    {liveProfit >= 0 ? '+' : ''}Rs.{liveProfit.toFixed(2)}
+                                                                </span>
                                                             )}
                                                         </div>
-                                                    </div>
-                                                </td>
 
-                                                {/* Editable Daraz Price with Profit */}
-                                                <td className="text-right border-l border-gray-100 dark:border-zinc-800 align-top pt-3 p-4 align-middle">
+                                                        <div className="flex items-center gap-1 flex-wrap">
+                                                            {accountSoldQty > 0 && (
+                                                                <span className="inline-flex text-[10px] font-semibold bg-[#EEF2FF] text-[#4F46E5] px-[6px] py-[2px] rounded-full">
+                                                                    {accountSoldQty} Sold
+                                                                </span>
+                                                            )}
+                                                            <span className={`inline-flex items-center text-[10px] px-[6px] py-[2px] rounded-full border ${stockBadgeClass}`}>
+                                                                {stockText}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                )
+                                            })}
+                                        </div>
+
+                                        {/* ─── 4. Regular Price ─── */}
+                                        <div className="flex flex-col items-center justify-center gap-1.5 w-[115px] shrink-0 border-l border-[#ECEEF3] pl-5 text-center">
+                                            <span className="text-[11px] font-semibold uppercase tracking-[0.8px] text-[#9CA3AF]">REGULAR</span>
+                                            <span className="inline-flex items-center bg-[#DBEAFE] text-[#2563EB] text-[11px] font-bold px-[8px] py-[2px] rounded-full">
+                                                {regularPct}%
+                                            </span>
+                                            <span className="text-[20px] font-bold text-[#2563EB] leading-tight">
+                                                Rs.{regPrice.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                            </span>
+                                            {item.purchasing_price > 0 && regPrice > 0 && (() => {
+                                                const marginVal = ((regPrice - item.purchasing_price) / regPrice) * 100
+                                                const meterColor = marginVal > 25 ? '#16A34A' : marginVal > 15 ? '#EA580C' : '#DC2626'
+                                                const meterWidth = Math.min(100, Math.max(4, marginVal * 2))
+                                                return (
+                                                    <div className="w-full space-y-0.5 mt-0.5">
+                                                        <div className="h-1.5 bg-[#E5E7EB] rounded-full overflow-hidden">
+                                                            <div className="h-full rounded-full transition-all duration-500" style={{ width: `${meterWidth}%`, backgroundColor: meterColor }} />
+                                                        </div>
+                                                        <span className="text-[11px] font-medium text-[#9CA3AF] block">Margin {marginVal.toFixed(0)}%</span>
+                                                    </div>
+                                                )
+                                            })()}
+                                        </div>
+
+                                        {/* ─── 5. Marketplace Prices ─── */}
+                                        <div className="flex flex-col justify-center gap-2 w-[245px] shrink-0 border-l border-[#ECEEF3] pl-5">
+                                            {/* Website */}
+                                            <div className="flex items-center justify-between gap-1">
+                                                <div className="flex items-center gap-1">
+                                                    <button
+                                                        onClick={() => handleToggleLock(item.product_id, !!item.is_price_locked)}
+                                                        disabled={togglingLockId === item.product_id}
+                                                        className="shrink-0 focus:outline-none"
+                                                        title={item.is_price_locked ? 'Unlock Website Price' : 'Lock Website Price'}
+                                                    >
+                                                        {togglingLockId === item.product_id ? (
+                                                            <Loader2 size={11} className="animate-spin text-[#2563EB]" />
+                                                        ) : item.is_price_locked ? (
+                                                            <Lock size={11} className="text-[#DC2626]" />
+                                                        ) : (
+                                                            <Unlock size={11} className="text-[#9CA3AF] hover:text-[#111827] transition-colors" />
+                                                        )}
+                                                    </button>
+                                                    <span className="text-[11px] font-semibold text-[#6B7280]">🌐 Website</span>
+                                                </div>
+                                                <span className="text-[14.5px] font-semibold text-[#111827]">
+                                                    {item.website_special_price || item.website_regular_price ? `Rs.${(item.website_special_price || item.website_regular_price)!.toLocaleString()}` : '—'}
+                                                </span>
+                                            </div>
+
+                                            {/* Daraz */}
+                                            <div className="flex items-center justify-between gap-1">
+                                                <span className="text-[11px] font-semibold text-[#6B7280]">🛒 Daraz</span>
+                                                <div className="flex items-center gap-2">
                                                     {editingId === item.product_id ? (
                                                         <input
                                                             type="number"
                                                             value={editMarketPrice}
                                                             onChange={(e) => setEditMarketPrice(e.target.value)}
-                                                            className="w-20 px-2 py-1 text-right text-sm border border-blue-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-zinc-800 dark:border-zinc-700"
+                                                            className="w-[75px] px-1.5 py-0.5 text-right text-xs border border-[#2563EB] rounded-lg focus:outline-none focus:ring-1 focus:ring-[#2563EB]"
                                                             autoFocus
                                                         />
+                                                    ) : item.market_price != null ? (
+                                                        <span className={`text-[14.5px] font-semibold ${(mrpVal != null && item.market_price > mrpVal) ? 'text-[#DC2626]' : 'text-[#111827]'}`}>
+                                                            Rs.{item.market_price.toLocaleString()}
+                                                        </span>
                                                     ) : (
-                                                        <div className="flex flex-col items-end gap-0.5">
-                                                            {(() => {
-                                                                const isMarketAboveMrp = item.mrp_price != null && item.market_price != null && item.market_price > item.mrp_price;
-                                                                return (
-                                                                    <span 
-                                                                        className={`font-bold ${isMarketAboveMrp ? 'text-red-600 dark:text-red-400 underline decoration-dotted cursor-help' : 'text-gray-900 dark:text-gray-100'}`}
-                                                                        title={isMarketAboveMrp ? `Price is above MRP Price (MRP: Rs. ${item.mrp_price})` : undefined}
-                                                                    >
-                                                                        {item.market_price ? `Rs. ${item.market_price.toLocaleString()}` : '-'}
-                                                                    </span>
-                                                                );
-                                                            })()}
-                                                            {item.market_price_profit !== null && (
-                                                                <span className={`text-[11px] font-semibold tracking-wide ${item.market_price_profit > 0 ? "text-green-600" : "text-red-500"}`}>
-                                                                    {item.market_price_profit > 0 ? '+' : ''}Rs. {item.market_price_profit.toLocaleString(undefined, { maximumFractionDigits: 2 })}
-                                                                </span>
-                                                            )}
-                                                        </div>
+                                                        <span className="text-[14.5px] font-semibold text-[#9CA3AF]">—</span>
                                                     )}
-                                                </td>
+                                                    {darazProfit !== null && (
+                                                        <span className={`text-[11.5px] font-bold ${darazProfit >= 0 ? 'text-[#16A34A]' : 'text-[#DC2626]'}`}>
+                                                            {darazProfit >= 0 ? '+' : ''}Rs.{darazProfit.toFixed(2)}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </div>
 
-                                                {/* Editable Campaign Price with Profit */}
-                                                <td className="text-right align-top pt-3 w-32 p-4 align-middle">
+                                            {/* Campaign */}
+                                            <div className="flex items-center justify-between gap-1">
+                                                <span className="text-[11px] font-semibold text-[#6B7280]">🏷 Campaign</span>
+                                                <div className="flex items-center gap-2">
                                                     {editingId === item.product_id ? (
                                                         <input
                                                             type="number"
                                                             value={editCampaignPrice}
                                                             onChange={(e) => setEditCampaignPrice(e.target.value)}
                                                             onKeyDown={(e) => { if (e.key === 'Enter') savePrices(item.product_id) }}
-                                                            className="w-20 px-2 py-1 text-right text-sm border border-blue-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-zinc-800 dark:border-zinc-700"
+                                                            className="w-[75px] px-1.5 py-0.5 text-right text-xs border border-[#6C4CF1] rounded-lg focus:outline-none focus:ring-1 focus:ring-[#6C4CF1]"
                                                         />
+                                                    ) : item.campaign_price != null ? (
+                                                        <span className={`text-[14.5px] font-semibold ${(mrpVal != null && item.campaign_price > mrpVal) ? 'text-[#DC2626]' : 'text-[#111827]'}`}>
+                                                            Rs.{item.campaign_price.toLocaleString()}
+                                                        </span>
                                                     ) : (
-                                                        <div className="flex flex-col items-end gap-0.5">
-                                                            {(() => {
-                                                                const isCampaignAboveMrp = item.mrp_price != null && item.campaign_price != null && item.campaign_price > item.mrp_price;
-                                                                return (
-                                                                    <span 
-                                                                        className={`font-bold ${isCampaignAboveMrp ? 'text-red-600 dark:text-red-400 underline decoration-dotted cursor-help' : 'text-gray-900 dark:text-gray-100'}`}
-                                                                        title={isCampaignAboveMrp ? `Price is above MRP Price (MRP: Rs. ${item.mrp_price})` : undefined}
-                                                                    >
-                                                                        {item.campaign_price ? `Rs. ${item.campaign_price.toLocaleString()}` : '-'}
-                                                                    </span>
-                                                                );
-                                                            })()}
-                                                            {item.campaign_price_profit !== null && (
-                                                                <span className={`text-[11px] font-semibold tracking-wide ${item.campaign_price_profit > 0 ? "text-green-600" : "text-red-500"}`}>
-                                                                    {item.campaign_price_profit > 0 ? '+' : ''}Rs. {item.campaign_price_profit.toLocaleString(undefined, { maximumFractionDigits: 2 })}
-                                                                </span>
-                                                            )}
-                                                        </div>
+                                                        <span className="text-[14.5px] font-semibold text-[#9CA3AF]">—</span>
                                                     )}
-                                                </td>
+                                                    {campaignProfit !== null && (
+                                                        <span className={`text-[11.5px] font-bold ${campaignProfit >= 0 ? 'text-[#16A34A]' : 'text-[#DC2626]'}`}>
+                                                            {campaignProfit >= 0 ? '+' : ''}Rs.{campaignProfit.toFixed(2)}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
 
-                                                {/* Actions */}
-                                                <td className="text-center p-4 align-middle">
-                                                    {editingId === item.product_id ? (
-                                                        <div className="flex items-center justify-center gap-1">
-                                                            <button onClick={() => savePrices(item.product_id)} disabled={isSaving} className="p-1.5 text-green-600 hover:bg-green-50 rounded">
-                                                                {isSaving ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
-                                                            </button>
-                                                            <button onClick={cancelEditing} disabled={isSaving} className="p-1.5 text-red-600 hover:bg-red-50 rounded">
-                                                                <X size={16} />
-                                                            </button>
-                                                        </div>
-                                                    ) : (
-                                                        <div className="flex items-center justify-center gap-1">
-                                                            <button onClick={() => startEditing(item)} className="p-1.5 text-gray-400 group-hover:text-blue-600 hover:bg-blue-50 rounded transition-colors" title="Edit Prices">
-                                                                <Edit2 size={16} />
-                                                            </button>
-                                                            <div className="relative inline-block">
-                                                                <button
-                                                                    onClick={() => setActiveSyncMenuProductId(activeSyncMenuProductId === item.product_id ? null : item.product_id)}
-                                                                    disabled={pushingId === item.product_id || syncingLiveProductId === item.product_id}
-                                                                    className="p-1.5 text-gray-400 group-hover:text-green-600 hover:bg-green-50 rounded transition-colors disabled:opacity-50"
-                                                                    title="Sync / Push actions"
-                                                                >
-                                                                    {pushingId === item.product_id || syncingLiveProductId === item.product_id ? (
-                                                                        <Loader2 size={16} className="animate-spin text-green-600" />
-                                                                    ) : (
-                                                                        <RefreshCw size={16} />
-                                                                    )}
-                                                                </button>
-                                                                {activeSyncMenuProductId === item.product_id && (
-                                                                    <>
-                                                                        <div className="fixed inset-0 z-40 cursor-default" onClick={() => setActiveSyncMenuProductId(null)} />
-                                                                        <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl shadow-xl z-50 py-1.5 text-left animate-in fade-in slide-in-from-top-1 duration-150">
-                                                                            <button
-                                                                                onClick={() => {
-                                                                                    setActiveSyncMenuProductId(null)
-                                                                                    setPushSelectProduct(item)
-                                                                                }}
-                                                                                className="w-full text-left px-4 py-2.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-zinc-800 flex items-center gap-2 transition-colors"
-                                                                            >
-                                                                                <UploadCloud size={14} className="text-green-500" />
-                                                                                <span>Push to Daraz</span>
-                                                                            </button>
-                                                                            <button
-                                                                                onClick={() => {
-                                                                                    setActiveSyncMenuProductId(null)
-                                                                                    handleSyncLiveForProduct(item.product_id, item.product_name)
-                                                                                }}
-                                                                                className="w-full text-left px-4 py-2.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-zinc-800 flex items-center gap-2 transition-colors border-t border-gray-100 dark:border-zinc-800"
-                                                                            >
-                                                                                <RefreshCw size={14} className="text-blue-500" />
-                                                                                <span>Sync Live Price</span>
-                                                                            </button>
-                                                                            <button
-                                                                                onClick={() => {
-                                                                                    setActiveSyncMenuProductId(null)
-                                                                                    handlePushToWebsiteSingle(item)
-                                                                                }}
-                                                                                className="w-full text-left px-4 py-2.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-zinc-800 flex items-center gap-2 transition-colors border-t border-gray-100 dark:border-zinc-800"
-                                                                            >
-                                                                                <UploadCloud size={14} className="text-teal-500" />
-                                                                                <span>Push to Website</span>
-                                                                            </button>
-                                                                        </div>
-                                                                    </>
-                                                                )}
-                                                            </div>
-                                                            <button
-                                                                onClick={() => openStockModal(item)}
-                                                                className="p-1.5 text-gray-400 group-hover:text-amber-600 hover:bg-amber-50 rounded transition-colors"
-                                                                title="Manage Stock"
-                                                            >
-                                                                <AlertTriangle size={16} />
-                                                            </button>
-                                                        </div>
-                                                    )}
-                                                </td>
-                                            </tr>
-                                        )
-                                    })
-                                )}
-                            </tbody>
-                        </table>
-                    </div>
+                                        {/* ─── 6. Action Buttons ─── */}
+                                        <div className="flex flex-col items-center justify-center gap-2 w-[50px] shrink-0 border-l border-[#ECEEF3] pl-5">
+                                            {editingId === item.product_id ? (
+                                                <>
+                                                    <button
+                                                        onClick={() => savePrices(item.product_id)}
+                                                        disabled={isSaving}
+                                                        className="w-[36px] h-[36px] flex items-center justify-center rounded-[10px] bg-[#DCFCE7] text-[#16A34A] shadow-sm"
+                                                        title="Save Prices"
+                                                    >
+                                                        {isSaving ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
+                                                    </button>
+                                                    <button
+                                                        onClick={cancelEditing}
+                                                        disabled={isSaving}
+                                                        className="w-[36px] h-[36px] flex items-center justify-center rounded-[10px] bg-[#FEE2E2] text-[#DC2626] shadow-sm"
+                                                        title="Cancel"
+                                                    >
+                                                        <X size={16} />
+                                                    </button>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <button
+                                                        onClick={() => startEditing(item)}
+                                                        className="w-[36px] h-[36px] flex items-center justify-center rounded-[10px] text-[#6B7280] hover:text-[#111827] hover:bg-[#F3F4F6] transition-colors"
+                                                        title="Edit Prices"
+                                                    >
+                                                        <Edit2 size={16} />
+                                                    </button>
+                                                    <div className="relative inline-block">
+                                                        <button
+                                                            onClick={() => setActiveSyncMenuProductId(activeSyncMenuProductId === item.product_id ? null : item.product_id)}
+                                                            disabled={pushingId === item.product_id || syncingLiveProductId === item.product_id}
+                                                            className="w-[36px] h-[36px] flex items-center justify-center rounded-[10px] text-[#6B7280] hover:text-[#111827] hover:bg-[#F3F4F6] transition-colors disabled:opacity-40"
+                                                            title="Sync / Push Actions"
+                                                        >
+                                                            {pushingId === item.product_id || syncingLiveProductId === item.product_id ? (
+                                                                <Loader2 size={16} className="animate-spin text-[#16A34A]" />
+                                                            ) : (
+                                                                <RefreshCw size={16} />
+                                                            )}
+                                                        </button>
+                                                        {activeSyncMenuProductId === item.product_id && (
+                                                            <>
+                                                                <div className="fixed inset-0 z-40 cursor-default" onClick={() => setActiveSyncMenuProductId(null)} />
+                                                                <div className="absolute right-0 mt-2 w-48 bg-white border border-[#E5E7EB] rounded-xl shadow-xl z-50 py-1.5 text-left animate-in fade-in slide-in-from-top-1 duration-150">
+                                                                    <button
+                                                                        onClick={() => { setActiveSyncMenuProductId(null); setPushSelectProduct(item) }}
+                                                                        className="w-full text-left px-4 py-2.5 text-sm text-[#374151] hover:bg-[#F9FAFB] flex items-center gap-2 transition-colors"
+                                                                    >
+                                                                        <UploadCloud size={14} className="text-[#16A34A]" />
+                                                                        Push to Daraz
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={() => { setActiveSyncMenuProductId(null); handleSyncLiveForProduct(item.product_id, item.product_name) }}
+                                                                        className="w-full text-left px-4 py-2.5 text-sm text-[#374151] hover:bg-[#F9FAFB] flex items-center gap-2 transition-colors border-t border-[#F3F4F6]"
+                                                                    >
+                                                                        <RefreshCw size={14} className="text-[#2563EB]" />
+                                                                        Sync Live Price
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={() => { setActiveSyncMenuProductId(null); handlePushToWebsiteSingle(item) }}
+                                                                        className="w-full text-left px-4 py-2.5 text-sm text-[#374151] hover:bg-[#F9FAFB] flex items-center gap-2 transition-colors border-t border-[#F3F4F6]"
+                                                                    >
+                                                                        <UploadCloud size={14} className="text-teal-500" />
+                                                                        Push to Website
+                                                                    </button>
+                                                                </div>
+                                                            </>
+                                                        )}
+                                                    </div>
+                                                    <button
+                                                        onClick={() => openStockModal(item)}
+                                                        className="w-[36px] h-[36px] flex items-center justify-center rounded-[10px] text-[#6B7280] hover:text-[#EA580C] hover:bg-[#FFF7ED] transition-colors"
+                                                        title="Manage Stock"
+                                                    >
+                                                        <AlertTriangle size={16} />
+                                                    </button>
+                                                </>
+                                            )}
+                                        </div>
+                                    </div>
+                                )
+                            })}
+                        </div>
+                    )}
                 </div>
             </div>
 
             {/* Pagination controls */}
+
             {!isLoading && filteredData.length > 0 && (
                 <div className="bg-white dark:bg-zinc-900 border-t dark:border-zinc-800 px-4 py-3 flex items-center justify-between shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] sticky bottom-0 z-20">
                     <div className="text-sm text-gray-500">
@@ -1927,7 +1920,10 @@ export default function DarazAverageSalesPricePage() {
                             >
                                 <option value={50}>50</option>
                                 <option value={100}>100</option>
-                                <option value={150}>150</option>
+                                <option value={250}>250</option>
+                                <option value={500}>500</option>
+                                <option value={1000}>1000</option>
+                                <option value={5000}>5000 (All)</option>
                             </select>
                         </div>
 
@@ -1985,8 +1981,8 @@ export default function DarazAverageSalesPricePage() {
                             <div className="flex items-center gap-3 border-r border-gray-200 dark:border-zinc-800 pr-3">
                                 <div className="flex flex-col gap-1 pr-2">
                                     <label className="flex items-center gap-1.5 text-[11px] font-medium text-gray-600 dark:text-gray-400 cursor-pointer whitespace-nowrap">
-                                        <input 
-                                            type="checkbox" 
+                                        <input
+                                            type="checkbox"
                                             checked={applyBulkOnlyIfEmpty}
                                             onChange={(e) => setApplyBulkOnlyIfEmpty(e.target.checked)}
                                             className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-600 w-3.5 h-3.5 cursor-pointer"
@@ -1995,8 +1991,8 @@ export default function DarazAverageSalesPricePage() {
                                     </label>
 
                                     <label className="flex items-center gap-1.5 text-[11px] font-medium text-gray-600 dark:text-gray-400 cursor-pointer whitespace-nowrap">
-                                        <input 
-                                            type="checkbox" 
+                                        <input
+                                            type="checkbox"
                                             checked={applyBulkOnlyIfPurchase}
                                             onChange={(e) => setApplyBulkOnlyIfPurchase(e.target.checked)}
                                             className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-600 w-3.5 h-3.5 cursor-pointer"
@@ -2005,8 +2001,8 @@ export default function DarazAverageSalesPricePage() {
                                     </label>
 
                                     <label className="flex items-center gap-1.5 text-[11px] font-medium text-gray-600 dark:text-gray-400 cursor-pointer whitespace-nowrap">
-                                        <input 
-                                            type="checkbox" 
+                                        <input
+                                            type="checkbox"
                                             checked={applyBulkOnlyIfMrp}
                                             onChange={(e) => setApplyBulkOnlyIfMrp(e.target.checked)}
                                             className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-600 w-3.5 h-3.5 cursor-pointer"
@@ -2074,8 +2070,8 @@ export default function DarazAverageSalesPricePage() {
                             <div className="flex items-center gap-3 border-r border-gray-200 dark:border-zinc-800 pr-3">
                                 <div className="flex flex-col gap-1 pr-2">
                                     <label className="flex items-center gap-1.5 text-[11px] font-medium text-gray-600 dark:text-gray-400 cursor-pointer whitespace-nowrap">
-                                        <input 
-                                            type="checkbox" 
+                                        <input
+                                            type="checkbox"
                                             checked={applyBulkOnlyIfEmpty}
                                             onChange={(e) => setApplyBulkOnlyIfEmpty(e.target.checked)}
                                             className="rounded border-gray-300 text-amber-600 focus:ring-amber-600 w-3.5 h-3.5 cursor-pointer"
@@ -2083,8 +2079,8 @@ export default function DarazAverageSalesPricePage() {
                                         Empty Daraz Price
                                     </label>
                                     <label className="flex items-center gap-1.5 text-[11px] font-medium text-gray-600 dark:text-gray-400 cursor-pointer whitespace-nowrap">
-                                        <input 
-                                            type="checkbox" 
+                                        <input
+                                            type="checkbox"
                                             checked={applyBulkOnlyIfPurchase}
                                             onChange={(e) => setApplyBulkOnlyIfPurchase(e.target.checked)}
                                             className="rounded border-gray-300 text-amber-600 focus:ring-amber-600 w-3.5 h-3.5 cursor-pointer"
@@ -2092,7 +2088,7 @@ export default function DarazAverageSalesPricePage() {
                                         Purchase
                                     </label>
                                 </div>
-                                
+
                                 <select
                                     value={campaignMathAction}
                                     onChange={(e) => {
@@ -2137,7 +2133,7 @@ export default function DarazAverageSalesPricePage() {
                                     <option value="amount">Discount by Amount (Rs)</option>
                                     <option value="percent">Discount by Percentage (%)</option>
                                 </select>
-                                
+
                                 {(websiteDiscountType === 'amount' || websiteDiscountType === 'percent') && (
                                     <input
                                         type="number"
@@ -2171,12 +2167,12 @@ export default function DarazAverageSalesPricePage() {
                         </>
                     )}
 
-                    <button 
+                    <button
                         onClick={() => {
                             setSelectedProductIds(new Set());
                             setBulkMathAction('');
                             setCampaignMathAction('');
-                        }} 
+                        }}
                         className="p-2 ml-2 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-full transition-colors flex-none"
                     >
                         <X size={18} className="text-gray-500" />
@@ -2296,7 +2292,7 @@ export default function DarazAverageSalesPricePage() {
                                 <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
                                     Select Store Account:
                                 </div>
-                                
+
                                 {/* All Accounts Option */}
                                 <button
                                     onClick={() => {
@@ -2369,7 +2365,7 @@ export default function DarazAverageSalesPricePage() {
                             {(() => {
                                 const selected = data.filter(d => selectedProductIds.has(d.product_id) && (d.market_price ?? 0) > 0);
                                 const totalSelected = selected.length;
-                                
+
                                 if (totalSelected === 0) {
                                     return (
                                         <div className="text-center py-6 text-red-500 font-semibold text-sm">
@@ -2390,7 +2386,7 @@ export default function DarazAverageSalesPricePage() {
                                             <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
                                                 Select Store Account to push to:
                                             </div>
-                                            
+
                                             {/* All Accounts Option */}
                                             <button
                                                 onClick={() => {
