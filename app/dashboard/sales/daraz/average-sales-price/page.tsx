@@ -8,6 +8,15 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { getDarazAvgPrices, updateDarazAvgPrice, bulkUpdateDarazAvgPrice, syncDarazAvgPricesGoogleSheets, pullDarazAvgPricesFromGoogleSheets, syncLiveSellerPrices, pushPriceToDaraz, DarazAvgPriceItem, updateWebsitePricesBulk, syncLiveSellerPricesForProduct, toggleProductPriceLock, autoUpdateWebsitePrices } from '@/features/sales/actions/avg-price-actions'
 
+const DEFAULT_STORE_THEME: { bg: string; text: string; border: string } = { bg: 'bg-[#F3F4F6]', text: 'text-[#374151]', border: 'border-[#E5E7EB]' }
+
+const storeColorMap: Record<string, { bg: string; text: string; border: string }> = {
+    'BAGMATI': { bg: 'bg-[#DCFCE7]', text: 'text-[#15803D]', border: 'border-[#86EFAC]' }, // Emerald Green
+    'BALAJU': { bg: 'bg-[#DBEAFE]', text: 'text-[#1D4ED8]', border: 'border-[#93C5FD]' }, // Royal Blue
+    'COSMETICS': { bg: 'bg-[#F3E8FF]', text: 'text-[#7E22CE]', border: 'border-[#D8B4FE]' }, // Lavender Purple
+    'BTAS': { bg: 'bg-[#FEF3C7]', text: 'text-[#B45309]', border: 'border-[#FDE68A]' }, // Golden Amber
+}
+
 export default function DarazAverageSalesPricePage() {
     const [data, setData] = useState<DarazAvgPriceItem[]>([])
     const [isLoading, setIsLoading] = useState(true)
@@ -127,7 +136,9 @@ export default function DarazAverageSalesPricePage() {
     // Helper to get stores with live price for a single product
     const getStoresWithLivePrice = (item: DarazAvgPriceItem) => {
         const storesMap = new Map<string, { store_id: string; store_name: string; price: number; special_price: number | null; sku: string }>()
-        Object.entries(item.live_prices || {}).forEach(([sku, lp]) => {
+        Object.entries(item.live_prices || {})
+            .filter(([skuKey]) => !skuKey.includes('_slot_'))
+            .forEach(([sku, lp]) => {
             if (lp.store_id) {
                 if (!storesMap.has(lp.store_id)) {
                     storesMap.set(lp.store_id, {
@@ -839,13 +850,15 @@ export default function DarazAverageSalesPricePage() {
 
         const updates: Array<{ sku: string, quantity: number, store_id: string }> = []
 
-        Object.keys(stockModalProduct.live_prices || {}).forEach(sku => {
-            const lp = stockModalProduct.live_prices?.[sku]
-            if (!lp) return
+        Object.keys(stockModalProduct.live_prices || {})
+            .filter(key => !key.includes('_slot_'))
+            .forEach(sku => {
+                const lp = stockModalProduct.live_prices?.[sku]
+                if (!lp) return
 
-            const quantity = isOutOfStock ? 0 : (stockEdits[sku] ?? lp.quantity ?? 0)
-            updates.push({ sku, quantity, store_id: lp.store_id || '' })
-        })
+                const quantity = isOutOfStock ? 0 : (stockEdits[sku] ?? lp.quantity ?? 0)
+                updates.push({ sku, quantity, store_id: lp.store_id || '' })
+            })
 
         if (updates.length === 0) return
 
@@ -1617,7 +1630,10 @@ export default function DarazAverageSalesPricePage() {
                                         {/* ─── 3. Live Price Section (4 Mini Cards) ─── */}
                                         <div className="flex items-center gap-2.5 w-[580px] shrink-0 border-l border-[#ECEEF3] pl-5">
                                             {[item.seller_sku1, item.seller_sku2, item.seller_sku3, item.seller_sku4].map((sku, idx) => {
-                                                const liveDetails = sku ? item.live_prices?.[sku] : null
+                                                const slotKey = sku ? `${sku}_slot_${idx}` : null
+                                                const liveDetails = (slotKey && item.live_prices?.[slotKey])
+                                                    ? item.live_prices[slotKey]
+                                                    : (sku ? item.live_prices?.[sku] : null)
                                                 const isInactive = liveDetails?.status && ['inactive', 'deleted', 'suspended', 'deactivated'].includes(liveDetails.status.toLowerCase())
                                                 const accountName = [item.seller_account1, item.seller_account2, item.seller_account3, item.seller_account4][idx]
                                                 const accountSoldQty = accountName ? (item.sold_qty_by_account?.[accountName] || 0) : 0
@@ -1637,10 +1653,20 @@ export default function DarazAverageSalesPricePage() {
                                                 const isStockOut = stockQty === 0
                                                 const isLowStock = stockQty > 0 && stockQty <= 5
                                                 const isAboveMrpLive = mrpVal != null && sellingPrice > mrpVal
-
                                                 const liveProfit = calcPriceProfit(sellingPrice)
 
-                                                const storeAlias = storeAliasMap[liveDetails.store_name] || (liveDetails.store_name?.toUpperCase() || 'STORE')
+                                                const getStoreAlias = (storeName?: string | null) => {
+                                                    if (!storeName) return 'STORE'
+                                                    const name = storeName.toLowerCase().trim()
+                                                    if (name.includes('balaju') || name.includes('lamichhaneram100')) return 'BALAJU'
+                                                    if (name.includes('btas') || name.includes('shop.bagmati')) return 'BTAS'
+                                                    if (name.includes('cosmetics') || name.includes('supplierslamichhane9')) return 'COSMETICS'
+                                                    if (name.includes('bagmati') || name.includes('bagmationline8')) return 'BAGMATI'
+                                                    return storeName.toUpperCase().slice(0, 10)
+                                                }
+
+                                                const storeAlias = getStoreAlias(liveDetails.store_name)
+                                                const storeTheme: { bg: string; text: string; border: string } = storeColorMap[storeAlias] ?? DEFAULT_STORE_THEME
 
                                                 let miniCardBg = 'bg-white border-[#E5E7EB]'
                                                 let priceClass = isAboveMrpLive ? 'text-[#DC2626]' : 'text-[#111827]'
@@ -1666,7 +1692,7 @@ export default function DarazAverageSalesPricePage() {
                                                     >
                                                         <div className="flex items-center justify-between">
                                                             <span className="text-[11px] font-semibold uppercase tracking-[0.8px] text-[#6C4CF1]">LIVE {idx + 1}</span>
-                                                            <span className="inline-flex text-[10px] font-bold bg-[#DCFCE7] text-[#16A34A] px-[6px] py-[2px] rounded-[6px]">
+                                                            <span className={`inline-flex text-[10px] font-extrabold px-[7px] py-[1.5px] rounded-[6px] border ${storeTheme.bg} ${storeTheme.text} ${storeTheme.border}`}>
                                                                 {storeAlias}
                                                             </span>
                                                         </div>
@@ -2199,13 +2225,19 @@ export default function DarazAverageSalesPricePage() {
                             </div>
 
                             <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
-                                {Object.keys(stockModalProduct.live_prices || {}).length === 0 ? (
-                                    <div className="text-center py-8 text-gray-500 italic bg-gray-50 dark:bg-zinc-800/50 rounded-lg border border-dashed border-gray-200 dark:border-zinc-700">
-                                        No live SKUs found for this product. Sync live prices first.
-                                    </div>
-                                ) : (
-                                    Object.keys(stockModalProduct.live_prices!).map(sku => {
-                                        const lp = stockModalProduct.live_prices![sku];
+                                {(() => {
+                                    const uniqueEntries = Object.entries(stockModalProduct.live_prices || {})
+                                        .filter(([key]) => !key.includes('_slot_'))
+
+                                    if (uniqueEntries.length === 0) {
+                                        return (
+                                            <div className="text-center py-8 text-gray-500 italic bg-gray-50 dark:bg-zinc-800/50 rounded-lg border border-dashed border-gray-200 dark:border-zinc-700">
+                                                No live SKUs found for this product. Sync live prices first.
+                                            </div>
+                                        )
+                                    }
+
+                                    return uniqueEntries.map(([sku, lp]) => {
                                         return (
                                             <div key={sku} className="flex items-center justify-between p-4 bg-gray-50 dark:bg-zinc-800/50 rounded-xl border border-gray-100 dark:border-zinc-800 group hover:border-blue-200 dark:hover:border-blue-900 transition-colors">
                                                 <div className="flex-1 min-w-0 pr-4">
@@ -2231,7 +2263,7 @@ export default function DarazAverageSalesPricePage() {
                                             </div>
                                         );
                                     })
-                                )}
+                                })()}
                             </div>
 
                             <div className="mt-8 flex flex-col gap-3">

@@ -450,25 +450,45 @@ export async function getDarazAvgPrices(days: number | string = 60) {
         const marketPriceProfit = marketPrice ? (marketPrice - (marketPrice * commissionPercent) - purchasingPrice) : null
         const campaignPriceProfit = campaignPrice ? (campaignPrice - (campaignPrice * commissionPercent) - purchasingPrice) : null
 
-        // Live Prices Mapping
+        // Live Prices Mapping across 4 slots
         const productLivePrices: Record<string, LivePriceDetail> = {}
-        skus.forEach(sku => {
-            const lowerSku = sku.toLowerCase().trim()
+        const rawSkus = [prodSkus.seller_sku1, prodSkus.seller_sku2, prodSkus.seller_sku3, prodSkus.seller_sku4]
+        const rawAccounts = [prodSkus.seller_account1, prodSkus.seller_account2, prodSkus.seller_account3, prodSkus.seller_account4]
+
+        rawSkus.forEach((sku, idx) => {
+            if (!sku) return
+            const lowerSku = String(sku).toLowerCase().trim()
             const prices = livePricesMap.get(lowerSku)
+            const targetAccount = rawAccounts[idx] ? String(rawAccounts[idx]).toLowerCase().trim() : null
+
             if (prices && prices.length > 0) {
-                // If by rare chance multiple stores report the same SKU name, take the first matched price recorded
-                const sp = prices[0]
+                // 1. Try to find store matching targetAccount for this slot
+                let sp = targetAccount 
+                    ? prices.find(p => p.store_name?.toLowerCase().includes(targetAccount) || p.account?.toLowerCase().includes(targetAccount))
+                    : null
+                
+                // 2. Fallback to prices[idx] if available, else prices[0]
+                if (!sp) {
+                    sp = prices[idx] || prices[0]
+                }
+
                 const statusStr = (sp.status || '').toLowerCase().trim()
                 const isInactive = statusStr === 'inactive' || statusStr === 'deleted' || statusStr === 'suspended' || statusStr === 'deactivated'
 
                 if (!isInactive) {
-                    productLivePrices[sku] = {
+                    const detail: LivePriceDetail = {
                         price: Number(sp.price || 0),
                         special_price: sp.special_price ? Number(sp.special_price) : null,
                         store_name: String(sp.store_name || 'Unknown'),
                         quantity: Number(sp.quantity || 0),
                         store_id: String(sp.store_id || ''),
                         status: sp.status || 'active'
+                    }
+
+                    // Key by slot index (sku_slot_N) and by raw SKU name
+                    productLivePrices[`${sku}_slot_${idx}`] = detail
+                    if (!productLivePrices[sku]) {
+                        productLivePrices[sku] = detail
                     }
                 }
             }
@@ -870,12 +890,26 @@ export async function syncLiveSellerPrices() {
                                     activeSkusPerStore.get(token.store_id)!.add(sku.SellerSku.toLowerCase().trim())
 
                                     let stockQty = 0
-                                    if (sku.quantity !== undefined && sku.quantity !== null && !isNaN(parseInt(sku.quantity))) {
-                                        stockQty = parseInt(sku.quantity)
-                                    } else if (Array.isArray(sku.multiWarehouseInventories) && sku.multiWarehouseInventories.length > 0) {
-                                        stockQty = sku.multiWarehouseInventories.reduce((acc: number, item: any) => acc + (parseInt(item.totalQuantity || item.quantity) || 0), 0)
-                                    } else if (sku.Available !== undefined && !isNaN(parseInt(sku.Available))) {
-                                        stockQty = parseInt(sku.Available)
+
+                                    // 1. Check Multi-Warehouse Inventories first
+                                    if (Array.isArray(sku.multiWarehouseInventories) && sku.multiWarehouseInventories.length > 0) {
+                                        const mwSum = sku.multiWarehouseInventories.reduce((acc: number, item: any) => {
+                                            const q = parseInt(item.totalQuantity ?? item.quantity ?? item.sellableQuantity ?? item.multiWarehouseQuantity ?? 0)
+                                            return acc + (isNaN(q) ? 0 : q)
+                                        }, 0)
+                                        if (mwSum > 0) stockQty = mwSum
+                                    }
+
+                                    // 2. Check Available field if stockQty still 0
+                                    if (stockQty === 0 && (sku.Available !== undefined && sku.Available !== null || sku.available !== undefined && sku.available !== null)) {
+                                        const avail = parseInt(sku.Available ?? sku.available)
+                                        if (!isNaN(avail) && avail > 0) stockQty = avail
+                                    }
+
+                                    // 3. Fallback to standard quantity field
+                                    if (stockQty === 0 && sku.quantity !== undefined && sku.quantity !== null) {
+                                        const q = parseInt(sku.quantity)
+                                        if (!isNaN(q)) stockQty = q
                                     }
 
                                     allLivePricesToUpsert.push({
@@ -886,7 +920,6 @@ export async function syncLiveSellerPrices() {
                                         price: parseFloat(sku.price) || 0,
                                         special_price: sku.special_price ? parseFloat(sku.special_price) : null,
                                         quantity: stockQty,
-                                        status: statusVal,
                                         updated_at: new Date().toISOString()
                                     })
                                 }
