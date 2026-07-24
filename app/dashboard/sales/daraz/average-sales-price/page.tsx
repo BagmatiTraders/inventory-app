@@ -139,18 +139,18 @@ export default function DarazAverageSalesPricePage() {
         Object.entries(item.live_prices || {})
             .filter(([skuKey]) => !skuKey.includes('_slot_'))
             .forEach(([sku, lp]) => {
-            if (lp.store_id) {
-                if (!storesMap.has(lp.store_id)) {
-                    storesMap.set(lp.store_id, {
-                        store_id: lp.store_id,
-                        store_name: lp.store_name,
-                        price: lp.price,
-                        special_price: lp.special_price,
-                        sku
-                    })
+                if (lp.store_id) {
+                    if (!storesMap.has(lp.store_id)) {
+                        storesMap.set(lp.store_id, {
+                            store_id: lp.store_id,
+                            store_name: lp.store_name,
+                            price: lp.price,
+                            special_price: lp.special_price,
+                            sku
+                        })
+                    }
                 }
-            }
-        })
+            })
         return Array.from(storesMap.values())
     }
 
@@ -1666,7 +1666,7 @@ export default function DarazAverageSalesPricePage() {
                                                 }
 
                                                 const storeAlias = getStoreAlias(liveDetails.store_name)
-                                                const storeTheme: { bg: string; text: string; border: string } = storeColorMap[storeAlias] ?? DEFAULT_STORE_THEME
+                                                const storeTheme = (storeColorMap[storeAlias] || DEFAULT_STORE_THEME) as { bg: string; text: string; border: string }
 
                                                 let miniCardBg = 'bg-white border-[#E5E7EB]'
                                                 let priceClass = isAboveMrpLive ? 'text-[#DC2626]' : 'text-[#111827]'

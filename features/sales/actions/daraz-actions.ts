@@ -77,7 +77,7 @@ export async function createDarazOrder(data: CreateDarazOrderData) {
         // Create order items
         // Create order items with product lookup
         // Create order items with product lookup
-        const items = await Promise.all(data.items.map(async (item) => {
+        const items = await Promise.all(data.items.map(async (item: any) => {
             const cleanSku = item.seller_sku.trim()
 
             // Lookup product directly from table
@@ -1803,7 +1803,7 @@ export async function syncDarazOrderProducts(orderId: string) {
         const updates: string[] = []
 
         // 2. Process each item (Parallelly)
-        await Promise.all(items.map(async (item) => {
+        await Promise.all(items.map(async (item: any) => {
             const sellerSku = item.seller_sku?.trim()
             if (!sellerSku) return
 

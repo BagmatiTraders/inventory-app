@@ -145,7 +145,7 @@ export async function createSalesBill(params: CreateSalesBillParams) {
 
     // Insert items
     if (params.items.length > 0) {
-        const itemsToInsert = params.items.map((item) => ({
+        const itemsToInsert = params.items.map((item: any) => ({
             bill_id: bill.id,
             hs_code: item.hs_code || null,
             particulars: item.particulars,
@@ -243,7 +243,7 @@ export async function updateSalesBill(id: string, params: CreateSalesBillParams)
 
     // Insert new items
     if (params.items.length > 0) {
-        const itemsToInsert = params.items.map((item) => ({
+        const itemsToInsert = params.items.map((item: any) => ({
             bill_id: id,
             hs_code: item.hs_code || null,
             particulars: item.particulars,
