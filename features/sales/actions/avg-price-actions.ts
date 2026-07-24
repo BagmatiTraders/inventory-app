@@ -307,7 +307,7 @@ export async function getDarazAvgPrices(days: number | string = 60) {
     const mrpMapByName = new Map<string, number>()
 
     if (mrpPricesData) {
-        mrpPricesData.forEach(item => {
+        mrpPricesData.forEach((item: any) => {
             if (item.inventory_id && !mrpMapById.has(item.inventory_id)) {
                 mrpMapById.set(item.inventory_id, Number(item.mrp_price))
             }
@@ -322,7 +322,7 @@ export async function getDarazAvgPrices(days: number | string = 60) {
     const reverseSkuMap = new Map<string, string>() // Map SKU to Product ID
 
     if (skusData) {
-        skusData.forEach(s => {
+        skusData.forEach((s: any) => {
             skuMap.set(s.id, s)
             if (s.seller_sku1) reverseSkuMap.set(s.seller_sku1.toLowerCase().trim(), s.id)
             if (s.seller_sku2) reverseSkuMap.set(s.seller_sku2.toLowerCase().trim(), s.id)
@@ -343,7 +343,7 @@ export async function getDarazAvgPrices(days: number | string = 60) {
     })
 
     const bestWholesaleMap = new Map<string, number>()
-    wholesalePricesData?.forEach(wp => {
+    wholesalePricesData?.forEach((wp: any) => {
         const currentMin = bestWholesaleMap.get(wp.product_id) || Infinity
         if (wp.wholesale_price < currentMin) {
             bestWholesaleMap.set(wp.product_id, Number(wp.wholesale_price))
@@ -380,12 +380,12 @@ export async function getDarazAvgPrices(days: number | string = 60) {
 
     const pricesMap = new Map<string, any>()
     if (dbPrices) {
-        dbPrices.forEach(p => pricesMap.set(p.product_id, p))
+        dbPrices.forEach((p: any) => pricesMap.set(p.product_id, p))
     }
 
     const livePricesMap = new Map<string, any[]>()
     if (allDbLivePrices.length > 0) {
-        allDbLivePrices.forEach(lp => {
+        allDbLivePrices.forEach((lp: any) => {
             const sku = lp.seller_sku.toLowerCase().trim()
             if (!livePricesMap.has(sku)) {
                 livePricesMap.set(sku, [])
